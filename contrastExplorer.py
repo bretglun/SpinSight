@@ -42,7 +42,7 @@ class PulseSequence:
 
 class ContrastExplorer(param.Parameterized):
     sequence = param.ObjectSelector(default='Spin Echo', objects=seqTypes)
-    TR = param.Number(default=1.0, bounds=(0, 1000.0))
+    TR = param.Number(default=1000.0, bounds=(0, 5000.0))
     TE = param.Number(default=1.0, bounds=(0, 100.0))
     FA = param.Number(default=90.0, bounds=(0, 90.0), precedence=-1)
     TI = param.Number(default=1.0, bounds=(0, 1000.0), precedence=-1)
@@ -56,20 +56,23 @@ class ContrastExplorer(param.Parameterized):
 
     @param.depends('sequence', 'TR', 'TE', 'FA', 'TI')
     def getImage(self):
-        nx = ny = 64
         
-        tissue1 = Tissue(1.0, 210., 65.)
-        tissue2 = Tissue(.95, 1000., 110.)
+        tissues = [ Tissue(1.0, 210., 65.), 
+                    Tissue(.95, 1000., 110.), 
+                    Tissue(.95, 5000., 500.)]
         
         seq = PulseSequence(self.sequence, self.TR, self.TE, self.FA, self.TI)
         
-        for tissue in [tissue1, tissue2]:
+        for tissue in tissues:
             tissue.runPulseSequence(seq)
-            
-        M = np.zeros((nx, ny), dtype=complex)
-        M[20:45, 10:50] = tissue1.M
-        M[40:60, 30:55] = tissue2.M
-        img = hv.Image(abs(M), bounds=[0,0,nx,ny], kdims=['x', 'y'], vdims=['magnitude']).options(aspect='equal', cmap='gray')
+
+        polys = []
+        polys.append({('x', 'y'):[(0,0), (0,2), (2,0)], 'M': tissues[0].M})
+        polys.append({('x', 'y'):[(0,2), (1,1), (2,2)], 'M': tissues[1].M})
+        polys.append({('x', 'y'):[(2,2), (2,0), (1,1)], 'M': tissues[2].M})
+
+        img = hv.Polygons(polys, vdims='M').options(aspect='equal', cmap='gray').redim.range(M=(0,1))
+        
         return img
 
 explorer = ContrastExplorer(name='MR Contrast Explorer')
