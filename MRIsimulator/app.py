@@ -3,6 +3,8 @@ import panel as pn
 import param
 import numpy as np
 
+hv.extension('bokeh')
+
 
 class Tissue:
 
@@ -40,7 +42,7 @@ class PulseSequence:
 
 
 
-class ContrastExplorer(param.Parameterized):
+class MRIsimulator(param.Parameterized):
     sequence = param.ObjectSelector(default='Spin Echo', objects=seqTypes)
     TR = param.Number(default=1000.0, bounds=(0, 5000.0))
     TE = param.Number(default=1.0, bounds=(0, 100.0))
@@ -75,7 +77,7 @@ class ContrastExplorer(param.Parameterized):
         
         return img
 
-explorer = ContrastExplorer(name='MR Contrast Explorer')
+explorer = MRIsimulator(name='MR Contrast Explorer')
 dmapMRimage = hv.DynamicMap(explorer.getImage).opts(framewise=True, frame_height=300)
 dashboard = pn.Column(pn.Row(pn.panel(explorer.param), dmapMRimage))
-dashboard.show()
+dashboard.servable()

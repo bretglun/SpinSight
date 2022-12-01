@@ -1,0 +1,4 @@
+holoviews
+panel
+param
+numpy
