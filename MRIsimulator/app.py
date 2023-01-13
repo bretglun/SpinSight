@@ -19,18 +19,39 @@ TISSUES = {
 SEQUENCES = ['Spin Echo', 'Spoiled Gradient Echo', 'Inversion Recovery']
 
 
+# Get coords from SVG path defined at https://www.w3.org/TR/SVG/paths.html
+def getCoords(pathString):
+    supportedCommands = 'MZLHV'
+    commands = supportedCommands + 'CSQTA'
+    commandRegExp = re.compile(r'([' + commands + r'])([^' + commands + r']+)', re.IGNORECASE)
+    floatRegExp = re.compile(r'(?:[\s,]*)([+-]?\d+(?:\.\d+)?)')
+
+    coords = []
+    for command, params in commandRegExp.findall(pathString):
+        if command.upper() not in supportedCommands:
+            raise Exception('Path command not supported: ' + command)
+        current = (0, 0) if not coords else coords[-1]
+        floats = [float(f) for f in floatRegExp.findall(params)]
+        if command.upper() == 'H':
+            for x in floats: 
+                coords.append((x + current[0] * command.islower(), current[1])) 
+        elif command.upper() == 'V':
+            for y in floats: 
+                coords.append((current[0], y + current[1] * command.islower()))
+        else:
+            for x, y in [(floats[2*i], floats[2*i+1]) for i in range(len(floats)//2)]:
+                coords.append((x + current[0] * command.islower(), y + current[1] * command.islower()))
+    return coords
+
+
+# reads SVG file and returns polygon lists
 def readSVG(inFile):
-    # reads SVG file and returns polygon lists
     polygons = []
     for path in ET.parse(inFile).iter('{http://www.w3.org/2000/svg}path'): 
         hexcolor = path.attrib['style'][6:12]
         tissue = [tissue for tissue in TISSUES if TISSUES[tissue]['hexcolor']==hexcolor][0]
-        coords = re.findall(r'(-?\d+\.?\d*)\,(-?\d+\.?\d*)', path.attrib['d'])
-        coords = [(float(x), float(y)) for (x,y) in coords]
-        polygons.append({('x', 'y'): coords, 'tissue': tissue, 'M': .5})
+        polygons.append({('x', 'y'): getCoords(path.attrib['d']), 'tissue': tissue})
     return polygons
-
-    # TODO: better understand svg path format
 
 
 def getM(tissue, seqType, TR, TE, TI, FA, B0='1.5T'):
@@ -83,4 +104,4 @@ class MRIsimulator(param.Parameterized):
 explorer = MRIsimulator('abdomen.svg', name='MR Contrast Explorer')
 dmapMRimage = hv.DynamicMap(explorer.getImage).opts(framewise=True, frame_height=300)
 dashboard = pn.Column(pn.Row(pn.panel(explorer.param), dmapMRimage))
-dashboard.servable() # run by ´panel serve app.py´, then open http://localhost:XXXX/app in browser
+dashboard.servable() # run by ´panel serve app.py´, then open http://localhost:5006/app in browser
