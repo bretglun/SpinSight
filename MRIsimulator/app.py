@@ -35,12 +35,15 @@ def getCoords(pathString):
         if command.upper() == 'H':
             for x in floats: 
                 coords.append((x + current[0] * command.islower(), current[1])) 
+                current = coords[-1]
         elif command.upper() == 'V':
             for y in floats: 
                 coords.append((current[0], y + current[1] * command.islower()))
+                current = coords[-1]
         else:
             for x, y in [(floats[2*i], floats[2*i+1]) for i in range(len(floats)//2)]:
                 coords.append((x + current[0] * command.islower(), y + current[1] * command.islower()))
+                current = coords[-1]
     return coords
 
 
