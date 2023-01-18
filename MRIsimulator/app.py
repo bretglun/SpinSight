@@ -29,31 +29,54 @@ SEQUENCES = ['Spin Echo', 'Spoiled Gradient Echo', 'Inversion Recovery']
 
 
 # Get coords from SVG path defined at https://www.w3.org/TR/SVG/paths.html
-def getCoords(pathString):
+def getCoords(pathString, scale):
     supportedCommands = 'MZLHV'
     commands = supportedCommands + 'CSQTA'
 
     coords = []
-    command = None
+    command = ''
     coord = (0, 0)
-    for entry in pathString.strip().split():
+    x, y  = None, None
+    for entry in pathString.strip().replace(',', ' ').split():
+        if command.upper() == 'Z':
+            raise Exception('Warning: unexpected entry following "{}"'.format(command))
         if entry.upper() in commands:
             if entry.upper() in supportedCommands:
                 command = entry
             else:
                 raise Exception('Path command not supported: ' + command)
-        else:
+        else: # no command; x or y coordinate
             if command.upper() == 'H':
                 x, y = entry, 0
             elif command.upper() == 'V':
                 x, y = 0, entry
             elif command.upper() in 'ML':
-                x, y = entry.split(',')
-            elif command.upper() == 'Z':
-                raise Exception('Warning: unexpected "{}" followed by number'.format(command))
-            coord = (float(x) + coord[0] * command.islower(), float(y) + coord[1] * command.islower())
-            coords.append(coord)
+                if x is None:
+                    x = entry
+                else:
+                    y = entry
+            if x is not None and y is not None:
+                relativeX = command.islower() or command.upper() == 'V'
+                relativeY = command.islower() or command.upper() == 'H'
+                coord = (float(x) * scale + coord[0] * relativeX, float(y) * scale + coord[1] * relativeY)
+                coords.append(coord)
+                x, y  = None, None
     return coords
+
+
+import re
+
+def parseTransform(transformString):
+    match = re.search("translate\((-?\d+.\d+)(px|%), (-?\d+.\d+)(px|%)\)", transformString)
+    translation = (float(match.group(1)), float(match.group(3))) if match else (0, 0)
+
+    match = re.search("rotate\((-?\d+.\d+)deg\)", transformString)
+    rotation = float(match.group(1)) if match else 0
+    
+    match = re.search("scale\((-?\d+.\d+)\)", transformString)
+    scale = float(match.group(1)) if match else 1
+
+    return translation, rotation, scale
 
 
 # reads SVG file and returns polygon lists
@@ -62,7 +85,10 @@ def readSVG(inFile):
     for path in ET.parse(inFile).iter('{http://www.w3.org/2000/svg}path'): 
         hexcolor = path.attrib['style'][6:12]
         tissue = [tissue for tissue in TISSUES if TISSUES[tissue]['hexcolor']==hexcolor][0]
-        polygons.append({('x', 'y'): getCoords(path.attrib['d']), 'tissue': tissue})
+        translation, rotation, scale = parseTransform(path.attrib['transform'] if 'transform' in path.attrib else '')
+        if rotation != 0 or translation != (0, 0):
+            raise NotImplementedError()
+        polygons.append({('x', 'y'): getCoords(path.attrib['d'], scale), 'tissue': tissue})
     return polygons
 
 
@@ -109,7 +135,7 @@ class MRIsimulator(param.Parameterized):
         M = {tissue: getM(tissue, self.sequence, self.TR, self.TE, self.TI, self.FA) for tissue in self.tissues}
         for i, _ in enumerate(self.polys):
             self.polys[i]['M'] = M[self.polys[i]['tissue']]
-        img = hv.Polygons(self.polys, vdims='M').options(aspect='equal', cmap='gray').redim.range(M=(0,1)).opts(invert_xaxis=False, invert_yaxis=True, bgcolor='black')
+        img = hv.Polygons(self.polys, vdims='M').options(aspect='equal', cmap='gray').redim.range(M=(0,1)).opts(invert_xaxis=False, invert_yaxis=True, bgcolor='black', line_width=0)
         return img
 
 
