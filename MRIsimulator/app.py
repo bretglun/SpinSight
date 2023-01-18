@@ -3,7 +3,6 @@ import panel as pn
 import param
 import numpy as np
 import xml.etree.ElementTree as ET
-import re
 
 hv.extension('bokeh')
 
@@ -33,27 +32,27 @@ SEQUENCES = ['Spin Echo', 'Spoiled Gradient Echo', 'Inversion Recovery']
 def getCoords(pathString):
     supportedCommands = 'MZLHV'
     commands = supportedCommands + 'CSQTA'
-    commandRegExp = re.compile(r'([' + commands + r'])([^' + commands + r']+)', re.IGNORECASE)
-    floatRegExp = re.compile(r'(?:[\s,]*)([+-]?\d+(?:\.\d+)?)')
 
     coords = []
-    for command, params in commandRegExp.findall(pathString):
-        if command.upper() not in supportedCommands:
-            raise Exception('Path command not supported: ' + command)
-        current = (0, 0) if not coords else coords[-1]
-        floats = [float(f) for f in floatRegExp.findall(params)]
-        if command.upper() == 'H':
-            for x in floats: 
-                coords.append((x + current[0] * command.islower(), current[1])) 
-                current = coords[-1]
-        elif command.upper() == 'V':
-            for y in floats: 
-                coords.append((current[0], y + current[1] * command.islower()))
-                current = coords[-1]
+    command = None
+    coord = (0, 0)
+    for entry in pathString.strip().split():
+        if entry.upper() in commands:
+            if entry.upper() in supportedCommands:
+                command = entry
+            else:
+                raise Exception('Path command not supported: ' + command)
         else:
-            for x, y in [(floats[2*i], floats[2*i+1]) for i in range(len(floats)//2)]:
-                coords.append((x + current[0] * command.islower(), y + current[1] * command.islower()))
-                current = coords[-1]
+            if command.upper() == 'H':
+                x, y = entry, 0
+            elif command.upper() == 'V':
+                x, y = 0, entry
+            elif command.upper() in 'ML':
+                x, y = entry.split(',')
+            elif command.upper() == 'Z':
+                raise Exception('Warning: unexpected "{}" followed by number'.format(command))
+            coord = (float(x) + coord[0] * command.islower(), float(y) + coord[1] * command.islower())
+            coords.append(coord)
     return coords
 
 
