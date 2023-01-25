@@ -61,6 +61,7 @@ def getCoords(pathString, scale):
                 coord = (float(x) * scale + coord[0] * relativeX, float(y) * scale + coord[1] * relativeY)
                 coords.append(coord)
                 x, y  = None, None
+    if coords[0] == coords[-1]: return coords[:-1]
     return coords
 
 
@@ -92,6 +93,40 @@ def readSVG(inFile):
     return polygons
 
 
+def kspacePolygon(poly, nx, ny, FOVx, FOVy):
+    # analytical 2D Fourier transform of polygon (see https://cvil.ucsd.edu/wp-content/uploads/2016/09/Realistic-analytical-polyhedral-MRI-phantoms.pdf)
+    r = np.array(poly[('x', 'y')]) # position vectors of vertices Ve
+    E = len(r) # number of vertices/edges
+    Lv = np.roll(r, -1, axis=0) - r # edge vectors
+    L = [np.linalg.norm(e) for e in Lv] # edge lengths
+    t = [Lv[e]/L[e] for e in range(E)] # edge unit vectors
+    n = np.roll(t, 1, axis=1)
+    n[:,0] *= -1 # normals to tangents (pointing out from polygon)
+    # TODO: make sure normals are correctly defined
+    rc = r + Lv / 2 # position vector for center of edge
+
+    ksp = np.zeros((ny, nx), dtype=complex)
+    for kx, u in enumerate(np.fft.fftfreq(nx) * nx / FOVx):
+        for ky, v in enumerate(np.fft.fftfreq(ny) * ny / FOVy):
+            if u==0 and v==0: # k-spce center (DC point)
+                area = 0. # calculate polygon area
+                for e in range(E):
+                    area += r[e-1, 0] * r[e, 1] - r[e, 0] * r[e-1, 1]
+                area = abs(area)/2
+                ksp[ky, kx] = area
+            else:
+                kv = np.array([u, v])
+                k = np.linalg.norm(kv)
+                for e in range(E):
+                    arg = np.pi * np.dot(kv, t[e]) * L[e]
+                    if abs(arg) > 0:
+                        ksp[ky, kx] += L[e] * np.dot(kv, n[e]) * np.sin(arg) / arg * np.exp(-2j*np.pi * np.dot(kv, rc[e]))
+                    else:
+                        ksp[ky, kx] += L[e] * np.dot(kv, n[e]) * np.exp(-2j*np.pi * np.dot(kv, rc[e])) # sinc(0)=1
+                ksp[ky, kx] *= 1j / (2 * np.pi * k**2)
+    return ksp
+
+
 def getM(tissue, seqType, TR, TE, TI, FA, B0='1.5T'):
     PD = TISSUES[tissue]['PD']
     T1 = TISSUES[tissue]['T1'][B0]
@@ -117,10 +152,21 @@ class MRIsimulator(param.Parameterized):
     TI = param.Number(default=1.0, bounds=(0, 1000.0), precedence=-1)
     
 
-    def __init__(self, SVGfile, **params):
+    def __init__(self, phantom, **params):
         super().__init__(**params)
-        self.polys = readSVG(SVGfile)
+        self.nx = self.ny = 64
+        self.FOVx = self.FOVy = 400
+        self.loadPhantom(phantom)
+        
+        
+    def loadPhantom(self, phantom):
+        self.polys = readSVG(phantom + '.svg')
         self.tissues = set([poly['tissue'] for poly in self.polys])
+        self.tissueArrays = {tissue: np.zeros((self.ny, self.nx), dtype=complex) for tissue in self.tissues}
+        for i, poly in enumerate(self.polys):
+            self.tissueArrays[poly['tissue']] += kspacePolygon(poly, self.nx, self.ny, self.FOVx, self.FOVy)
+        for tissue in self.tissueArrays:
+            self.tissueArrays[tissue] = np.fft.fftshift(np.fft.ifft2(self.tissueArrays[tissue]))
     
 
     @param.depends('sequence', watch=True)
@@ -133,13 +179,14 @@ class MRIsimulator(param.Parameterized):
     def getImage(self):
         # calculate and update magnetization
         M = {tissue: getM(tissue, self.sequence, self.TR, self.TE, self.TI, self.FA) for tissue in self.tissues}
-        for i, _ in enumerate(self.polys):
-            self.polys[i]['M'] = M[self.polys[i]['tissue']]
-        img = hv.Polygons(self.polys, vdims='M').options(aspect='equal', cmap='gray').redim.range(M=(0,1)).opts(invert_xaxis=False, invert_yaxis=True, bgcolor='black', line_width=0)
+        pixelArray = np.zeros((self.ny, self.nx), dtype=complex)
+        for tissue in self.tissues:
+            pixelArray += self.tissueArrays[tissue] * M[tissue]
+        img = hv.Image(np.abs(pixelArray), bounds=[0,0,self.nx,self.ny], kdims=['x', 'y'], vdims=['magnitude']).options(aspect='equal', cmap='gray')
         return img
 
 
-explorer = MRIsimulator('abdomen.svg', name='MR Contrast Explorer')
+explorer = MRIsimulator('abdomen', name='MR Contrast Explorer')
 dmapMRimage = hv.DynamicMap(explorer.getImage).opts(framewise=True, frame_height=300)
 dashboard = pn.Column(pn.Row(pn.panel(explorer.param), dmapMRimage))
 dashboard.servable() # run by ´panel serve app.py´, then open http://localhost:5006/app in browser
