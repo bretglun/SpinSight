@@ -3,6 +3,7 @@ import panel as pn
 import param
 import numpy as np
 import xml.etree.ElementTree as ET
+from pathlib import Path
 
 hv.extension('bokeh')
 
@@ -15,9 +16,9 @@ TISSUES = {
     'liver':      {'PD': 1.0, 'T1': {'1.5T':  586, '3T':  809}, 'T2': {'1.5T':   46, '3T':   34}, 'hexcolor': '800000'},
     'spleen':     {'PD': 1.0, 'T1': {'1.5T': 1057, '3T': 1328}, 'T2': {'1.5T':   79, '3T':   61}, 'hexcolor': 'ff0000'},
     'muscle':     {'PD': 1.0, 'T1': {'1.5T':  856, '3T':  898}, 'T2': {'1.5T':   27, '3T':   29}, 'hexcolor': '008000'},
-    'kidney med': {'PD': 1.0, 'T1': {'1.5T': 1412, '3T': 1545}, 'T2': {'1.5T':   85, '3T':   81}, 'hexcolor': 'aa4400'},
-    'kidney cor': {'PD': 1.0, 'T1': {'1.5T':  966, '3T': 1142}, 'T2': {'1.5T':   87, '3T':   76}, 'hexcolor': '552200'},
-    'spinal cord':{'PD': 1.0, 'T1': {'1.5T':  745, '3T':  993}, 'T2': {'1.5T':   74, '3T':   78}, 'hexcolor': 'ffff00'},
+    'kidneyMed':  {'PD': 1.0, 'T1': {'1.5T': 1412, '3T': 1545}, 'T2': {'1.5T':   85, '3T':   81}, 'hexcolor': 'aa4400'},
+    'kidneyCor':  {'PD': 1.0, 'T1': {'1.5T':  966, '3T': 1142}, 'T2': {'1.5T':   87, '3T':   76}, 'hexcolor': '552200'},
+    'spinalCord': {'PD': 1.0, 'T1': {'1.5T':  745, '3T':  993}, 'T2': {'1.5T':   74, '3T':   78}, 'hexcolor': 'ffff00'},
     'cortical':   {'PD': .05, 'T1': {'1.5T': 1000, '3T': 1000}, 'T2': {'1.5T':    3, '3T':    1}, 'hexcolor': '808000'},
     'blood':      {'PD': 1.0, 'T1': {'1.5T': 1441, '3T': 1932}, 'T2': {'1.5T':  290, '3T':  275}, 'hexcolor': 'ffffff'},
     'stomach':    {'PD': 0.2, 'T1': {'1.5T':  500, '3T':  500}, 'T2': {'1.5T':   30, '3T':   20}, 'hexcolor': '1a1a1a'},
@@ -168,11 +169,24 @@ class MRIsimulator(param.Parameterized):
         
         
     def loadPhantom(self, phantom):
-        self.polys = readSVG(phantom + '.svg')
-        self.tissues = set([poly['tissue'] for poly in self.polys])
-        self.tissueArrays = {tissue: np.zeros((self.ny, self.nx), dtype=complex) for tissue in self.tissues}
-        for i, poly in enumerate(self.polys):
-            self.tissueArrays[poly['tissue']] += kspacePolygon(poly, self.nx, self.ny, self.FOVx, self.FOVy)
+        phantomPath = Path('./phantoms/{p}'.format(p=phantom))
+        npyFiles = list(phantomPath.glob('*.npy'))
+        if npyFiles:
+            self.tissues = set()
+            self.tissueArrays = {}
+            for file in npyFiles:
+                tissue = file.stem
+                self.tissues.add(tissue)
+                self.tissueArrays[tissue] = np.load(file)
+        else:
+            polys = readSVG(Path(phantomPath / phantom).with_suffix('.svg'))
+            self.tissues = set([poly['tissue'] for poly in polys])
+            self.tissueArrays = {tissue: np.zeros((self.ny, self.nx), dtype=complex) for tissue in self.tissues}
+            for poly in polys:
+                self.tissueArrays[poly['tissue']] += kspacePolygon(poly, self.nx, self.ny, self.FOVx, self.FOVy)
+            for tissue in self.tissueArrays:
+                file = Path(phantomPath / tissue).with_suffix('.npy')
+                np.save(file, self.tissueArrays[tissue])
         for tissue in self.tissueArrays:
             self.tissueArrays[tissue] = np.fft.fftshift(np.fft.ifft2(self.tissueArrays[tissue]))
     
