@@ -28,6 +28,12 @@ TISSUES = {
 SEQUENCES = ['Spin Echo', 'Spoiled Gradient Echo', 'Inversion Recovery']
 
 
+def polygonIsClockwise(coords):
+    sum = 0
+    for i in range(len(coords)):
+        sum += (coords[i][0]-coords[i-1][0]) * (coords[i][1]+coords[i-1][1])
+    return sum > 0
+
 # Get coords from SVG path defined at https://www.w3.org/TR/SVG/paths.html
 def getCoords(pathString, scale):
     supportedCommands = 'MZLHV'
@@ -61,7 +67,10 @@ def getCoords(pathString, scale):
                 coord = (float(x) * scale + coord[0] * relativeX, float(y) * scale + coord[1] * relativeY)
                 coords.append(coord)
                 x, y  = None, None
-    if coords[0] == coords[-1]: return coords[:-1]
+    if coords[0] == coords[-1]: 
+        coords.pop()
+    if not polygonIsClockwise(coords):
+        return coords[::-1]
     return coords
 
 
@@ -102,7 +111,6 @@ def kspacePolygon(poly, nx, ny, FOVx, FOVy):
     t = [Lv[e]/L[e] for e in range(E)] # edge unit vectors
     n = np.roll(t, 1, axis=1)
     n[:,0] *= -1 # normals to tangents (pointing out from polygon)
-    # TODO: make sure normals are correctly defined
     rc = r + Lv / 2 # position vector for center of edge
 
     ksp = np.zeros((ny, nx), dtype=complex)
