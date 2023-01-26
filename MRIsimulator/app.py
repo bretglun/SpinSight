@@ -114,8 +114,8 @@ def kspacePolygon(poly, nx, ny, FOVx, FOVy):
     n[:,0] *= -1 # normals to tangents (pointing out from polygon)
     rc = r + Lv / 2 # position vector for center of edge
 
-    ksp = np.zeros((ny*nx), dtype=complex)
-    coords = np.array([(v, u) for u in (np.fft.fftfreq(nx) * nx / FOVx) for v in (np.fft.fftfreq(ny) * ny / FOVy)])
+    ksp = np.zeros((nx*ny), dtype=complex)
+    coords = np.array([(u, v) for u in (np.fft.fftfreq(nx) * nx / FOVx) for v in (np.fft.fftfreq(ny) * ny / FOVy)])
     for e in range(E):
         arg = np.pi * np.dot(coords, Lv[e])
         zeroarg = arg==0
@@ -124,7 +124,7 @@ def kspacePolygon(poly, nx, ny, FOVx, FOVy):
         ksp[zeroarg] += L[e] * np.dot(coords[zeroarg], n[e]) * np.exp(-2j*np.pi * np.dot(coords[zeroarg], rc[e])) # sinc(0)=1
     ksp[1:] *= 1j / (2 * np.pi * np.linalg.norm(coords[1:], axis=1)**2)
     ksp[0] = abs(sum([r[e-1,0]*r[e,1] - r[e,0]*r[e-1,1] for e in range(E)]))/2 # kspace center equals polygon area
-    return ksp.reshape((ny, nx))
+    return ksp.reshape((nx, ny)).T
 
 
 def getM(tissue, seqType, TR, TE, TI, FA, B0='1.5T'):
@@ -154,8 +154,10 @@ class MRIsimulator(param.Parameterized):
 
     def __init__(self, phantom, **params):
         super().__init__(**params)
-        self.nx = self.ny = 64
-        self.FOVx = self.FOVy = 400
+        self.nx = 512
+        self.ny = 512
+        self.FOVx = 400
+        self.FOVy = 320
         self.loadPhantom(phantom)
         
         
