@@ -114,26 +114,17 @@ def kspacePolygon(poly, nx, ny, FOVx, FOVy):
     n[:,0] *= -1 # normals to tangents (pointing out from polygon)
     rc = r + Lv / 2 # position vector for center of edge
 
-    ksp = np.zeros((ny, nx), dtype=complex)
-    for kx, u in enumerate(np.fft.fftfreq(nx) * nx / FOVx):
-        for ky, v in enumerate(np.fft.fftfreq(ny) * ny / FOVy):
-            if u==0 and v==0: # k-spce center (DC point)
-                area = 0. # calculate polygon area
-                for e in range(E):
-                    area += r[e-1, 0] * r[e, 1] - r[e, 0] * r[e-1, 1]
-                area = abs(area)/2
-                ksp[ky, kx] = area
-            else:
-                kv = np.array([u, v])
-                k = np.linalg.norm(kv)
-                for e in range(E):
-                    arg = np.pi * np.dot(kv, t[e]) * L[e]
-                    if abs(arg) > 0:
-                        ksp[ky, kx] += L[e] * np.dot(kv, n[e]) * np.sin(arg) / arg * np.exp(-2j*np.pi * np.dot(kv, rc[e]))
-                    else:
-                        ksp[ky, kx] += L[e] * np.dot(kv, n[e]) * np.exp(-2j*np.pi * np.dot(kv, rc[e])) # sinc(0)=1
-                ksp[ky, kx] *= 1j / (2 * np.pi * k**2)
-    return ksp
+    ksp = np.zeros((ny*nx), dtype=complex)
+    coords = np.array([(v, u) for u in (np.fft.fftfreq(nx) * nx / FOVx) for v in (np.fft.fftfreq(ny) * ny / FOVy)])
+    for e in range(E):
+        arg = np.pi * np.dot(coords, Lv[e])
+        zeroarg = arg==0
+        nonzero = np.logical_not(zeroarg)
+        ksp[nonzero] += L[e] * np.dot(coords[nonzero], n[e]) * np.sin(arg[nonzero]) / arg[nonzero] * np.exp(-2j*np.pi * np.dot(coords[nonzero], rc[e]))
+        ksp[zeroarg] += L[e] * np.dot(coords[zeroarg], n[e]) * np.exp(-2j*np.pi * np.dot(coords[zeroarg], rc[e])) # sinc(0)=1
+    ksp[1:] *= 1j / (2 * np.pi * np.linalg.norm(coords[1:], axis=1)**2)
+    ksp[0] = abs(sum([r[e-1,0]*r[e,1] - r[e,0]*r[e-1,1] for e in range(E)]))/2 # kspace center equals polygon area
+    return ksp.reshape((ny, nx))
 
 
 def getM(tissue, seqType, TR, TE, TI, FA, B0='1.5T'):
