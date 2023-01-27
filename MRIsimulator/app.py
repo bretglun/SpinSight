@@ -4,6 +4,7 @@ import param
 import numpy as np
 import xml.etree.ElementTree as ET
 from pathlib import Path
+import re
 
 hv.extension('bokeh')
 
@@ -28,6 +29,10 @@ TISSUES = {
 
 SEQUENCES = ['Spin Echo', 'Spoiled Gradient Echo', 'Inversion Recovery']
 
+
+PHANTOMS = {
+    'abdomen': {'FOV': (320, 400), 'matrix': (512, 640)}
+}
 
 def polygonIsClockwise(coords):
     sum = 0
@@ -75,8 +80,6 @@ def getCoords(pathString, scale):
     return coords
 
 
-import re
-
 def parseTransform(transformString):
     match = re.search("translate\((-?\d+.\d+)(px|%), (-?\d+.\d+)(px|%)\)", transformString)
     translation = (float(match.group(1)), float(match.group(3))) if match else (0, 0)
@@ -103,7 +106,7 @@ def readSVG(inFile):
     return polygons
 
 
-def kspacePolygon(poly, nx, ny, FOVx, FOVy):
+def kspacePolygon(poly, phantom):
     # analytical 2D Fourier transform of polygon (see https://cvil.ucsd.edu/wp-content/uploads/2016/09/Realistic-analytical-polyhedral-MRI-phantoms.pdf)
     r = np.array(poly[('x', 'y')]) # position vectors of vertices Ve
     E = len(r) # number of vertices/edges
@@ -114,8 +117,8 @@ def kspacePolygon(poly, nx, ny, FOVx, FOVy):
     n[:,0] *= -1 # normals to tangents (pointing out from polygon)
     rc = r + Lv / 2 # position vector for center of edge
 
-    ksp = np.zeros((nx*ny), dtype=complex)
-    coords = np.array([(u, v) for u in (np.fft.fftfreq(nx) * nx / FOVx) for v in (np.fft.fftfreq(ny) * ny / FOVy)])
+    ksp = np.zeros(np.product(phantom['matrix']), dtype=complex)
+    coords = np.array([(u, v) for u in phantom['kAxes'][1] for v in phantom['kAxes'][0]])
     for e in range(E):
         arg = np.pi * np.dot(coords, Lv[e])
         zeroarg = arg==0
@@ -124,7 +127,15 @@ def kspacePolygon(poly, nx, ny, FOVx, FOVy):
         ksp[zeroarg] += L[e] * np.dot(coords[zeroarg], n[e]) * np.exp(-2j*np.pi * np.dot(coords[zeroarg], rc[e])) # sinc(0)=1
     ksp[1:] *= 1j / (2 * np.pi * np.linalg.norm(coords[1:], axis=1)**2)
     ksp[0] = abs(sum([r[e-1,0]*r[e,1] - r[e,0]*r[e-1,1] for e in range(E)]))/2 # kspace center equals polygon area
-    return ksp.reshape((nx, ny)).T
+    return ksp.reshape(phantom['matrix'][::-1]).T # TODO: get x/y order right from start!
+
+
+def resampleKspace(kspace, phantom, matrix, FOV):
+    for dim in range(kspace.ndim):
+        k = np.fft.fftfreq(matrix[dim]) * matrix[dim] / FOV[dim]
+        sinc = np.sinc((np.tile(k, (phantom['matrix'][dim], 1)) - np.tile(phantom['kAxes'][dim][:, np.newaxis], (1, matrix[dim]))) * phantom['FOV'][dim])
+        kspace = np.moveaxis(np.tensordot(kspace, sinc, axes=(dim, 0)), -1, dim)
+    return kspace
 
 
 def getM(tissue, seqType, TR, TE, TI, FA, B0='1.5T'):
@@ -152,36 +163,42 @@ class MRIsimulator(param.Parameterized):
     TI = param.Number(default=1.0, bounds=(0, 1000.0), precedence=-1)
     
 
-    def __init__(self, phantom, **params):
+    def __init__(self, phantomName, **params):
         super().__init__(**params)
-        self.nx = 512
-        self.ny = 512
-        self.FOVx = 400
-        self.FOVy = 320
-        self.loadPhantom(phantom)
-        
-        
-    def loadPhantom(self, phantom):
-        phantomPath = Path('./phantoms/{p}'.format(p=phantom))
+        self.matrix = [128, 128]
+        self.FOV = [420, 420]
+        self.loadPhantom(phantomName)
+        self.sampleKspace()
+    
+    
+    def loadPhantom(self, phantomName):
+        phantomPath = Path('./phantoms/{p}'.format(p=phantomName))
+        self.phantom = PHANTOMS[phantomName]
+        self.phantom['kAxes'] = [np.fft.fftfreq(self.phantom['matrix'][dim]) * self.phantom['matrix'][dim] / self.phantom['FOV'][dim] for dim in range(len(self.phantom['matrix']))]
         npyFiles = list(phantomPath.glob('*.npy'))
         if npyFiles:
             self.tissues = set()
-            self.tissueArrays = {}
+            self.kspace = {}
             for file in npyFiles:
                 tissue = file.stem
                 self.tissues.add(tissue)
-                self.tissueArrays[tissue] = np.load(file)
+                self.kspace[tissue] = np.load(file)
         else:
-            polys = readSVG(Path(phantomPath / phantom).with_suffix('.svg'))
+            polys = readSVG(Path(phantomPath / phantomName).with_suffix('.svg'))
             self.tissues = set([poly['tissue'] for poly in polys])
-            self.tissueArrays = {tissue: np.zeros((self.ny, self.nx), dtype=complex) for tissue in self.tissues}
+            self.kspace = {tissue: np.zeros((self.phantom['matrix']), dtype=complex) for tissue in self.tissues}
             for poly in polys:
-                self.tissueArrays[poly['tissue']] += kspacePolygon(poly, self.nx, self.ny, self.FOVx, self.FOVy)
-            for tissue in self.tissueArrays:
+                self.kspace[poly['tissue']] += kspacePolygon(poly, self.phantom)
+            for tissue in self.tissues:
                 file = Path(phantomPath / tissue).with_suffix('.npy')
-                np.save(file, self.tissueArrays[tissue])
-        for tissue in self.tissueArrays:
-            self.tissueArrays[tissue] = np.fft.fftshift(np.fft.ifft2(self.tissueArrays[tissue]))
+                np.save(file, self.kspace[tissue])
+    
+
+    def sampleKspace(self):
+        self.imageArrays = {}
+        for tissue in self.tissues:
+            kspace = resampleKspace(self.kspace[tissue], self.phantom, self.matrix, self.FOV)
+            self.imageArrays[tissue] = np.fft.fftshift(np.fft.ifft2(kspace))
     
 
     @param.depends('sequence', watch=True)
@@ -194,10 +211,10 @@ class MRIsimulator(param.Parameterized):
     def getImage(self):
         # calculate and update magnetization
         M = {tissue: getM(tissue, self.sequence, self.TR, self.TE, self.TI, self.FA) for tissue in self.tissues}
-        pixelArray = np.zeros((self.ny, self.nx), dtype=complex)
+        pixelArray = np.zeros(self.matrix, dtype=complex)
         for tissue in self.tissues:
-            pixelArray += self.tissueArrays[tissue] * M[tissue]
-        img = hv.Image(np.abs(pixelArray), bounds=[0,0,self.nx,self.ny], kdims=['x', 'y'], vdims=['magnitude']).options(aspect='equal', cmap='gray')
+            pixelArray += self.imageArrays[tissue] * M[tissue]
+        img = hv.Image(np.abs(pixelArray), kdims=['x', 'y'], vdims=['magnitude']).options(aspect='equal', cmap='gray')
         return img
 
 
