@@ -130,9 +130,10 @@ def kspacePolygon(poly, phantom):
     return ksp.reshape(phantom['matrix'][::-1]).T # TODO: get x/y order right from start!
 
 
-def resampleKspace(kspace, phantom, matrix, FOV):
+def resampleKspace(kspace, phantom, matrix, FOV, readoutDir):
     for dim in range(kspace.ndim):
-        k = np.fft.fftfreq(matrix[dim]) * matrix[dim] / FOV[dim]
+        sampledFOV = FOV[dim] if dim != readoutDir else max(FOV[dim], phantom['FOV'][dim]) # Full sampling in readout direction
+        k = np.fft.fftfreq(matrix[dim]) * matrix[dim] / sampledFOV
         sinc = np.sinc((np.tile(k, (phantom['matrix'][dim], 1)) - np.tile(phantom['kAxes'][dim][:, np.newaxis], (1, matrix[dim]))) * phantom['FOV'][dim])
         kspace = np.moveaxis(np.tensordot(kspace, sinc, axes=(dim, 0)), -1, dim)
     return kspace
@@ -169,6 +170,7 @@ class MRIsimulator(param.Parameterized):
         self.FOV = [420, 420]
         self.loadPhantom(phantomName)
         self.sampleKspace()
+        self.reconstruct()
     
     
     def loadPhantom(self, phantomName):
@@ -178,27 +180,32 @@ class MRIsimulator(param.Parameterized):
         npyFiles = list(phantomPath.glob('*.npy'))
         if npyFiles:
             self.tissues = set()
-            self.kspace = {}
+            self.phantom['kspace'] = {}
             for file in npyFiles:
                 tissue = file.stem
                 self.tissues.add(tissue)
-                self.kspace[tissue] = np.load(file)
+                self.phantom['kspace'][tissue] = np.load(file)
         else:
             polys = readSVG(Path(phantomPath / phantomName).with_suffix('.svg'))
             self.tissues = set([poly['tissue'] for poly in polys])
-            self.kspace = {tissue: np.zeros((self.phantom['matrix']), dtype=complex) for tissue in self.tissues}
+            self.phantom['kspace'] = {tissue: np.zeros((self.phantom['matrix']), dtype=complex) for tissue in self.tissues}
             for poly in polys:
-                self.kspace[poly['tissue']] += kspacePolygon(poly, self.phantom)
+                self.phantom['kspace'][poly['tissue']] += kspacePolygon(poly, self.phantom)
             for tissue in self.tissues:
                 file = Path(phantomPath / tissue).with_suffix('.npy')
-                np.save(file, self.kspace[tissue])
+                np.save(file, self.phantom['kspace'][tissue])
     
 
     def sampleKspace(self):
+        self.kspace = {}
+        for tissue in self.tissues:
+            self.kspace[tissue] = resampleKspace(self.phantom['kspace'][tissue], self.phantom, self.matrix, self.FOV, readoutDir=1)
+    
+
+    def reconstruct(self):
         self.imageArrays = {}
         for tissue in self.tissues:
-            kspace = resampleKspace(self.kspace[tissue], self.phantom, self.matrix, self.FOV)
-            self.imageArrays[tissue] = np.fft.fftshift(np.fft.ifft2(kspace))
+            self.imageArrays[tissue] = np.fft.fftshift(np.fft.ifft2(self.kspace[tissue]))
     
 
     @param.depends('sequence', watch=True)
