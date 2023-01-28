@@ -130,13 +130,30 @@ def kspacePolygon(poly, phantom):
     return ksp.reshape(phantom['matrix'][::-1]).T # TODO: get x/y order right from start!
 
 
-def resampleKspace(kspace, phantom, matrix, FOV, readoutDir):
+def resampleKspace(kspace, phantom, matrix, FOV, freqDir):
     for dim in range(kspace.ndim):
-        sampledFOV = FOV[dim] if dim != readoutDir else max(FOV[dim], phantom['FOV'][dim]) # Full sampling in readout direction
-        k = np.fft.fftfreq(matrix[dim]) * matrix[dim] / sampledFOV
-        sinc = np.sinc((np.tile(k, (phantom['matrix'][dim], 1)) - np.tile(phantom['kAxes'][dim][:, np.newaxis], (1, matrix[dim]))) * phantom['FOV'][dim])
+        n = matrix[dim]
+        if dim == freqDir and FOV[dim] < phantom['FOV'][dim]:
+            n = int(np.ceil(phantom['FOV'][dim] * matrix[dim] / FOV[dim])) # At least Nyquist sampling in frequence encoding direction
+        k = np.fft.fftfreq(n) * matrix[dim] / FOV[dim]
+        sinc = np.sinc((np.tile(k, (phantom['matrix'][dim], 1)) - np.tile(phantom['kAxes'][dim][:, np.newaxis], (1, n))) * phantom['FOV'][dim])
         kspace = np.moveaxis(np.tensordot(kspace, sinc, axes=(dim, 0)), -1, dim)
     return kspace
+
+
+def zerofill(kspace, reconMatrix):
+    shape = [1] * kspace.ndim
+    for dim, n in enumerate(kspace.shape):
+        shape[0] = reconMatrix[dim] - n
+        kspace = np.insert(kspace, n-n//2, np.zeros(tuple(shape)), axis=dim)
+    return kspace
+
+
+def crop(arr, shape):
+    # Crop array from center according to shape
+    for dim, n in enumerate(arr.shape):
+        arr = arr.take(np.array(range(shape[dim])) + (n-shape[dim])//2, dim)
+    return arr
 
 
 def getM(tissue, seqType, TR, TE, TI, FA, B0='1.5T'):
@@ -167,7 +184,9 @@ class MRIsimulator(param.Parameterized):
     def __init__(self, phantomName, **params):
         super().__init__(**params)
         self.matrix = [128, 128]
+        self.reconMatrix = [2*n for n in self.matrix] # zerofill factor 2
         self.FOV = [420, 420]
+        self.freqDir = 1
         self.loadPhantom(phantomName)
         self.sampleKspace()
         self.reconstruct()
@@ -199,13 +218,17 @@ class MRIsimulator(param.Parameterized):
     def sampleKspace(self):
         self.kspace = {}
         for tissue in self.tissues:
-            self.kspace[tissue] = resampleKspace(self.phantom['kspace'][tissue], self.phantom, self.matrix, self.FOV, readoutDir=1)
+            self.kspace[tissue] = resampleKspace(self.phantom['kspace'][tissue], self.phantom, self.matrix, self.FOV, self.freqDir)
     
 
     def reconstruct(self):
         self.imageArrays = {}
+        oversampledReconMatrix = list(self.reconMatrix) # account for oversampling in frequency encoding direction
+        oversampledReconMatrix[self.freqDir] = int(oversampledReconMatrix[self.freqDir] * list(self.kspace.values())[0].shape[self.freqDir] / self.matrix[self.freqDir])
         for tissue in self.tissues:
+            self.kspace[tissue] = zerofill(self.kspace[tissue], oversampledReconMatrix)
             self.imageArrays[tissue] = np.fft.fftshift(np.fft.ifft2(self.kspace[tissue]))
+            self.imageArrays[tissue] = crop(self.imageArrays[tissue], self.reconMatrix)
     
 
     @param.depends('sequence', watch=True)
@@ -218,7 +241,7 @@ class MRIsimulator(param.Parameterized):
     def getImage(self):
         # calculate and update magnetization
         M = {tissue: getM(tissue, self.sequence, self.TR, self.TE, self.TI, self.FA) for tissue in self.tissues}
-        pixelArray = np.zeros(self.matrix, dtype=complex)
+        pixelArray = np.zeros(self.reconMatrix, dtype=complex)
         for tissue in self.tissues:
             pixelArray += self.imageArrays[tissue] * M[tissue]
         img = hv.Image(np.abs(pixelArray), kdims=['x', 'y'], vdims=['magnitude']).options(aspect='equal', cmap='gray')
