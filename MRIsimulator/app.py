@@ -175,6 +175,7 @@ def getM(tissue, seqType, TR, TE, TI, FA, B0='1.5T'):
 
 class MRIsimulator(param.Parameterized):
     object = param.ObjectSelector(default=list(PHANTOMS.keys())[0], objects=PHANTOMS.keys())
+    fieldStrength = param.ObjectSelector(default='1.5T', objects=['1.5T', '3T'])
     sequence = param.ObjectSelector(default=SEQUENCES[0], objects=SEQUENCES)
     TR = param.Number(default=1000.0, bounds=(0, 5000.0))
     TE = param.Number(default=1.0, bounds=(0, 100.0))
@@ -261,10 +262,10 @@ class MRIsimulator(param.Parameterized):
             self.imageArrays[tissue] = crop(self.imageArrays[tissue], self.reconMatrix)
 
 
-    @param.depends('object', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', 'sequence', 'TR', 'TE', 'FA', 'TI')
+    @param.depends('object', 'fieldStrength', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', 'sequence', 'TR', 'TE', 'FA', 'TI')
     def getImage(self):
         # calculate and update magnetization
-        M = {tissue: getM(tissue, self.sequence, self.TR, self.TE, self.TI, self.FA) for tissue in self.tissues}
+        M = {tissue: getM(tissue, self.sequence, self.TR, self.TE, self.TI, self.FA, self.fieldStrength) for tissue in self.tissues}
         pixelArray = np.zeros(self.reconMatrix, dtype=complex)
         for tissue in self.tissues:
             pixelArray += self.imageArrays[tissue] * M[tissue]
