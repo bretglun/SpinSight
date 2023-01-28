@@ -26,13 +26,13 @@ TISSUES = {
     'perotineum': {'PD': 1.0, 'T1': {'1.5T':  900, '3T':  900}, 'T2': {'1.5T':   30, '3T':   30}, 'hexcolor': 'ff8080'},
 }
 
-
 SEQUENCES = ['Spin Echo', 'Spoiled Gradient Echo', 'Inversion Recovery']
-
 
 PHANTOMS = {
     'abdomen': {'FOV': (320, 400), 'matrix': (512, 640)}
 }
+
+DIRECTIONS = {'anterior-posterior': 0, 'left-right': 1}
 
 def polygonIsClockwise(coords):
     sum = 0
@@ -174,27 +174,50 @@ def getM(tissue, seqType, TR, TE, TI, FA, B0='1.5T'):
 
 
 class MRIsimulator(param.Parameterized):
+    object = param.ObjectSelector(default=list(PHANTOMS.keys())[0], objects=PHANTOMS.keys())
     sequence = param.ObjectSelector(default=SEQUENCES[0], objects=SEQUENCES)
     TR = param.Number(default=1000.0, bounds=(0, 5000.0))
     TE = param.Number(default=1.0, bounds=(0, 100.0))
     FA = param.Number(default=90.0, bounds=(0, 90.0), precedence=-1)
     TI = param.Number(default=1.0, bounds=(0, 1000.0), precedence=-1)
+    matrixX = param.Integer(default=128, bounds=(16, 600))
+    matrixY = param.Integer(default=128, bounds=(16, 600))
+    reconMatrixX = param.Integer(default=256, bounds=(matrixX.default, 1024))
+    reconMatrixY = param.Integer(default=256, bounds=(matrixY.default, 1024))
+    FOVX = param.Number(default=420, bounds=(100, 600))
+    FOVY = param.Number(default=420, bounds=(100, 600))
+    freqeuencyDirection = param.ObjectSelector(default=list(DIRECTIONS.keys())[-1], objects=DIRECTIONS.keys())
     
 
-    def __init__(self, phantomName, **params):
+    def __init__(self, **params):
         super().__init__(**params)
-        self.matrix = [128, 128]
-        self.reconMatrix = [2*n for n in self.matrix] # zerofill factor 2
-        self.FOV = [420, 420]
-        self.freqDir = 1
-        self.loadPhantom(phantomName)
+        self.loadPhantom()
         self.sampleKspace()
         self.reconstruct()
     
+
+    @param.depends('sequence', watch=True)
+    def _updateVisibility(self):
+        self.param.FA.precedence = 1 if self.sequence=='Spoiled Gradient Echo' else -1
+        self.param.TI.precedence = 1 if self.sequence=='Inversion Recovery' else -1
     
-    def loadPhantom(self, phantomName):
-        phantomPath = Path('./phantoms/{p}'.format(p=phantomName))
-        self.phantom = PHANTOMS[phantomName]
+
+    @param.depends('matrixX', watch=True)
+    def _updateReconMatrixXbounds(self):
+        self.param.reconMatrixX.bounds = (self.matrixX, self.param.reconMatrixX.bounds[1])
+        self.reconMatrixX = max(self.reconMatrixX, self.matrixX)    
+
+
+    @param.depends('matrixY', watch=True)
+    def _updateReconMatrixYbounds(self):
+        self.param.reconMatrixY.bounds = (self.matrixY, self.param.reconMatrixY.bounds[1])
+        self.reconMatrixY = max(self.reconMatrixY, self.matrixY)
+
+    
+    @param.depends('object', watch=True)
+    def loadPhantom(self):
+        phantomPath = Path('./phantoms/{p}'.format(p=self.object))
+        self.phantom = PHANTOMS[self.object]
         self.phantom['kAxes'] = [np.fft.fftfreq(self.phantom['matrix'][dim]) * self.phantom['matrix'][dim] / self.phantom['FOV'][dim] for dim in range(len(self.phantom['matrix']))]
         npyFiles = list(phantomPath.glob('*.npy'))
         if npyFiles:
@@ -205,7 +228,7 @@ class MRIsimulator(param.Parameterized):
                 self.tissues.add(tissue)
                 self.phantom['kspace'][tissue] = np.load(file)
         else:
-            polys = readSVG(Path(phantomPath / phantomName).with_suffix('.svg'))
+            polys = readSVG(Path(phantomPath / self.object).with_suffix('.svg'))
             self.tissues = set([poly['tissue'] for poly in polys])
             self.phantom['kspace'] = {tissue: np.zeros((self.phantom['matrix']), dtype=complex) for tissue in self.tissues}
             for poly in polys:
@@ -215,29 +238,30 @@ class MRIsimulator(param.Parameterized):
                 np.save(file, self.phantom['kspace'][tissue])
     
 
+    @param.depends('object', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', watch=True)
     def sampleKspace(self):
+        self.matrix = [self.matrixY, self.matrixX]
+        self.reconMatrix = [self.reconMatrixY, self.reconMatrixX]
+        self.FOV = [self.FOVY, self.FOVX]
+        self.freqDir = DIRECTIONS[self.freqeuencyDirection]
         self.kspace = {}
         for tissue in self.tissues:
             self.kspace[tissue] = resampleKspace(self.phantom['kspace'][tissue], self.phantom, self.matrix, self.FOV, self.freqDir)
     
 
+    @param.depends('object', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', watch=True)
     def reconstruct(self):
         self.imageArrays = {}
         oversampledReconMatrix = list(self.reconMatrix) # account for oversampling in frequency encoding direction
         oversampledReconMatrix[self.freqDir] = int(oversampledReconMatrix[self.freqDir] * list(self.kspace.values())[0].shape[self.freqDir] / self.matrix[self.freqDir])
         for tissue in self.tissues:
             self.kspace[tissue] = zerofill(self.kspace[tissue], oversampledReconMatrix)
+            # TODO: half pixel shift
             self.imageArrays[tissue] = np.fft.fftshift(np.fft.ifft2(self.kspace[tissue]))
             self.imageArrays[tissue] = crop(self.imageArrays[tissue], self.reconMatrix)
-    
-
-    @param.depends('sequence', watch=True)
-    def _updateVisibility(self):
-        self.param.FA.precedence = 1 if self.sequence=='Spoiled Gradient Echo' else -1
-        self.param.TI.precedence = 1 if self.sequence=='Inversion Recovery' else -1
 
 
-    @param.depends('sequence', 'TR', 'TE', 'FA', 'TI')
+    @param.depends('object', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', 'sequence', 'TR', 'TE', 'FA', 'TI')
     def getImage(self):
         # calculate and update magnetization
         M = {tissue: getM(tissue, self.sequence, self.TR, self.TE, self.TI, self.FA) for tissue in self.tissues}
@@ -248,7 +272,7 @@ class MRIsimulator(param.Parameterized):
         return img
 
 
-explorer = MRIsimulator('abdomen', name='MR Contrast Explorer')
+explorer = MRIsimulator(name='MR Contrast Explorer')
 dmapMRimage = hv.DynamicMap(explorer.getImage).opts(framewise=True, frame_height=300)
 dashboard = pn.Column(pn.Row(pn.panel(explorer.param), dmapMRimage))
 dashboard.servable() # run by ´panel serve app.py´, then open http://localhost:5006/app in browser
