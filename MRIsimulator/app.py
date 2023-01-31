@@ -181,12 +181,12 @@ class MRIsimulator(param.Parameterized):
     TE = param.Number(default=1.0, bounds=(0, 100.0))
     FA = param.Number(default=90.0, bounds=(0, 90.0), precedence=-1)
     TI = param.Number(default=1.0, bounds=(0, 1000.0), precedence=-1)
+    FOVX = param.Number(default=420, bounds=(100, 600))
+    FOVY = param.Number(default=420, bounds=(100, 600))
     matrixX = param.Integer(default=128, bounds=(16, 600))
     matrixY = param.Integer(default=128, bounds=(16, 600))
     reconMatrixX = param.Integer(default=256, bounds=(matrixX.default, 1024))
     reconMatrixY = param.Integer(default=256, bounds=(matrixY.default, 1024))
-    FOVX = param.Number(default=420, bounds=(100, 600))
-    FOVY = param.Number(default=420, bounds=(100, 600))
     freqeuencyDirection = param.ObjectSelector(default=list(DIRECTIONS.keys())[-1], objects=DIRECTIONS.keys())
     
 
@@ -270,10 +270,15 @@ class MRIsimulator(param.Parameterized):
         for tissue in self.tissues:
             pixelArray += self.imageArrays[tissue] * M[tissue]
         img = hv.Image(np.abs(pixelArray), kdims=['x', 'y'], vdims=['magnitude']).options(aspect='equal', cmap='gray')
+        # TODO: fix image dimensions (and possibly use xarray).
         return img
 
 
-explorer = MRIsimulator(name='MR Contrast Explorer')
-dmapMRimage = hv.DynamicMap(explorer.getImage).opts(framewise=True, frame_height=300)
-dashboard = pn.Column(pn.Row(pn.panel(explorer.param), dmapMRimage))
+explorer = MRIsimulator(name='')
+title = '# MRI simulator'
+author = '*Written by [Johan Berglund](mailto:johan.berglund@akademiska.se), Ph.D.*'
+contrastParams = pn.panel(explorer.param, parameters=['fieldStrength', 'sequence', 'TR', 'TE', 'FA', 'TI'], name='Contrast')
+geometryParams = pn.panel(explorer.param, parameters=['FOVX', 'FOVY', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'freqeuencyDirection'], name='Geometry')
+dmapMRimage = hv.DynamicMap(explorer.getImage).opts(frame_height=500)
+dashboard = pn.Row(pn.Column(pn.pane.Markdown(title), pn.Row(contrastParams, geometryParams), pn.pane.Markdown(author)), dmapMRimage)
 dashboard.servable() # run by ´panel serve app.py´, then open http://localhost:5006/app in browser
