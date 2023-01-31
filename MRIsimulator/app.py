@@ -5,6 +5,7 @@ import numpy as np
 import xml.etree.ElementTree as ET
 from pathlib import Path
 import re
+import xarray as xr
 
 hv.extension('bokeh')
 
@@ -260,6 +261,7 @@ class MRIsimulator(param.Parameterized):
             # TODO: half pixel shift
             self.imageArrays[tissue] = np.fft.fftshift(np.fft.ifft2(self.kspace[tissue]))
             self.imageArrays[tissue] = crop(self.imageArrays[tissue], self.reconMatrix)
+        self.coords= [(np.arange(self.reconMatrix[dim]) - (self.reconMatrix[dim]-1)/2) / self.reconMatrix[dim] * self.FOV[dim] for dim in range(2)]
 
 
     @param.depends('object', 'fieldStrength', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', 'sequence', 'TR', 'TE', 'FA', 'TI')
@@ -269,9 +271,15 @@ class MRIsimulator(param.Parameterized):
         pixelArray = np.zeros(self.reconMatrix, dtype=complex)
         for tissue in self.tissues:
             pixelArray += self.imageArrays[tissue] * M[tissue]
-        img = hv.Image(np.abs(pixelArray), kdims=['x', 'y'], vdims=['magnitude']).options(aspect='equal', cmap='gray')
-        # TODO: fix image dimensions (and possibly use xarray).
-        return img
+        
+        img = xr.DataArray(
+            np.abs(pixelArray), 
+            dims=('y', 'x'),
+            coords={'x': self.coords[1], 'y': self.coords[0][::-1]}
+        )
+        img.x.attrs['units'] = img.y.attrs['units'] = 'mm'
+
+        return hv.Image(img, vdims=['magnitude']).options(cmap='gray', aspect='equal')
 
 
 explorer = MRIsimulator(name='')
