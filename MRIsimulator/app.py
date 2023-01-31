@@ -196,6 +196,7 @@ class MRIsimulator(param.Parameterized):
         self.loadPhantom()
         self.sampleKspace()
         self.reconstruct()
+        self.updateMagnetization()
     
 
     @param.depends('sequence', watch=True)
@@ -264,13 +265,16 @@ class MRIsimulator(param.Parameterized):
         self.coords= [(np.arange(self.reconMatrix[dim]) - (self.reconMatrix[dim]-1)/2) / self.reconMatrix[dim] * self.FOV[dim] for dim in range(2)]
 
 
+    @param.depends('object', 'fieldStrength', 'sequence', 'TR', 'TE', 'FA', 'TI', watch=True)
+    def updateMagnetization(self):
+        self.M = {tissue: getM(tissue, self.sequence, self.TR, self.TE, self.TI, self.FA, self.fieldStrength) for tissue in self.tissues}
+
+
     @param.depends('object', 'fieldStrength', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', 'sequence', 'TR', 'TE', 'FA', 'TI')
     def getImage(self):
-        # calculate and update magnetization
-        M = {tissue: getM(tissue, self.sequence, self.TR, self.TE, self.TI, self.FA, self.fieldStrength) for tissue in self.tissues}
         pixelArray = np.zeros(self.reconMatrix, dtype=complex)
         for tissue in self.tissues:
-            pixelArray += self.imageArrays[tissue] * M[tissue]
+            pixelArray += self.imageArrays[tissue] * self.M[tissue]
         
         img = xr.DataArray(
             np.abs(pixelArray), 
