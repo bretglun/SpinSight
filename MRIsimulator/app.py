@@ -10,22 +10,33 @@ import xarray as xr
 hv.extension('bokeh')
 
 
+GYRO = 42.577 # 1H gyromagnetic ratio [MHz/T]
+
 TISSUES = {
-    'gray':       {'PD': 1.0, 'T1': {'1.5T': 1100, '3T': 1330}, 'T2': {'1.5T':   92, '3T':   80}, 'hexcolor': '00ff00'},
-    'white':      {'PD': 0.9, 'T1': {'1.5T':  560, '3T':  830}, 'T2': {'1.5T':   82, '3T':  110}, 'hexcolor': 'd40000'},
-    'CSF':        {'PD': 1.0, 'T1': {'1.5T': 4280, '3T': 4160}, 'T2': {'1.5T': 2030, '3T': 2100}, 'hexcolor': '00ffff'},
-    'fat':        {'PD': 1.0, 'T1': {'1.5T':  290, '3T':  370}, 'T2': {'1.5T':  165, '3T':  130}, 'hexcolor': 'ffe680'},
-    'liver':      {'PD': 1.0, 'T1': {'1.5T':  586, '3T':  809}, 'T2': {'1.5T':   46, '3T':   34}, 'hexcolor': '800000'},
-    'spleen':     {'PD': 1.0, 'T1': {'1.5T': 1057, '3T': 1328}, 'T2': {'1.5T':   79, '3T':   61}, 'hexcolor': 'ff0000'},
-    'muscle':     {'PD': 1.0, 'T1': {'1.5T':  856, '3T':  898}, 'T2': {'1.5T':   27, '3T':   29}, 'hexcolor': '008000'},
-    'kidneyMed':  {'PD': 1.0, 'T1': {'1.5T': 1412, '3T': 1545}, 'T2': {'1.5T':   85, '3T':   81}, 'hexcolor': 'aa4400'},
-    'kidneyCor':  {'PD': 1.0, 'T1': {'1.5T':  966, '3T': 1142}, 'T2': {'1.5T':   87, '3T':   76}, 'hexcolor': '552200'},
-    'spinalCord': {'PD': 1.0, 'T1': {'1.5T':  745, '3T':  993}, 'T2': {'1.5T':   74, '3T':   78}, 'hexcolor': 'ffff00'},
-    'cortical':   {'PD': .05, 'T1': {'1.5T': 1000, '3T': 1000}, 'T2': {'1.5T':    3, '3T':    1}, 'hexcolor': '808000'},
-    'blood':      {'PD': 1.0, 'T1': {'1.5T': 1441, '3T': 1932}, 'T2': {'1.5T':  290, '3T':  275}, 'hexcolor': 'ffffff'},
-    'stomach':    {'PD': 0.2, 'T1': {'1.5T':  500, '3T':  500}, 'T2': {'1.5T':   30, '3T':   20}, 'hexcolor': '1a1a1a'},
-    'perotineum': {'PD': 1.0, 'T1': {'1.5T':  900, '3T':  900}, 'T2': {'1.5T':   30, '3T':   30}, 'hexcolor': 'ff8080'},
+    'gray':       {'PD': 1.0, 'T1': {1.5: 1100, 3.0: 1330}, 'T2': {1.5:   92, 3.0:   80}, 'hexcolor': '00ff00'},
+    'white':      {'PD': 0.9, 'T1': {1.5:  560, 3.0:  830}, 'T2': {1.5:   82, 3.0:  110}, 'hexcolor': 'd40000'},
+    'CSF':        {'PD': 1.0, 'T1': {1.5: 4280, 3.0: 4160}, 'T2': {1.5: 2030, 3.0: 2100}, 'hexcolor': '00ffff'},
+    'adipose':    {'PD': 1.0, 'T1': {1.5:  290, 3.0:  370}, 'T2': {1.5:  165, 3.0:  130}, 'hexcolor': 'ffe680'},
+    'liver':      {'PD': 1.0, 'T1': {1.5:  586, 3.0:  809}, 'T2': {1.5:   46, 3.0:   34}, 'hexcolor': '800000'},
+    'spleen':     {'PD': 1.0, 'T1': {1.5: 1057, 3.0: 1328}, 'T2': {1.5:   79, 3.0:   61}, 'hexcolor': 'ff0000'},
+    'muscle':     {'PD': 1.0, 'T1': {1.5:  856, 3.0:  898}, 'T2': {1.5:   27, 3.0:   29}, 'hexcolor': '008000'},
+    'kidneyMed':  {'PD': 1.0, 'T1': {1.5: 1412, 3.0: 1545}, 'T2': {1.5:   85, 3.0:   81}, 'hexcolor': 'aa4400'},
+    'kidneyCor':  {'PD': 1.0, 'T1': {1.5:  966, 3.0: 1142}, 'T2': {1.5:   87, 3.0:   76}, 'hexcolor': '552200'},
+    'spinalCord': {'PD': 1.0, 'T1': {1.5:  745, 3.0:  993}, 'T2': {1.5:   74, 3.0:   78}, 'hexcolor': 'ffff00'},
+    'cortical':   {'PD': .05, 'T1': {1.5: 1000, 3.0: 1000}, 'T2': {1.5:    3, 3.0:    1}, 'hexcolor': '808000'},
+    'blood':      {'PD': 1.0, 'T1': {1.5: 1441, 3.0: 1932}, 'T2': {1.5:  290, 3.0:  275}, 'hexcolor': 'ffffff'},
+    'stomach':    {'PD': 0.2, 'T1': {1.5:  500, 3.0:  500}, 'T2': {1.5:   30, 3.0:   20}, 'hexcolor': '1a1a1a'},
+    'perotineum': {'PD': 1.0, 'T1': {1.5:  900, 3.0:  900}, 'T2': {1.5:   30, 3.0:   30}, 'hexcolor': 'ff8080'},
 }
+
+# TODO: proper values
+ADIPOSERESONANCES = [('adiposeWater',      0.0, .050),  # name, chemical shift [ppm], ratio
+                     ('adiposeFat1', 0.9 - 4.7, .083),
+                     ('adiposeFat2', 1.3 - 4.7, .659),
+                     ('adiposeFat3', 2.1 - 4.7, .122),
+                     ('adiposeFat4', 2.8 - 4.7, .004),
+                     ('adiposeFat5', 4.3 - 4.7, .037), 
+                     ('adiposeFat6', 5.3 - 4.7, .045)]
 
 SEQUENCES = ['Spin Echo', 'Spoiled Gradient Echo', 'Inversion Recovery']
 
@@ -166,7 +177,7 @@ def getT2w(tissue, TE, B0):
     return E2
 
 
-def getPDandT1w(tissue, seqType, TR, TE, TI, FA, B0='1.5T'):
+def getPDandT1w(tissue, seqType, TR, TE, TI, FA, B0):
     PD = TISSUES[tissue]['PD']
     T1 = TISSUES[tissue]['T1'][B0]
     
@@ -183,7 +194,7 @@ def getPDandT1w(tissue, seqType, TR, TE, TI, FA, B0='1.5T'):
 
 class MRIsimulator(param.Parameterized):
     object = param.ObjectSelector(default=list(PHANTOMS.keys())[0], objects=PHANTOMS.keys())
-    fieldStrength = param.ObjectSelector(default='1.5T', objects=['1.5T', '3T'])
+    fieldStrength = param.ObjectSelector(default=1.5, objects=[1.5, 3.0])
     sequence = param.ObjectSelector(default=SEQUENCES[0], objects=SEQUENCES)
     TR = param.Number(default=1000.0, bounds=(0, 5000.0)) # [msec]
     TE = param.Number(default=1.0, bounds=(0, 100.0)) # [msec]
@@ -279,12 +290,24 @@ class MRIsimulator(param.Parameterized):
     def updateKspaceModulation(self):    
         self.kspaceModulation = {}
         for tissue in self.tissues:
-            self.kspaceModulation[tissue] = getT2w(tissue, self.TE + self.samplingTime, self.fieldStrength)
+            if tissue != 'adipose':
+                self.kspaceModulation[tissue] = getT2w(tissue, self.TE + self.samplingTime, self.fieldStrength)
+            else:
+                T2w = getT2w(tissue, self.TE + self.samplingTime, self.fieldStrength)
+                for resonance, chemicalShift, ratio in ADIPOSERESONANCES:
+                    dephasing = np.exp(2j*np.pi * GYRO * self.fieldStrength * chemicalShift * self.samplingTime * 1e-3)
+                    self.kspaceModulation[resonance] = ratio * dephasing * T2w
 
 
     @param.depends('object', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', 'TE', 'fieldStrength', 'pixelBandWidth', watch=True)
     def modulateKspace(self):
-        self.kspace = {tissue: self.plainKspace[tissue] * self.kspaceModulation[tissue] for tissue in self.tissues}
+        self.kspace = {}
+        for tissue in self.tissues:
+            if tissue != 'adipose':
+                self.kspace[tissue] = self.plainKspace[tissue] * self.kspaceModulation[tissue]
+            else:
+                for resonance, _, _ in ADIPOSERESONANCES:
+                    self.kspace[resonance] = self.plainKspace[tissue] * self.kspaceModulation[resonance]
 
 
     @param.depends('object', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', 'TE', 'fieldStrength', 'pixelBandWidth', watch=True)
@@ -293,11 +316,11 @@ class MRIsimulator(param.Parameterized):
         # half pixel shift for even dims (based on reconMatrix, not oversampledReconMatrix!)
         shift = [.0 if self.reconMatrix[dim]%2 else .5 for dim in range(len(self.reconMatrix))]
         halfPixelShift = getPixelShiftMatrix(self.oversampledReconMatrix, shift)
-        for tissue in self.tissues:
-            self.kspace[tissue] = zerofill(self.kspace[tissue], self.oversampledReconMatrix)
-            self.kspace[tissue] *= halfPixelShift
-            self.imageArrays[tissue] = np.fft.fftshift(np.fft.ifft2(self.kspace[tissue]))
-            self.imageArrays[tissue] = crop(self.imageArrays[tissue], self.reconMatrix)
+        for component in self.kspace:
+            self.kspace[component] = zerofill(self.kspace[component], self.oversampledReconMatrix)
+            self.kspace[component] *= halfPixelShift
+            self.imageArrays[component] = np.fft.fftshift(np.fft.ifft2(self.kspace[component]))
+            self.imageArrays[component] = crop(self.imageArrays[component], self.reconMatrix)
         self.iAxes = [(np.arange(self.reconMatrix[dim]) - (self.reconMatrix[dim]-1)/2) / self.reconMatrix[dim] * self.FOV[dim] for dim in range(2)]
 
 
@@ -309,8 +332,9 @@ class MRIsimulator(param.Parameterized):
     @param.depends('object', 'fieldStrength', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', 'pixelBandWidth', 'sequence', 'TR', 'TE', 'FA', 'TI')
     def getImage(self):
         pixelArray = np.zeros(self.reconMatrix, dtype=complex)
-        for tissue in self.tissues:
-            pixelArray += self.imageArrays[tissue] * self.PDandT1w[tissue]
+        for component in self.imageArrays:
+            tissue = 'adipose' if 'adipose' in component else component
+            pixelArray += self.imageArrays[component] * self.PDandT1w[tissue]
         
         img = xr.DataArray(
             np.abs(pixelArray), 
