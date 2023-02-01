@@ -150,6 +150,13 @@ def zerofill(kspace, reconMatrix):
     return kspace
 
 
+def getPixelShiftMatrix(matrix, shift=None):
+        if not shift: # default half pixel shift for even dims
+            shift = [.0 if matrix[dim]%2 else .5 for dim in range(len(matrix))]
+        phase = [np.fft.fftfreq(matrix[dim]) * shift[dim] * 2*np.pi for dim in range(len(matrix))]
+        return np.exp(1j * np.sum(np.stack(np.meshgrid(*phase[::-1])), axis=0))
+
+
 def crop(arr, shape):
     # Crop array from center according to shape
     for dim, n in enumerate(arr.shape):
@@ -250,16 +257,17 @@ class MRIsimulator(param.Parameterized):
         self.kspace = {}
         for tissue in self.tissues:
             self.kspace[tissue] = resampleKspace(self.phantom['kspace'][tissue], self.phantom, self.matrix, self.FOV, self.freqDir)
-    
+
 
     @param.depends('object', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', watch=True)
     def reconstruct(self):
         self.imageArrays = {}
         oversampledReconMatrix = list(self.reconMatrix) # account for oversampling in frequency encoding direction
         oversampledReconMatrix[self.freqDir] = int(oversampledReconMatrix[self.freqDir] * list(self.kspace.values())[0].shape[self.freqDir] / self.matrix[self.freqDir])
+        halfPixelShift = getPixelShiftMatrix(oversampledReconMatrix)
         for tissue in self.tissues:
             self.kspace[tissue] = zerofill(self.kspace[tissue], oversampledReconMatrix)
-            # TODO: half pixel shift
+            self.kspace[tissue] *= halfPixelShift
             self.imageArrays[tissue] = np.fft.fftshift(np.fft.ifft2(self.kspace[tissue]))
             self.imageArrays[tissue] = crop(self.imageArrays[tissue], self.reconMatrix)
         self.coords= [(np.arange(self.reconMatrix[dim]) - (self.reconMatrix[dim]-1)/2) / self.reconMatrix[dim] * self.FOV[dim] for dim in range(2)]
