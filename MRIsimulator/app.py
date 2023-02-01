@@ -150,9 +150,7 @@ def zerofill(kspace, reconMatrix):
     return kspace
 
 
-def getPixelShiftMatrix(matrix, shift=None):
-        if not shift: # default half pixel shift for even dims
-            shift = [.0 if matrix[dim]%2 else .5 for dim in range(len(matrix))]
+def getPixelShiftMatrix(matrix, shift):
         phase = [np.fft.fftfreq(matrix[dim]) * shift[dim] * 2*np.pi for dim in range(len(matrix))]
         return np.exp(1j * np.sum(np.stack(np.meshgrid(*phase[::-1])), axis=0))
 
@@ -264,7 +262,9 @@ class MRIsimulator(param.Parameterized):
         self.imageArrays = {}
         oversampledReconMatrix = list(self.reconMatrix) # account for oversampling in frequency encoding direction
         oversampledReconMatrix[self.freqDir] = int(oversampledReconMatrix[self.freqDir] * list(self.kspace.values())[0].shape[self.freqDir] / self.matrix[self.freqDir])
-        halfPixelShift = getPixelShiftMatrix(oversampledReconMatrix)
+        # half pixel shift for even dims (based on reconMatrix, not oversampledReconMatrix!)
+        shift = [.0 if self.reconMatrix[dim]%2 else .5 for dim in range(len(self.reconMatrix))]
+        halfPixelShift = getPixelShiftMatrix(oversampledReconMatrix, shift)
         for tissue in self.tissues:
             self.kspace[tissue] = zerofill(self.kspace[tissue], oversampledReconMatrix)
             self.kspace[tissue] *= halfPixelShift
