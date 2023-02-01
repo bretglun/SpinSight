@@ -131,14 +131,12 @@ def kspacePolygon(poly, phantom):
     return ksp.reshape(phantom['matrix'][::-1]).T # TODO: get x/y order right from start!
 
 
-def resampleKspace(kspace, phantom, matrix, FOV, freqDir):
-    for dim in range(kspace.ndim):
-        n = matrix[dim]
-        if dim == freqDir and FOV[dim] < phantom['FOV'][dim]:
-            n = int(np.ceil(phantom['FOV'][dim] * matrix[dim] / FOV[dim])) # At least Nyquist sampling in frequence encoding direction
-        k = np.fft.fftfreq(n) * matrix[dim] / FOV[dim]
-        sinc = np.sinc((np.tile(k, (phantom['matrix'][dim], 1)) - np.tile(phantom['kAxes'][dim][:, np.newaxis], (1, n))) * phantom['FOV'][dim])
-        kspace = np.moveaxis(np.tensordot(kspace, sinc, axes=(dim, 0)), -1, dim)
+def resampleKspace(phantom, kAxes):
+    kspace = {tissue: phantom['kspace'][tissue] for tissue in phantom['kspace']}
+    for dim in range(len(kAxes)):
+        sinc = np.sinc((np.tile(kAxes[dim], (len(phantom['kAxes'][dim]), 1)) - np.tile(phantom['kAxes'][dim][:, np.newaxis], (1, len(kAxes[dim])))) * phantom['FOV'][dim])
+        for tissue in phantom['kspace']:
+            kspace[tissue] = np.moveaxis(np.tensordot(kspace[tissue], sinc, axes=(dim, 0)), -1, dim)
     return kspace
 
 
@@ -252,25 +250,29 @@ class MRIsimulator(param.Parameterized):
         self.reconMatrix = [self.reconMatrixY, self.reconMatrixX]
         self.FOV = [self.FOVY, self.FOVX]
         self.freqDir = DIRECTIONS[self.freqeuencyDirection]
-        self.kspace = {}
-        for tissue in self.tissues:
-            self.kspace[tissue] = resampleKspace(self.phantom['kspace'][tissue], self.phantom, self.matrix, self.FOV, self.freqDir)
+        
+        self.oversampledMatrix = self.matrix.copy() # account for oversampling in frequency encoding direction
+        self.oversampledReconMatrix = self.reconMatrix.copy()
+        if self.FOV[self.freqDir] < self.phantom['FOV'][self.freqDir]: # At least Nyquist sampling in frequency encoding direction
+            self.oversampledMatrix[self.freqDir] = int(np.ceil(self.phantom['FOV'][self.freqDir] * self.matrix[self.freqDir] / self.FOV[self.freqDir]))
+            self.oversampledReconMatrix[self.freqDir] = int(self.reconMatrix[self.freqDir] * self.oversampledMatrix[self.freqDir] / self.matrix[self.freqDir])
+        
+        self.kAxes = [np.fft.fftfreq(self.oversampledMatrix[dim]) * self.matrix[dim] / self.FOV[dim] for dim in range(len(self.matrix))]
+        self.kspace = resampleKspace(self.phantom, self.kAxes)
 
 
     @param.depends('object', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', watch=True)
     def reconstruct(self):
         self.imageArrays = {}
-        oversampledReconMatrix = list(self.reconMatrix) # account for oversampling in frequency encoding direction
-        oversampledReconMatrix[self.freqDir] = int(oversampledReconMatrix[self.freqDir] * list(self.kspace.values())[0].shape[self.freqDir] / self.matrix[self.freqDir])
         # half pixel shift for even dims (based on reconMatrix, not oversampledReconMatrix!)
         shift = [.0 if self.reconMatrix[dim]%2 else .5 for dim in range(len(self.reconMatrix))]
-        halfPixelShift = getPixelShiftMatrix(oversampledReconMatrix, shift)
+        halfPixelShift = getPixelShiftMatrix(self.oversampledReconMatrix, shift)
         for tissue in self.tissues:
-            self.kspace[tissue] = zerofill(self.kspace[tissue], oversampledReconMatrix)
+            self.kspace[tissue] = zerofill(self.kspace[tissue], self.oversampledReconMatrix)
             self.kspace[tissue] *= halfPixelShift
             self.imageArrays[tissue] = np.fft.fftshift(np.fft.ifft2(self.kspace[tissue]))
             self.imageArrays[tissue] = crop(self.imageArrays[tissue], self.reconMatrix)
-        self.coords= [(np.arange(self.reconMatrix[dim]) - (self.reconMatrix[dim]-1)/2) / self.reconMatrix[dim] * self.FOV[dim] for dim in range(2)]
+        self.iAxes = [(np.arange(self.reconMatrix[dim]) - (self.reconMatrix[dim]-1)/2) / self.reconMatrix[dim] * self.FOV[dim] for dim in range(2)]
 
 
     @param.depends('object', 'fieldStrength', 'sequence', 'TR', 'TE', 'FA', 'TI', watch=True)
@@ -287,7 +289,7 @@ class MRIsimulator(param.Parameterized):
         img = xr.DataArray(
             np.abs(pixelArray), 
             dims=('y', 'x'),
-            coords={'x': self.coords[1], 'y': self.coords[0][::-1]}
+            coords={'x': self.iAxes[1], 'y': self.iAxes[0][::-1]}
         )
         img.x.attrs['units'] = img.y.attrs['units'] = 'mm'
 
