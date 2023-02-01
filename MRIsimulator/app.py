@@ -286,8 +286,9 @@ class MRIsimulator(param.Parameterized):
         self.samplingTime = np.expand_dims(self.samplingTime, axis=[dim for dim in range(len(self.matrix)) if dim != self.freqDir])
     
 
-    @param.depends('object', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', 'TE', 'fieldStrength', 'pixelBandWidth', watch=True)
-    def updateKspaceModulation(self):    
+    @param.depends('object', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', 'TE', 'fieldStrength', 'pixelBandWidth', 'sequence', watch=True)
+    def updateKspaceModulation(self):
+        dephasingTime = self.samplingTime + self.TE if 'Gradient Echo' in self.sequence else self.samplingTime
         self.kspaceModulation = {}
         for tissue in self.tissues:
             if tissue != 'adipose':
@@ -295,11 +296,11 @@ class MRIsimulator(param.Parameterized):
             else:
                 T2w = getT2w(tissue, self.TE + self.samplingTime, self.fieldStrength)
                 for resonance, chemicalShift, ratio in ADIPOSERESONANCES:
-                    dephasing = np.exp(2j*np.pi * GYRO * self.fieldStrength * chemicalShift * self.samplingTime * 1e-3)
+                    dephasing = np.exp(2j*np.pi * GYRO * self.fieldStrength * chemicalShift * dephasingTime * 1e-3)
                     self.kspaceModulation[resonance] = ratio * dephasing * T2w
 
 
-    @param.depends('object', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', 'TE', 'fieldStrength', 'pixelBandWidth', watch=True)
+    @param.depends('object', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', 'TE', 'fieldStrength', 'pixelBandWidth', 'sequence', watch=True)
     def modulateKspace(self):
         self.kspace = {}
         for tissue in self.tissues:
@@ -310,7 +311,7 @@ class MRIsimulator(param.Parameterized):
                     self.kspace[resonance] = self.plainKspace[tissue] * self.kspaceModulation[resonance]
 
 
-    @param.depends('object', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', 'TE', 'fieldStrength', 'pixelBandWidth', watch=True)
+    @param.depends('object', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', 'TE', 'fieldStrength', 'pixelBandWidth', 'sequence', watch=True)
     def reconstruct(self):
         self.imageArrays = {}
         # half pixel shift for even dims (based on reconMatrix, not oversampledReconMatrix!)
@@ -356,12 +357,10 @@ dashboard = pn.Row(pn.Column(pn.pane.Markdown(title), pn.Row(contrastParams, geo
 dashboard.servable() # run by ´panel serve app.py´, then open http://localhost:5006/app in browser
 
 
-# TODO: add kpsace dephasing during readout
 # TODO: do T2(*)-weighting in kpsace
 # TODO: add noise
 # TODO: add fatsat
 # TODO: bounds on acq params (including timing constraints, e.g. TE, TR, BW, etc)
-# TODO: handle fat shift (including signal cancellation)
 # TODO: add ACQ time
 # TODO: add k-space plot
 # TODO: add params for matrix/pixelSize and BW like different vendors and handle their correlation
