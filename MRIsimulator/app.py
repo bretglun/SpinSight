@@ -302,3 +302,20 @@ geometryParams = pn.panel(explorer.param, parameters=['FOVX', 'FOVY', 'matrixX',
 dmapMRimage = hv.DynamicMap(explorer.getImage).opts(frame_height=500)
 dashboard = pn.Row(pn.Column(pn.pane.Markdown(title), pn.Row(contrastParams, geometryParams), pn.pane.Markdown(author)), dmapMRimage)
 dashboard.servable() # run by ´panel serve app.py´, then open http://localhost:5006/app in browser
+
+# TODO: add BW param
+# TODO: add kpsace dephasing during readout
+# TODO: do T2(*)-weighting in kpsace
+# TODO: add noise
+# TODO: add fatsat
+# TODO: bounds on acq params
+# TODO: handle fat shift (including signal cancellation)
+# TODO: add ACQ time
+# TODO: add k-space plot
+# TODO: add params for matrix/pixelSize and BW like different vendors and handle their correlation
+# TODO: add apodization
+# TODO: parallel imaging (GRAPPA)
+# TODO: B0 inhomogeneity
+# TODO: T2* weighting
+# TODO: Fast spin echo
+# TODO: EPI
