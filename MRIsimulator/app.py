@@ -160,19 +160,23 @@ def crop(arr, shape):
     return arr
 
 
-def getM(tissue, seqType, TR, TE, TI, FA, B0='1.5T'):
+def getT2w(tissue, TE, B0):
+    T2 = TISSUES[tissue]['T2'][B0]
+    E2 = np.exp(-TE/T2)
+    return E2
+
+
+def getPDandT1w(tissue, seqType, TR, TE, TI, FA, B0='1.5T'):
     PD = TISSUES[tissue]['PD']
     T1 = TISSUES[tissue]['T1'][B0]
-    T2 = TISSUES[tissue]['T2'][B0]
     
     E1 = np.exp(-TR/T1)
-    E2 = np.exp(-TE/T2)
     if seqType == 'Spin Echo':
-        return PD * (1 - E1) * E2
+        return PD * (1 - E1)
     elif seqType == 'Spoiled Gradient Echo':
-        return PD * E2 * np.sin(np.radians(FA)) * (1 - E1) / (1 - np.cos(np.radians(FA)) * E1)
+        return PD * np.sin(np.radians(FA)) * (1 - E1) / (1 - np.cos(np.radians(FA)) * E1)
     elif seqType == 'Inversion Recovery':
-        return PD * E2 * (1 - 2 * np.exp(-TI/T1) + E1)
+        return PD * (1 - 2 * np.exp(-TI/T1) + E1)
     else:
         raise Exception('Unknown sequence type: {}'.format(seqType))
 
@@ -181,25 +185,29 @@ class MRIsimulator(param.Parameterized):
     object = param.ObjectSelector(default=list(PHANTOMS.keys())[0], objects=PHANTOMS.keys())
     fieldStrength = param.ObjectSelector(default='1.5T', objects=['1.5T', '3T'])
     sequence = param.ObjectSelector(default=SEQUENCES[0], objects=SEQUENCES)
-    TR = param.Number(default=1000.0, bounds=(0, 5000.0))
-    TE = param.Number(default=1.0, bounds=(0, 100.0))
-    FA = param.Number(default=90.0, bounds=(0, 90.0), precedence=-1)
-    TI = param.Number(default=1.0, bounds=(0, 1000.0), precedence=-1)
-    FOVX = param.Number(default=420, bounds=(100, 600))
-    FOVY = param.Number(default=420, bounds=(100, 600))
+    TR = param.Number(default=1000.0, bounds=(0, 5000.0)) # [msec]
+    TE = param.Number(default=1.0, bounds=(0, 100.0)) # [msec]
+    FA = param.Number(default=90.0, bounds=(0, 90.0), precedence=-1) # [°]
+    TI = param.Number(default=1.0, bounds=(0, 1000.0), precedence=-1) # [msec]
+    FOVX = param.Number(default=420, bounds=(100, 600)) # [mm]
+    FOVY = param.Number(default=420, bounds=(100, 600)) # [mm]
     matrixX = param.Integer(default=128, bounds=(16, 600))
     matrixY = param.Integer(default=128, bounds=(16, 600))
     reconMatrixX = param.Integer(default=256, bounds=(matrixX.default, 1024))
     reconMatrixY = param.Integer(default=256, bounds=(matrixY.default, 1024))
     freqeuencyDirection = param.ObjectSelector(default=list(DIRECTIONS.keys())[-1], objects=DIRECTIONS.keys())
+    pixelBandWidth = param.Number(default=200, bounds=(50, 1000)) # Hz
     
 
     def __init__(self, **params):
         super().__init__(**params)
         self.loadPhantom()
         self.sampleKspace()
+        self.updateSamplingTime()
+        self.updateKspaceModulation()
+        self.modulateKspace()
         self.reconstruct()
-        self.updateMagnetization()
+        self.updatePDandT1w()
     
 
     @param.depends('sequence', watch=True)
@@ -258,10 +266,28 @@ class MRIsimulator(param.Parameterized):
             self.oversampledReconMatrix[self.freqDir] = int(self.reconMatrix[self.freqDir] * self.oversampledMatrix[self.freqDir] / self.matrix[self.freqDir])
         
         self.kAxes = [np.fft.fftfreq(self.oversampledMatrix[dim]) * self.matrix[dim] / self.FOV[dim] for dim in range(len(self.matrix))]
-        self.kspace = resampleKspace(self.phantom, self.kAxes)
+        self.plainKspace = resampleKspace(self.phantom, self.kAxes)
+    
+
+    @param.depends('object', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', 'pixelBandWidth', watch=True)
+    def updateSamplingTime(self):
+        self.samplingTime = np.fft.fftfreq(len(self.kAxes[self.freqDir])) / self.pixelBandWidth * 1e3 # msec
+        self.samplingTime = np.expand_dims(self.samplingTime, axis=[dim for dim in range(len(self.matrix)) if dim != self.freqDir])
+    
+
+    @param.depends('object', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', 'TE', 'fieldStrength', 'pixelBandWidth', watch=True)
+    def updateKspaceModulation(self):    
+        self.kspaceModulation = {}
+        for tissue in self.tissues:
+            self.kspaceModulation[tissue] = getT2w(tissue, self.TE + self.samplingTime, self.fieldStrength)
 
 
-    @param.depends('object', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', watch=True)
+    @param.depends('object', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', 'TE', 'fieldStrength', 'pixelBandWidth', watch=True)
+    def modulateKspace(self):
+        self.kspace = {tissue: self.plainKspace[tissue] * self.kspaceModulation[tissue] for tissue in self.tissues}
+
+
+    @param.depends('object', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', 'TE', 'fieldStrength', 'pixelBandWidth', watch=True)
     def reconstruct(self):
         self.imageArrays = {}
         # half pixel shift for even dims (based on reconMatrix, not oversampledReconMatrix!)
@@ -276,15 +302,15 @@ class MRIsimulator(param.Parameterized):
 
 
     @param.depends('object', 'fieldStrength', 'sequence', 'TR', 'TE', 'FA', 'TI', watch=True)
-    def updateMagnetization(self):
-        self.M = {tissue: getM(tissue, self.sequence, self.TR, self.TE, self.TI, self.FA, self.fieldStrength) for tissue in self.tissues}
+    def updatePDandT1w(self):
+        self.PDandT1w = {tissue: getPDandT1w(tissue, self.sequence, self.TR, self.TE, self.TI, self.FA, self.fieldStrength) for tissue in self.tissues}
 
 
-    @param.depends('object', 'fieldStrength', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', 'sequence', 'TR', 'TE', 'FA', 'TI')
+    @param.depends('object', 'fieldStrength', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', 'pixelBandWidth', 'sequence', 'TR', 'TE', 'FA', 'TI')
     def getImage(self):
         pixelArray = np.zeros(self.reconMatrix, dtype=complex)
         for tissue in self.tissues:
-            pixelArray += self.imageArrays[tissue] * self.M[tissue]
+            pixelArray += self.imageArrays[tissue] * self.PDandT1w[tissue]
         
         img = xr.DataArray(
             np.abs(pixelArray), 
@@ -300,17 +326,17 @@ explorer = MRIsimulator(name='')
 title = '# MRI simulator'
 author = '*Written by [Johan Berglund](mailto:johan.berglund@akademiska.se), Ph.D.*'
 contrastParams = pn.panel(explorer.param, parameters=['fieldStrength', 'sequence', 'TR', 'TE', 'FA', 'TI'], name='Contrast')
-geometryParams = pn.panel(explorer.param, parameters=['FOVX', 'FOVY', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'freqeuencyDirection'], name='Geometry')
+geometryParams = pn.panel(explorer.param, parameters=['FOVX', 'FOVY', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'freqeuencyDirection', 'pixelBandWidth'], name='Geometry')
 dmapMRimage = hv.DynamicMap(explorer.getImage).opts(frame_height=500)
 dashboard = pn.Row(pn.Column(pn.pane.Markdown(title), pn.Row(contrastParams, geometryParams), pn.pane.Markdown(author)), dmapMRimage)
 dashboard.servable() # run by ´panel serve app.py´, then open http://localhost:5006/app in browser
 
-# TODO: add BW param
+
 # TODO: add kpsace dephasing during readout
 # TODO: do T2(*)-weighting in kpsace
 # TODO: add noise
 # TODO: add fatsat
-# TODO: bounds on acq params
+# TODO: bounds on acq params (including timing constraints, e.g. TE, TR, BW, etc)
 # TODO: handle fat shift (including signal cancellation)
 # TODO: add ACQ time
 # TODO: add k-space plot
