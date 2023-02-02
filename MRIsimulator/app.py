@@ -29,14 +29,13 @@ TISSUES = {
     'perotineum': {'PD': 1.0, 'T1': {1.5:  900, 3.0:  900}, 'T2': {1.5:   30, 3.0:   30}, 'hexcolor': 'ff8080'},
 }
 
-# TODO: proper values
-ADIPOSERESONANCES = [('adiposeWater',      0.0, .050),  # name, chemical shift [ppm], ratio
-                     ('adiposeFat1', 0.9 - 4.7, .083),
-                     ('adiposeFat2', 1.3 - 4.7, .659),
-                     ('adiposeFat3', 2.1 - 4.7, .122),
-                     ('adiposeFat4', 2.8 - 4.7, .004),
-                     ('adiposeFat5', 4.3 - 4.7, .037), 
-                     ('adiposeFat6', 5.3 - 4.7, .045)]
+ADIPOSERESONANCES = { 'adiposeWater': {'shift': 4.7 - 4.7, 'ratio': .050, 'ratioWithFatSat': .050},
+                      'adiposeFat1':  {'shift': 0.9 - 4.7, 'ratio': .083, 'ratioWithFatSat': .010},
+                      'adiposeFat2':  {'shift': 1.3 - 4.7, 'ratio': .659, 'ratioWithFatSat': .033},
+                      'adiposeFat3':  {'shift': 2.1 - 4.7, 'ratio': .122, 'ratioWithFatSat': .038},
+                      'adiposeFat4':  {'shift': 2.8 - 4.7, 'ratio': .004, 'ratioWithFatSat': .003},
+                      'adiposeFat5':  {'shift': 4.3 - 4.7, 'ratio': .037, 'ratioWithFatSat': .037}, 
+                      'adiposeFat6':  {'shift': 5.3 - 4.7, 'ratio': .045, 'ratioWithFatSat': .045}}
 
 SEQUENCES = ['Spin Echo', 'Spoiled Gradient Echo', 'Inversion Recovery']
 
@@ -196,6 +195,7 @@ class MRIsimulator(param.Parameterized):
     object = param.ObjectSelector(default=list(PHANTOMS.keys())[0], objects=PHANTOMS.keys())
     fieldStrength = param.ObjectSelector(default=1.5, objects=[1.5, 3.0])
     sequence = param.ObjectSelector(default=SEQUENCES[0], objects=SEQUENCES)
+    FatSat = param.Boolean(default=False)
     TR = param.Number(default=1000.0, bounds=(0, 5000.0)) # [msec]
     TE = param.Number(default=1.0, bounds=(0, 100.0)) # [msec]
     FA = param.Number(default=90.0, bounds=(0, 90.0), precedence=-1) # [°]
@@ -241,7 +241,7 @@ class MRIsimulator(param.Parameterized):
     
     @param.depends('object', watch=True)
     def loadPhantom(self):
-        phantomPath = Path('./phantoms/{p}'.format(p=self.object))
+        phantomPath = Path(__file__).parent.resolve() / 'phantoms/{p}'.format(p=self.object)
         self.phantom = PHANTOMS[self.object]
         self.phantom['kAxes'] = [np.fft.fftfreq(self.phantom['matrix'][dim]) * self.phantom['matrix'][dim] / self.phantom['FOV'][dim] for dim in range(len(self.phantom['matrix']))]
         npyFiles = list(phantomPath.glob('*.npy'))
@@ -295,9 +295,9 @@ class MRIsimulator(param.Parameterized):
                 self.kspaceModulation[tissue] = getT2w(tissue, self.TE + self.samplingTime, self.fieldStrength)
             else:
                 T2w = getT2w(tissue, self.TE + self.samplingTime, self.fieldStrength)
-                for resonance, chemicalShift, ratio in ADIPOSERESONANCES:
-                    dephasing = np.exp(2j*np.pi * GYRO * self.fieldStrength * chemicalShift * dephasingTime * 1e-3)
-                    self.kspaceModulation[resonance] = ratio * dephasing * T2w
+                for component, resonance in ADIPOSERESONANCES.items():
+                    dephasing = np.exp(2j*np.pi * GYRO * self.fieldStrength * resonance['shift'] * dephasingTime * 1e-3)
+                    self.kspaceModulation[component] = dephasing * T2w
 
 
     @param.depends('object', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', 'TE', 'fieldStrength', 'pixelBandWidth', 'sequence', watch=True)
@@ -307,8 +307,8 @@ class MRIsimulator(param.Parameterized):
             if tissue != 'adipose':
                 self.kspace[tissue] = self.plainKspace[tissue] * self.kspaceModulation[tissue]
             else:
-                for resonance, _, _ in ADIPOSERESONANCES:
-                    self.kspace[resonance] = self.plainKspace[tissue] * self.kspaceModulation[resonance]
+                for component in ADIPOSERESONANCES:
+                    self.kspace[component] = self.plainKspace[tissue] * self.kspaceModulation[component]
 
 
     @param.depends('object', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', 'TE', 'fieldStrength', 'pixelBandWidth', 'sequence', watch=True)
@@ -330,12 +330,17 @@ class MRIsimulator(param.Parameterized):
         self.PDandT1w = {tissue: getPDandT1w(tissue, self.sequence, self.TR, self.TE, self.TI, self.FA, self.fieldStrength) for tissue in self.tissues}
 
 
-    @param.depends('object', 'fieldStrength', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', 'pixelBandWidth', 'sequence', 'TR', 'TE', 'FA', 'TI')
+    @param.depends('object', 'fieldStrength', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', 'pixelBandWidth', 'sequence', 'TR', 'TE', 'FA', 'TI', 'FatSat')
     def getImage(self):
         pixelArray = np.zeros(self.reconMatrix, dtype=complex)
         for component in self.imageArrays:
-            tissue = 'adipose' if 'adipose' in component else component
-            pixelArray += self.imageArrays[component] * self.PDandT1w[tissue]
+            if 'adipose' in component: 
+                tissue = 'adipose'
+                ratio = ADIPOSERESONANCES[component]['ratioWithFatSat' if self.FatSat else 'ratio']
+            else:
+                tissue = component
+                ratio = 1.0
+            pixelArray += self.imageArrays[component] * self.PDandT1w[tissue] * ratio
         
         img = xr.DataArray(
             np.abs(pixelArray), 
@@ -350,17 +355,16 @@ class MRIsimulator(param.Parameterized):
 explorer = MRIsimulator(name='')
 title = '# MRI simulator'
 author = '*Written by [Johan Berglund](mailto:johan.berglund@akademiska.se), Ph.D.*'
-contrastParams = pn.panel(explorer.param, parameters=['fieldStrength', 'sequence', 'TR', 'TE', 'FA', 'TI'], name='Contrast')
+contrastParams = pn.panel(explorer.param, parameters=['fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI'], name='Contrast')
 geometryParams = pn.panel(explorer.param, parameters=['FOVX', 'FOVY', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'freqeuencyDirection', 'pixelBandWidth'], name='Geometry')
 dmapMRimage = hv.DynamicMap(explorer.getImage).opts(frame_height=500)
 dashboard = pn.Row(pn.Column(pn.pane.Markdown(title), pn.Row(contrastParams, geometryParams), pn.pane.Markdown(author)), dmapMRimage)
 dashboard.servable() # run by ´panel serve app.py´, then open http://localhost:5006/app in browser
 
 
+# TODO: bounds on acq params (including timing constraints, e.g. TE, TR, BW, etc)
 # TODO: do T2(*)-weighting in kpsace
 # TODO: add noise
-# TODO: add fatsat
-# TODO: bounds on acq params (including timing constraints, e.g. TE, TR, BW, etc)
 # TODO: add ACQ time
 # TODO: add k-space plot
 # TODO: add params for matrix/pixelSize and BW like different vendors and handle their correlation
