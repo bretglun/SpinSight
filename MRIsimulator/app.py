@@ -192,22 +192,22 @@ def getPDandT1w(tissue, seqType, TR, TE, TI, FA, B0):
 
 
 class MRIsimulator(param.Parameterized):
-    object = param.ObjectSelector(default=list(PHANTOMS.keys())[0], objects=PHANTOMS.keys())
-    fieldStrength = param.ObjectSelector(default=1.5, objects=[1.5, 3.0])
-    sequence = param.ObjectSelector(default=SEQUENCES[0], objects=SEQUENCES)
-    FatSat = param.Boolean(default=False)
-    TR = param.Number(default=1000.0, bounds=(0, 5000.0)) # [msec]
-    TE = param.Number(default=1.0, bounds=(0, 100.0)) # [msec]
-    FA = param.Number(default=90.0, bounds=(0, 90.0), precedence=-1) # [°]
-    TI = param.Number(default=1.0, bounds=(0, 1000.0), precedence=-1) # [msec]
-    FOVX = param.Number(default=420, bounds=(100, 600)) # [mm]
-    FOVY = param.Number(default=420, bounds=(100, 600)) # [mm]
-    matrixX = param.Integer(default=128, bounds=(16, 600))
-    matrixY = param.Integer(default=128, bounds=(16, 600))
-    reconMatrixX = param.Integer(default=256, bounds=(matrixX.default, 1024))
-    reconMatrixY = param.Integer(default=256, bounds=(matrixY.default, 1024))
-    freqeuencyDirection = param.ObjectSelector(default=list(DIRECTIONS.keys())[-1], objects=DIRECTIONS.keys())
-    pixelBandWidth = param.Number(default=200, bounds=(50, 1000)) # Hz
+    object = param.ObjectSelector(default=list(PHANTOMS.keys())[0], objects=PHANTOMS.keys(), label='Phantom object')
+    fieldStrength = param.ObjectSelector(default=1.5, objects=[1.5, 3.0], label='B0 field strength [T]')
+    sequence = param.ObjectSelector(default=SEQUENCES[0], objects=SEQUENCES, label='Pulse sequence')
+    FatSat = param.Boolean(default=False, label='Fat saturation')
+    TR = param.Number(default=1000.0, bounds=(0, 5000.0), label='TR [msec]')
+    TE = param.Number(default=1.0, bounds=(0, 100.0), label='TE [msec]')
+    FA = param.Number(default=90.0, bounds=(0, 90.0), precedence=-1, label='Flip angle [°]')
+    TI = param.Number(default=1.0, bounds=(0, 1000.0), precedence=-1, label='TI [msec]')
+    FOVX = param.Number(default=420, bounds=(100, 600), label='FOV x [mm]')
+    FOVY = param.Number(default=420, bounds=(100, 600), label='FOV y [mm]')
+    matrixX = param.Integer(default=128, bounds=(16, 600), label='Acquisition matrix x')
+    matrixY = param.Integer(default=128, bounds=(16, 600), label='Acquisition matrix y')
+    reconMatrixX = param.Integer(default=256, bounds=(matrixX.default, 1024), label='Reconstruction matrix x')
+    reconMatrixY = param.Integer(default=256, bounds=(matrixY.default, 1024), label='Reconstruction matrix y')
+    freqeuencyDirection = param.ObjectSelector(default=list(DIRECTIONS.keys())[-1], objects=DIRECTIONS.keys(), label='Frequency encoding direction')
+    pixelBandWidth = param.Number(default=200, bounds=(50, 1000), label='Pixel bandwidth [Hz]')
     
 
     def __init__(self, **params):
@@ -363,8 +363,8 @@ dashboard.servable() # run by ´panel serve app.py´, then open http://localhost
 
 
 # TODO: bounds on acq params (including timing constraints, e.g. TE, TR, BW, etc)
-# TODO: do T2(*)-weighting in kpsace
 # TODO: add noise
+# TODO: do T2(*)-weighting in kspace
 # TODO: add ACQ time
 # TODO: add k-space plot
 # TODO: add params for matrix/pixelSize and BW like different vendors and handle their correlation
