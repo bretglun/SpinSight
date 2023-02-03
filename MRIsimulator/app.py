@@ -39,6 +39,8 @@ ADIPOSERESONANCES = { 'adiposeWater': {'shift': 4.7 - 4.7, 'ratio': .050, 'ratio
 
 SEQUENCES = ['Spin Echo', 'Spoiled Gradient Echo', 'Inversion Recovery']
 
+DURATIONS = {'exc': 1.0, 'ref': 4.0, 'inv': 4.0, 'spoil': 1.0} # excitation, refocusing, inversion, spoiling [msec]
+
 PHANTOMS = {
     'abdomen': {'FOV': (320, 400), 'matrix': (512, 640)}
 }
@@ -196,10 +198,12 @@ class MRIsimulator(param.Parameterized):
     fieldStrength = param.ObjectSelector(default=1.5, objects=[1.5, 3.0], label='B0 field strength [T]')
     sequence = param.ObjectSelector(default=SEQUENCES[0], objects=SEQUENCES, label='Pulse sequence')
     FatSat = param.Boolean(default=False, label='Fat saturation')
-    TR = param.Number(default=1000.0, bounds=(0, 5000.0), label='TR [msec]')
-    TE = param.Number(default=1.0, bounds=(0, 100.0), label='TE [msec]')
-    FA = param.Number(default=90.0, bounds=(0, 90.0), precedence=-1, label='Flip angle [°]')
-    TI = param.Number(default=1.0, bounds=(0, 1000.0), precedence=-1, label='TI [msec]')
+    TR = param.Number(default=750.0, bounds=(0, 8000.0), label='TR [msec]')
+    shortTRrange = param.Boolean(default=False, label='Short TR range')
+    TE = param.Number(default=10.0, bounds=(0, 400.0), label='TE [msec]')
+    shortTErange = param.Boolean(default=False, label='Short TE range')
+    FA = param.Number(default=90.0, bounds=(1, 90.0), precedence=-1, label='Flip angle [°]')
+    TI = param.Number(default=1.0, bounds=(0, 8000.0), precedence=-1, label='TI [msec]')
     FOVX = param.Number(default=420, bounds=(100, 600), label='FOV x [mm]')
     FOVY = param.Number(default=420, bounds=(100, 600), label='FOV y [mm]')
     matrixX = param.Integer(default=128, bounds=(16, 600), label='Acquisition matrix x')
@@ -207,11 +211,14 @@ class MRIsimulator(param.Parameterized):
     reconMatrixX = param.Integer(default=256, bounds=(matrixX.default, 1024), label='Reconstruction matrix x')
     reconMatrixY = param.Integer(default=256, bounds=(matrixY.default, 1024), label='Reconstruction matrix y')
     freqeuencyDirection = param.ObjectSelector(default=list(DIRECTIONS.keys())[-1], objects=DIRECTIONS.keys(), label='Frequency encoding direction')
-    pixelBandWidth = param.Number(default=200, bounds=(50, 1000), label='Pixel bandwidth [Hz]')
+    pixelBandWidth = param.Number(default=500, bounds=(50, 1000), label='Pixel bandwidth [Hz]')
     
 
     def __init__(self, **params):
         super().__init__(**params)
+        self.updateReadoutDuration()
+        self.updateTEbounds()
+        self.updateTRbounds()
         self.loadPhantom()
         self.sampleKspace()
         self.updateSamplingTime()
@@ -221,6 +228,43 @@ class MRIsimulator(param.Parameterized):
         self.updatePDandT1w()
     
 
+    @param.depends('pixelBandWidth', watch=True)
+    def updateReadoutDuration(self):
+        self.readoutDuration = 1e3 / self.pixelBandWidth # [msec]
+    
+    
+    @param.depends('shortTErange', 'pixelBandWidth', 'sequence', 'TR', 'TI', watch=True)
+    def updateTEbounds(self):
+        if self.sequence in ['Spin Echo', 'Inversion Recovery']: # seqs with refocusing pulse
+            minTE = max((DURATIONS['exc'] + DURATIONS['ref']), (DURATIONS['ref'] + self.readoutDuration))
+        else:
+            minTE = (DURATIONS['exc'] + self.readoutDuration)/2
+        maxTE = self.TR - (DURATIONS['exc']/2 + self.readoutDuration/2 + DURATIONS['spoil'])
+        if self.sequence == 'Inversion Recovery':
+            maxTE += DURATIONS['exc']/2 - DURATIONS['inv']/2 - self.TI
+        maxTE = min(maxTE, 25 if self.shortTErange else 400)
+        self.param.TE.bounds = (minTE, maxTE)
+        self.TE = min(max(self.TE, minTE), maxTE)
+    
+    
+    @param.depends('shortTRrange', 'pixelBandWidth', 'sequence', 'TE', 'TI', watch=True)
+    def updateTRbounds(self):
+        minTR = DURATIONS['exc']/2 + self.TE + self.readoutDuration/2 + DURATIONS['spoil']
+        if self.sequence == 'Inversion Recovery': minTR += DURATIONS['inv']/2 + self.TI - DURATIONS['exc']/2
+        maxTR = 100 if self.shortTRrange else 8000
+        self.param.TR.bounds = (minTR, maxTR)
+        self.TR = min(max(self.TR, minTR), maxTR)
+    
+
+    @param.depends('pixelBandWidth', 'sequence', 'TE', 'TR', watch=True)
+    def updateTIbounds(self):
+        if self.sequence != 'Inversion Recovery': return
+        minTI = (DURATIONS['inv'] + DURATIONS['exc'])/2
+        maxTI = self.TR - (DURATIONS['inv']/2 + self.TE + self.readoutDuration/2 + DURATIONS['spoil'])
+        self.param.TI.bounds = (minTI, maxTI)
+        self.TI = min(max(self.TI, minTI), maxTI)
+
+    
     @param.depends('sequence', watch=True)
     def _updateVisibility(self):
         self.param.FA.precedence = 1 if self.sequence=='Spoiled Gradient Echo' else -1
@@ -355,14 +399,13 @@ class MRIsimulator(param.Parameterized):
 explorer = MRIsimulator(name='')
 title = '# MRI simulator'
 author = '*Written by [Johan Berglund](mailto:johan.berglund@akademiska.se), Ph.D.*'
-contrastParams = pn.panel(explorer.param, parameters=['fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI'], name='Contrast')
+contrastParams = pn.panel(explorer.param, parameters=['fieldStrength', 'sequence', 'FatSat', 'TR', 'shortTRrange', 'TE', 'shortTErange', 'FA', 'TI'], name='Contrast')
 geometryParams = pn.panel(explorer.param, parameters=['FOVX', 'FOVY', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'freqeuencyDirection', 'pixelBandWidth'], name='Geometry')
 dmapMRimage = hv.DynamicMap(explorer.getImage).opts(frame_height=500)
 dashboard = pn.Row(pn.Column(pn.pane.Markdown(title), pn.Row(contrastParams, geometryParams), pn.pane.Markdown(author)), dmapMRimage)
 dashboard.servable() # run by ´panel serve app.py´, then open http://localhost:5006/app in browser
 
 
-# TODO: bounds on acq params (including timing constraints, e.g. TE, TR, BW, etc)
 # TODO: add noise
 # TODO: do T2(*)-weighting in kspace
 # TODO: add ACQ time
