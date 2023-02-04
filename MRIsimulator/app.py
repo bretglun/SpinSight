@@ -224,6 +224,7 @@ class MRIsimulator(param.Parameterized):
         self.updateSamplingTime()
         self.updateKspaceModulation()
         self.modulateKspace()
+        self.addNoise()
         self.reconstruct()
         self.updatePDandT1w()
     
@@ -324,9 +325,10 @@ class MRIsimulator(param.Parameterized):
         self.plainKspace = resampleKspace(self.phantom, self.kAxes)
     
 
-    @param.depends('object', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', 'pixelBandWidth', watch=True)
+    @param.depends('object', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', 'fieldStrength', 'pixelBandWidth', watch=True)
     def updateSamplingTime(self):
         self.samplingTime = np.fft.fftfreq(len(self.kAxes[self.freqDir])) / self.pixelBandWidth * 1e3 # msec
+        self.noiseStd = 10. / np.sqrt(np.diff(self.samplingTime[:2])) / self.fieldStrength
         self.samplingTime = np.expand_dims(self.samplingTime, axis=[dim for dim in range(len(self.matrix)) if dim != self.freqDir])
     
 
@@ -353,6 +355,11 @@ class MRIsimulator(param.Parameterized):
             else:
                 for component in ADIPOSERESONANCES:
                     self.kspace[component] = self.plainKspace[tissue] * self.kspaceModulation[component]
+    
+    
+    @param.depends('object', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', 'TE', 'fieldStrength', 'pixelBandWidth', 'sequence', watch=True)
+    def addNoise(self):
+        self.kspace['noise'] = np.random.normal(0, self.noiseStd, self.oversampledMatrix) + 1j * np.random.normal(0, self.noiseStd, self.oversampledMatrix)
 
 
     @param.depends('object', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', 'TE', 'fieldStrength', 'pixelBandWidth', 'sequence', watch=True)
@@ -378,13 +385,16 @@ class MRIsimulator(param.Parameterized):
     def getImage(self):
         pixelArray = np.zeros(self.reconMatrix, dtype=complex)
         for component in self.imageArrays:
-            if 'adipose' in component: 
+            if component=='noise':
+                continue
+            elif 'adipose' in component: 
                 tissue = 'adipose'
                 ratio = ADIPOSERESONANCES[component]['ratioWithFatSat' if self.FatSat else 'ratio']
             else:
                 tissue = component
                 ratio = 1.0
             pixelArray += self.imageArrays[component] * self.PDandT1w[tissue] * ratio
+        pixelArray += self.imageArrays['noise']
         
         img = xr.DataArray(
             np.abs(pixelArray), 
@@ -406,7 +416,8 @@ dashboard = pn.Row(pn.Column(pn.pane.Markdown(title), pn.Row(contrastParams, geo
 dashboard.servable() # run by ´panel serve app.py´, then open http://localhost:5006/app in browser
 
 
-# TODO: add noise
+# TODO: double-check noise behaviour wrt matrix etc is correct!
+# TODO: add NSA
 # TODO: do T2(*)-weighting in kspace
 # TODO: add ACQ time
 # TODO: add k-space plot
