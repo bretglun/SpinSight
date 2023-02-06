@@ -212,6 +212,7 @@ class MRIsimulator(param.Parameterized):
     reconMatrixY = param.Integer(default=256, bounds=(matrixY.default, 1024), label='Reconstruction matrix y')
     freqeuencyDirection = param.ObjectSelector(default=list(DIRECTIONS.keys())[-1], objects=DIRECTIONS.keys(), label='Frequency encoding direction')
     pixelBandWidth = param.Number(default=500, bounds=(50, 1000), label='Pixel bandwidth [Hz]')
+    NSA = param.Integer(default=1, bounds=(1, 32), label='NSA')
     
 
     def __init__(self, **params):
@@ -325,10 +326,10 @@ class MRIsimulator(param.Parameterized):
         self.plainKspace = resampleKspace(self.phantom, self.kAxes)
     
 
-    @param.depends('object', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', 'fieldStrength', 'pixelBandWidth', watch=True)
+    @param.depends('object', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', 'fieldStrength', 'pixelBandWidth', 'NSA', watch=True)
     def updateSamplingTime(self):
         self.samplingTime = np.fft.fftfreq(len(self.kAxes[self.freqDir])) / self.pixelBandWidth * 1e3 # msec
-        self.noiseStd = 10. / np.sqrt(np.diff(self.samplingTime[:2])) / self.fieldStrength
+        self.noiseStd = 10. / np.sqrt(np.diff(self.samplingTime[:2]) * self.NSA) / self.fieldStrength
         self.samplingTime = np.expand_dims(self.samplingTime, axis=[dim for dim in range(len(self.matrix)) if dim != self.freqDir])
     
 
@@ -357,21 +358,21 @@ class MRIsimulator(param.Parameterized):
                     self.kspace[component] = self.plainKspace[tissue] * self.kspaceModulation[component]
     
     
-    @param.depends('object', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', 'TE', 'fieldStrength', 'pixelBandWidth', 'sequence', watch=True)
+    @param.depends('object', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', 'TE', 'fieldStrength', 'pixelBandWidth', 'NSA', 'sequence', watch=True)
     def addNoise(self):
         self.kspace['noise'] = np.random.normal(0, self.noiseStd, self.oversampledMatrix) + 1j * np.random.normal(0, self.noiseStd, self.oversampledMatrix)
 
 
-    @param.depends('object', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', 'TE', 'fieldStrength', 'pixelBandWidth', 'sequence', watch=True)
+    @param.depends('object', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', 'TE', 'fieldStrength', 'pixelBandWidth', 'NSA', 'sequence', watch=True)
     def reconstruct(self):
         self.imageArrays = {}
         # half pixel shift for even dims (based on reconMatrix, not oversampledReconMatrix!)
         shift = [.0 if self.reconMatrix[dim]%2 else .5 for dim in range(len(self.reconMatrix))]
         halfPixelShift = getPixelShiftMatrix(self.oversampledReconMatrix, shift)
         for component in self.kspace:
-            self.kspace[component] = zerofill(self.kspace[component], self.oversampledReconMatrix)
-            self.kspace[component] *= halfPixelShift
-            self.imageArrays[component] = np.fft.fftshift(np.fft.ifft2(self.kspace[component]))
+            kspace = zerofill(self.kspace[component], self.oversampledReconMatrix)
+            kspace *= halfPixelShift
+            self.imageArrays[component] = np.fft.fftshift(np.fft.ifft2(kspace))
             self.imageArrays[component] = crop(self.imageArrays[component], self.reconMatrix)
         self.iAxes = [(np.arange(self.reconMatrix[dim]) - (self.reconMatrix[dim]-1)/2) / self.reconMatrix[dim] * self.FOV[dim] for dim in range(2)]
 
@@ -381,7 +382,7 @@ class MRIsimulator(param.Parameterized):
         self.PDandT1w = {tissue: getPDandT1w(tissue, self.sequence, self.TR, self.TE, self.TI, self.FA, self.fieldStrength) for tissue in self.tissues}
 
 
-    @param.depends('object', 'fieldStrength', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', 'pixelBandWidth', 'sequence', 'TR', 'TE', 'FA', 'TI', 'FatSat')
+    @param.depends('object', 'fieldStrength', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', 'pixelBandWidth', 'NSA', 'sequence', 'TR', 'TE', 'FA', 'TI', 'FatSat')
     def getImage(self):
         pixelArray = np.zeros(self.reconMatrix, dtype=complex)
         for component in self.imageArrays:
@@ -410,18 +411,16 @@ explorer = MRIsimulator(name='')
 title = '# MRI simulator'
 author = '*Written by [Johan Berglund](mailto:johan.berglund@akademiska.se), Ph.D.*'
 contrastParams = pn.panel(explorer.param, parameters=['fieldStrength', 'sequence', 'FatSat', 'TR', 'shortTRrange', 'TE', 'shortTErange', 'FA', 'TI'], name='Contrast')
-geometryParams = pn.panel(explorer.param, parameters=['FOVX', 'FOVY', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'freqeuencyDirection', 'pixelBandWidth'], name='Geometry')
+geometryParams = pn.panel(explorer.param, parameters=['FOVX', 'FOVY', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'freqeuencyDirection', 'pixelBandWidth', 'NSA'], name='Geometry')
 dmapMRimage = hv.DynamicMap(explorer.getImage).opts(frame_height=500)
 dashboard = pn.Row(pn.Column(pn.pane.Markdown(title), pn.Row(contrastParams, geometryParams), pn.pane.Markdown(author)), dmapMRimage)
 dashboard.servable() # run by ´panel serve app.py´, then open http://localhost:5006/app in browser
 
 
-# TODO: double-check noise behaviour wrt matrix etc is correct!
-# TODO: add NSA
 # TODO: do T2(*)-weighting in kspace
+# TODO: add params for matrix/pixelSize and BW like different vendors and handle their correlation
 # TODO: add ACQ time
 # TODO: add k-space plot
-# TODO: add params for matrix/pixelSize and BW like different vendors and handle their correlation
 # TODO: add apodization
 # TODO: parallel imaging (GRAPPA)
 # TODO: B0 inhomogeneity
