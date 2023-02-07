@@ -172,10 +172,12 @@ def crop(arr, shape):
     return arr
 
 
-def getT2w(tissue, TE, B0):
+def getT2w(tissue, decayTime, dephasingTime, B0):
     T2 = TISSUES[tissue]['T2'][B0]
-    E2 = np.exp(-TE/T2)
-    return E2
+    T2prim = 100. # ad hoc value [msec]
+    E2 = np.exp(-decayTime/T2)
+    E2prim = np.exp(-np.abs(dephasingTime)/T2prim)
+    return E2 * E2prim
 
 
 def getPDandT1w(tissue, seqType, TR, TE, TI, FA, B0):
@@ -335,13 +337,15 @@ class MRIsimulator(param.Parameterized):
 
     @param.depends('object', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', 'TE', 'fieldStrength', 'pixelBandWidth', 'sequence', watch=True)
     def updateKspaceModulation(self):
-        dephasingTime = self.samplingTime + self.TE if 'Gradient Echo' in self.sequence else self.samplingTime
+        decayTime = self.samplingTime + self.TE
+        dephasingTime = decayTime if 'Gradient Echo' in self.sequence else self.samplingTime
+        
         self.kspaceModulation = {}
         for tissue in self.tissues:
             if tissue != 'adipose':
-                self.kspaceModulation[tissue] = getT2w(tissue, self.TE + self.samplingTime, self.fieldStrength)
+                self.kspaceModulation[tissue] = getT2w(tissue, decayTime, dephasingTime, self.fieldStrength)
             else:
-                T2w = getT2w(tissue, self.TE + self.samplingTime, self.fieldStrength)
+                T2w = getT2w(tissue, decayTime, dephasingTime, self.fieldStrength)
                 for component, resonance in ADIPOSERESONANCES.items():
                     dephasing = np.exp(2j*np.pi * GYRO * self.fieldStrength * resonance['shift'] * dephasingTime * 1e-3)
                     self.kspaceModulation[component] = dephasing * T2w
@@ -417,13 +421,11 @@ dashboard = pn.Row(pn.Column(pn.pane.Markdown(title), pn.Row(contrastParams, geo
 dashboard.servable() # run by ´panel serve app.py´, then open http://localhost:5006/app in browser
 
 
-# TODO: do T2(*)-weighting in kspace
 # TODO: add params for matrix/pixelSize and BW like different vendors and handle their correlation
 # TODO: add ACQ time
 # TODO: add k-space plot
 # TODO: add apodization
 # TODO: parallel imaging (GRAPPA)
 # TODO: B0 inhomogeneity
-# TODO: T2* weighting
 # TODO: Fast spin echo
 # TODO: EPI
