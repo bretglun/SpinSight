@@ -2,3 +2,4 @@ holoviews
 panel
 param
 numpy
+xarray
