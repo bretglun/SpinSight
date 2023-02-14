@@ -4,7 +4,7 @@ To run the simulator locally:
 `panel serve app.py`
 
 To deploy files on Google App Engine:  
-`gcloud app deploy`
+`gcloud app deploy --stop-previous-version`
 
 This publishes the app on https://mrisimulator.ey.r.appspot.com
 
