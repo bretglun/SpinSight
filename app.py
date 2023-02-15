@@ -205,7 +205,7 @@ class MRIsimulator(param.Parameterized):
     TE = param.Number(default=10.0, bounds=(0, 400.0), label='TE [msec]')
     shortTErange = param.Boolean(default=False, label='Short TE range')
     FA = param.Number(default=90.0, bounds=(1, 90.0), precedence=-1, label='Flip angle [°]')
-    TI = param.Number(default=1.0, bounds=(0, 8000.0), precedence=-1, label='TI [msec]')
+    TI = param.Number(default=50.0, bounds=(0, 4000.0), precedence=-1, label='TI [msec]')
     FOVX = param.Number(default=420, bounds=(100, 600), label='FOV x [mm]')
     FOVY = param.Number(default=420, bounds=(100, 600), label='FOV y [mm]')
     matrixX = param.Integer(default=128, bounds=(16, 600), label='Acquisition matrix x')
@@ -237,6 +237,15 @@ class MRIsimulator(param.Parameterized):
         self.readoutDuration = 1e3 / self.pixelBandWidth # [msec]
     
     
+    @param.depends('shortTRrange', 'pixelBandWidth', 'sequence', 'TE', 'TI', watch=True)
+    def updateTRbounds(self):
+        minTR = DURATIONS['exc']/2 + self.TE + self.readoutDuration/2 + DURATIONS['spoil']
+        if self.sequence == 'Inversion Recovery': minTR += DURATIONS['inv']/2 + self.TI - DURATIONS['exc']/2
+        maxTR = max(minTR, 100 if self.shortTRrange else 8000)
+        self.param.TR.bounds = (minTR, maxTR)
+        self.TR = min(max(self.TR, minTR), maxTR)
+    
+    
     @param.depends('shortTErange', 'pixelBandWidth', 'sequence', 'TR', 'TI', watch=True)
     def updateTEbounds(self):
         if self.sequence in ['Spin Echo', 'Inversion Recovery']: # seqs with refocusing pulse
@@ -250,21 +259,13 @@ class MRIsimulator(param.Parameterized):
         self.param.TE.bounds = (minTE, maxTE)
         self.TE = min(max(self.TE, minTE), maxTE)
     
-    
-    @param.depends('shortTRrange', 'pixelBandWidth', 'sequence', 'TE', 'TI', watch=True)
-    def updateTRbounds(self):
-        minTR = DURATIONS['exc']/2 + self.TE + self.readoutDuration/2 + DURATIONS['spoil']
-        if self.sequence == 'Inversion Recovery': minTR += DURATIONS['inv']/2 + self.TI - DURATIONS['exc']/2
-        maxTR = 100 if self.shortTRrange else 8000
-        self.param.TR.bounds = (minTR, maxTR)
-        self.TR = min(max(self.TR, minTR), maxTR)
-    
 
     @param.depends('pixelBandWidth', 'sequence', 'TE', 'TR', watch=True)
     def updateTIbounds(self):
         if self.sequence != 'Inversion Recovery': return
         minTI = (DURATIONS['inv'] + DURATIONS['exc'])/2
         maxTI = self.TR - (DURATIONS['inv']/2 + self.TE + self.readoutDuration/2 + DURATIONS['spoil'])
+        maxTI = min(4000, maxTI)
         self.param.TI.bounds = (minTI, maxTI)
         self.TI = min(max(self.TI, minTI), maxTI)
 
