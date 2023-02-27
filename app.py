@@ -26,7 +26,7 @@ TISSUES = {
     'cortical':   {'PD': .05, 'T1': {1.5: 1000, 3.0: 1000}, 'T2': {1.5:    3, 3.0:    1}, 'hexcolor': '808000'},
     'blood':      {'PD': 1.0, 'T1': {1.5: 1441, 3.0: 1932}, 'T2': {1.5:  290, 3.0:  275}, 'hexcolor': 'ffffff'},
     'stomach':    {'PD': 0.2, 'T1': {1.5:  500, 3.0:  500}, 'T2': {1.5:   30, 3.0:   20}, 'hexcolor': '1a1a1a'},
-    'perotineum': {'PD': 1.0, 'T1': {1.5:  900, 3.0:  900}, 'T2': {1.5:   30, 3.0:   30}, 'hexcolor': 'ff8080'},
+    'perotineum': {'PD': 1.0, 'T1': {1.5: 1500, 3.0: 1500}, 'T2': {1.5:   30, 3.0:   30}, 'hexcolor': 'ff8080'},
 }
 
 ADIPOSERESONANCES = { 'adiposeWater': {'shift': 4.7 - 4.7, 'ratio': .050, 'ratioWithFatSat': .050},
@@ -200,9 +200,9 @@ class MRIsimulator(param.Parameterized):
     fieldStrength = param.ObjectSelector(default=1.5, objects=[1.5, 3.0], label='B0 field strength [T]')
     sequence = param.ObjectSelector(default=SEQUENCES[0], objects=SEQUENCES, label='Pulse sequence')
     FatSat = param.Boolean(default=False, label='Fat saturation')
-    TR = param.Number(default=750.0, bounds=(0, 8000.0), label='TR [msec]')
+    TR = param.Number(default=8000.0, bounds=(0, 8000.0), label='TR [msec]')
     shortTRrange = param.Boolean(default=False, label='Short TR range')
-    TE = param.Number(default=10.0, bounds=(0, 400.0), label='TE [msec]')
+    TE = param.Number(default=7.0, bounds=(0, 400.0), label='TE [msec]')
     shortTErange = param.Boolean(default=False, label='Short TE range')
     FA = param.Number(default=90.0, bounds=(1, 90.0), precedence=-1, label='Flip angle [°]')
     TI = param.Number(default=50.0, bounds=(0, 4000.0), precedence=-1, label='TI [msec]')
@@ -213,7 +213,7 @@ class MRIsimulator(param.Parameterized):
     reconMatrixX = param.Integer(default=256, bounds=(matrixX.default, 1024), label='Reconstruction matrix x')
     reconMatrixY = param.Integer(default=256, bounds=(matrixY.default, 1024), label='Reconstruction matrix y')
     freqeuencyDirection = param.ObjectSelector(default=list(DIRECTIONS.keys())[-1], objects=DIRECTIONS.keys(), label='Frequency encoding direction')
-    pixelBandWidth = param.Number(default=500, bounds=(50, 1000), label='Pixel bandwidth [Hz]')
+    pixelBandWidth = param.Number(default=2000, bounds=(50, 2000), label='Pixel bandwidth [Hz]')
     NSA = param.Integer(default=1, bounds=(1, 32), label='NSA')
     
 
@@ -332,7 +332,7 @@ class MRIsimulator(param.Parameterized):
     @param.depends('object', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', 'fieldStrength', 'pixelBandWidth', 'NSA', watch=True)
     def updateSamplingTime(self):
         self.samplingTime = np.fft.fftfreq(len(self.kAxes[self.freqDir])) / self.pixelBandWidth * 1e3 # msec
-        self.noiseStd = 10. / np.sqrt(np.diff(self.samplingTime[:2]) * self.NSA) / self.fieldStrength
+        self.noiseStd = 1. / np.sqrt(np.diff(self.samplingTime[:2]) * self.NSA) / self.fieldStrength
         self.samplingTime = np.expand_dims(self.samplingTime, axis=[dim for dim in range(len(self.matrix)) if dim != self.freqDir])
     
 
