@@ -1,4 +1,4 @@
-MRI simulator
+SpinSight MRI simulator
 ===
 Run the simulator locally
 ---

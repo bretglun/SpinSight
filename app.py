@@ -413,7 +413,7 @@ class MRIsimulator(param.Parameterized):
 
 
 explorer = MRIsimulator(name='')
-title = '# MRI simulator'
+title = '# SpinSight MRI simulator'
 author = '*Written by [Johan Berglund](mailto:johan.berglund@akademiska.se), Ph.D.*'
 contrastParams = pn.panel(explorer.param, parameters=['fieldStrength', 'sequence', 'FatSat', 'TR', 'shortTRrange', 'TE', 'shortTErange', 'FA', 'TI'], name='Contrast')
 geometryParams = pn.panel(explorer.param, parameters=['FOVX', 'FOVY', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'freqeuencyDirection', 'pixelBandWidth', 'NSA'], name='Geometry')
