@@ -17,7 +17,7 @@ TISSUES = {
     'white':      {'PD': 0.9, 'FF': .00, 'T1': {1.5:  560, 3.0:  830}, 'T2': {1.5:   82, 3.0:  110}, 'hexcolor': 'd40000'},
     'CSF':        {'PD': 1.0, 'FF': .00, 'T1': {1.5: 4280, 3.0: 4160}, 'T2': {1.5: 2030, 3.0: 2100}, 'hexcolor': '00ffff'},
     'adipose':    {'PD': 1.0, 'FF': .95, 'T1': {1.5:  290, 3.0:  370}, 'T2': {1.5:  165, 3.0:  130}, 'hexcolor': 'ffe680'},
-    'bonemarrow': {'PD': 1.0, 'FF': .80, 'T1': {1.5:  290, 3.0:  370}, 'T2': {1.5:  165, 3.0:  130}, 'hexcolor': 'ffff44'},
+    'bonemarrow': {'PD': 1.0, 'FF': .50, 'T1': {1.5:  856, 3.0:  898}, 'T2': {1.5:   46, 3.0:   34}, 'hexcolor': 'ffff44'}, # relaxation times for water component
     'liver':      {'PD': 1.0, 'FF': .01, 'T1': {1.5:  586, 3.0:  809}, 'T2': {1.5:   46, 3.0:   34}, 'hexcolor': '800000'},
     'spleen':     {'PD': 1.0, 'FF': .00, 'T1': {1.5: 1057, 3.0: 1328}, 'T2': {1.5:   79, 3.0:   61}, 'hexcolor': 'ff0000'},
     'muscle':     {'PD': 1.0, 'FF': .00, 'T1': {1.5:  856, 3.0:  898}, 'T2': {1.5:   27, 3.0:   29}, 'hexcolor': '008000'},
@@ -30,12 +30,12 @@ TISSUES = {
     'perotineum': {'PD': 1.0, 'FF': .00, 'T1': {1.5: 1500, 3.0: 1500}, 'T2': {1.5:   30, 3.0:   30}, 'hexcolor': 'ff8080'},
 }
 
-FATRESONANCES = { 'Fat1':  {'shift': 0.9 - 4.7, 'ratio': .087, 'ratioWithFatSat': .010},
-                  'Fat2':  {'shift': 1.3 - 4.7, 'ratio': .694, 'ratioWithFatSat': .033},
-                  'Fat3':  {'shift': 2.1 - 4.7, 'ratio': .129, 'ratioWithFatSat': .038},
-                  'Fat4':  {'shift': 2.8 - 4.7, 'ratio': .004, 'ratioWithFatSat': .003},
-                  'Fat5':  {'shift': 4.3 - 4.7, 'ratio': .039, 'ratioWithFatSat': .037}, 
-                  'Fat6':  {'shift': 5.3 - 4.7, 'ratio': .047, 'ratioWithFatSat': .045} }
+FATRESONANCES = { 'Fat1':  {'shift': 0.9 - 4.7, 'ratio': .087, 'ratioWithFatSat': .010, 'PD': 1.0, 'T1': {1.5:  290, 3.0:  370}, 'T2': {1.5:  165, 3.0:  130}},
+                  'Fat2':  {'shift': 1.3 - 4.7, 'ratio': .694, 'ratioWithFatSat': .033, 'PD': 1.0, 'T1': {1.5:  290, 3.0:  370}, 'T2': {1.5:  165, 3.0:  130}},
+                  'Fat3':  {'shift': 2.1 - 4.7, 'ratio': .129, 'ratioWithFatSat': .038, 'PD': 1.0, 'T1': {1.5:  290, 3.0:  370}, 'T2': {1.5:  165, 3.0:  130}},
+                  'Fat4':  {'shift': 2.8 - 4.7, 'ratio': .004, 'ratioWithFatSat': .003, 'PD': 1.0, 'T1': {1.5:  290, 3.0:  370}, 'T2': {1.5:  165, 3.0:  130}},
+                  'Fat5':  {'shift': 4.3 - 4.7, 'ratio': .039, 'ratioWithFatSat': .037, 'PD': 1.0, 'T1': {1.5:  290, 3.0:  370}, 'T2': {1.5:  165, 3.0:  130}}, 
+                  'Fat6':  {'shift': 5.3 - 4.7, 'ratio': .047, 'ratioWithFatSat': .045, 'PD': 1.0, 'T1': {1.5:  290, 3.0:  370}, 'T2': {1.5:  165, 3.0:  130}} }
 
 SEQUENCES = ['Spin Echo', 'Spoiled Gradient Echo', 'Inversion Recovery']
 
@@ -172,18 +172,18 @@ def crop(arr, shape):
     return arr
 
 
-def getT2w(tissue, decayTime, dephasingTime, B0):
-    T2 = TISSUES[tissue]['T2'][B0]
+def getT2w(component, decayTime, dephasingTime, B0):
+    T2 = TISSUES[component]['T2'][B0] if 'Fat' not in component else FATRESONANCES[component]['T2'][B0]
     T2prim = 100. # ad hoc value [msec]
     E2 = np.exp(-decayTime/T2)
     E2prim = np.exp(-np.abs(dephasingTime)/T2prim)
     return E2 * E2prim
 
 
-def getPDandT1w(tissue, seqType, TR, TE, TI, FA, B0):
-    PD = TISSUES[tissue]['PD']
-    T1 = TISSUES[tissue]['T1'][B0]
-    
+def getPDandT1w(component, seqType, TR, TE, TI, FA, B0):
+    PD = TISSUES[component]['PD'] if 'Fat' not in component else FATRESONANCES[component]['PD']
+    T1 = TISSUES[component]['T1'][B0] if 'Fat' not in component else FATRESONANCES[component]['T1'][B0]
+
     E1 = np.exp(-TR/T1)
     if seqType == 'Spin Echo':
         return PD * (1 - E1)
@@ -349,6 +349,7 @@ class MRIsimulator(param.Parameterized):
                 T2w = getT2w(tissue, decayTime, dephasingTime, self.fieldStrength)
                 self.kspaceModulation[tissue + 'Water'] = T2w
                 for component, resonance in FATRESONANCES.items():
+                    T2w = getT2w(component, decayTime, dephasingTime, self.fieldStrength)
                     dephasing = np.exp(2j*np.pi * GYRO * self.fieldStrength * resonance['shift'] * dephasingTime * 1e-3)
                     self.kspaceModulation[tissue + component] = dephasing * T2w
 
@@ -386,7 +387,7 @@ class MRIsimulator(param.Parameterized):
 
     @param.depends('object', 'fieldStrength', 'sequence', 'TR', 'TE', 'FA', 'TI', watch=True)
     def updatePDandT1w(self):
-        self.PDandT1w = {tissue: getPDandT1w(tissue, self.sequence, self.TR, self.TE, self.TI, self.FA, self.fieldStrength) for tissue in self.tissues}
+        self.PDandT1w = {component: getPDandT1w(component, self.sequence, self.TR, self.TE, self.TI, self.FA, self.fieldStrength) for component in self.tissues.union(set(FATRESONANCES.keys()))}
 
 
     @param.depends('object', 'fieldStrength', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', 'pixelBandWidth', 'NSA', 'sequence', 'TR', 'TE', 'FA', 'TI', 'FatSat')
@@ -395,17 +396,20 @@ class MRIsimulator(param.Parameterized):
         for component in self.imageArrays:
             if component=='noise':
                 continue
-            elif 'Water' in component:
-                tissue = component[:component.find('Water')]
-                ratio = 1 - TISSUES[tissue]['FF']
-            elif 'Fat' in component:
+            if 'Fat' in component:
                 tissue = component[:component.find('Fat')]
-                ratio = FATRESONANCES[component[component.find('Fat'):]]['ratioWithFatSat' if self.FatSat else 'ratio']
+                resonance = component[component.find('Fat'):]
+                ratio = FATRESONANCES[resonance]['ratioWithFatSat' if self.FatSat else 'ratio']
                 ratio *= TISSUES[tissue]['FF']
+                pixelArray += self.imageArrays[component] * self.PDandT1w[resonance] * ratio
             else:
-                tissue = component
-                ratio = 1.0
-            pixelArray += self.imageArrays[component] * self.PDandT1w[tissue] * ratio
+                if 'Water' in component:
+                    tissue = component[:component.find('Water')]
+                    ratio = 1 - TISSUES[tissue]['FF']    
+                else:
+                    tissue = component
+                    ratio = 1.0
+                pixelArray += self.imageArrays[component] * self.PDandT1w[tissue] * ratio
         pixelArray += self.imageArrays['noise']
         
         img = xr.DataArray(
@@ -428,6 +432,8 @@ dashboard = pn.Row(pn.Column(pn.pane.Markdown(title), pn.Row(contrastParams, geo
 dashboard.servable() # run by ´panel serve app.py´, then open http://localhost:5006/app in browser
 
 
+# TODO: abdomen phantom ribs, pancreas, hepatic arteries
+# TODO: update BW bound wrt TE and TR
 # TODO: add params for matrix/pixelSize and BW like different vendors and handle their correlation
 # TODO: add ACQ time
 # TODO: add k-space plot
