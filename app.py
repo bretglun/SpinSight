@@ -225,7 +225,6 @@ class MRIsimulator(param.Parameterized):
         self.loadPhantom()
         self.sampleKspace()
         self.updateSamplingTime()
-        self.updateKspaceModulation()
         self.modulateKspace()
         self.addNoise()
         self.reconstruct()
@@ -337,33 +336,21 @@ class MRIsimulator(param.Parameterized):
     
 
     @param.depends('object', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', 'TE', 'fieldStrength', 'pixelBandWidth', 'sequence', watch=True)
-    def updateKspaceModulation(self):
+    def modulateKspace(self):
         decayTime = self.samplingTime + self.TE
         dephasingTime = decayTime if 'Gradient Echo' in self.sequence else self.samplingTime
         
-        self.kspaceModulation = {}
+        self.kspace = {}
         for tissue in self.tissues:
+            T2w = getT2w(tissue, decayTime, dephasingTime, self.fieldStrength)
             if TISSUES[tissue]['FF'] == .00:
-                self.kspaceModulation[tissue] = getT2w(tissue, decayTime, dephasingTime, self.fieldStrength)
+                self.kspace[tissue] = self.plainKspace[tissue] * T2w
             else: # fat containing tissues
-                T2w = getT2w(tissue, decayTime, dephasingTime, self.fieldStrength)
-                self.kspaceModulation[tissue + 'Water'] = T2w
+                self.kspace[tissue + 'Water'] = self.plainKspace[tissue] * T2w
                 for component, resonance in FATRESONANCES.items():
                     T2w = getT2w(component, decayTime, dephasingTime, self.fieldStrength)
                     dephasing = np.exp(2j*np.pi * GYRO * self.fieldStrength * resonance['shift'] * dephasingTime * 1e-3)
-                    self.kspaceModulation[tissue + component] = dephasing * T2w
-
-
-    @param.depends('object', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', 'TE', 'fieldStrength', 'pixelBandWidth', 'sequence', watch=True)
-    def modulateKspace(self):
-        self.kspace = {}
-        for tissue in self.tissues:
-            if TISSUES[tissue]['FF'] == .00:
-                self.kspace[tissue] = self.plainKspace[tissue] * self.kspaceModulation[tissue]
-            else: # fat containing tissues
-                self.kspace[tissue + 'Water'] = self.plainKspace[tissue] * self.kspaceModulation[tissue + 'Water']
-                for component in FATRESONANCES:
-                    self.kspace[tissue + component] = self.plainKspace[tissue] * self.kspaceModulation[tissue + component]
+                    self.kspace[tissue + component] = self.plainKspace[tissue] * dephasing * T2w
     
     
     @param.depends('object', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', 'TE', 'fieldStrength', 'pixelBandWidth', 'NSA', 'sequence', watch=True)
