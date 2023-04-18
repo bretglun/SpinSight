@@ -227,8 +227,9 @@ class MRIsimulator(param.Parameterized):
         self.updateSamplingTime()
         self.modulateKspace()
         self.addNoise()
-        self.reconstruct()
         self.updatePDandT1w()
+        self.compileKspace()
+        self.reconstruct()
     
 
     @param.depends('pixelBandWidth', watch=True)
@@ -236,7 +237,7 @@ class MRIsimulator(param.Parameterized):
         self.readoutDuration = 1e3 / self.pixelBandWidth # [msec]
     
     
-    @param.depends('shortTRrange', 'pixelBandWidth', 'sequence', 'TE', 'TI', watch=True)
+    @param.depends('sequence', 'shortTRrange', 'TE', 'TI', 'pixelBandWidth', watch=True)
     def updateTRbounds(self):
         minTR = DURATIONS['exc']/2 + self.TE + self.readoutDuration/2 + DURATIONS['spoil']
         if self.sequence == 'Inversion Recovery': minTR += DURATIONS['inv']/2 + self.TI - DURATIONS['exc']/2
@@ -245,7 +246,7 @@ class MRIsimulator(param.Parameterized):
         self.TR = min(max(self.TR, minTR), maxTR)
     
     
-    @param.depends('shortTErange', 'pixelBandWidth', 'sequence', 'TR', 'TI', watch=True)
+    @param.depends('sequence', 'TR', 'shortTErange', 'TI', 'pixelBandWidth', watch=True)
     def updateTEbounds(self):
         if self.sequence in ['Spin Echo', 'Inversion Recovery']: # seqs with refocusing pulse
             minTE = max((DURATIONS['exc'] + DURATIONS['ref']), (DURATIONS['ref'] + self.readoutDuration))
@@ -259,7 +260,7 @@ class MRIsimulator(param.Parameterized):
         self.TE = min(max(self.TE, minTE), maxTE)
     
 
-    @param.depends('pixelBandWidth', 'sequence', 'TE', 'TR', watch=True)
+    @param.depends('sequence', 'TR', 'TE', 'pixelBandWidth', watch=True)
     def updateTIbounds(self):
         if self.sequence != 'Inversion Recovery': return
         minTI = (DURATIONS['inv'] + DURATIONS['exc'])/2
@@ -311,7 +312,7 @@ class MRIsimulator(param.Parameterized):
                 np.save(file, self.phantom['kspace'][tissue])
     
 
-    @param.depends('object', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', watch=True)
+    @param.depends('object', 'FOVX', 'FOVY', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'freqeuencyDirection', watch=True)
     def sampleKspace(self):
         self.matrix = [self.matrixY, self.matrixX]
         self.reconMatrix = [self.reconMatrixY, self.reconMatrixX]
@@ -325,70 +326,55 @@ class MRIsimulator(param.Parameterized):
             self.oversampledReconMatrix[self.freqDir] = int(self.reconMatrix[self.freqDir] * self.oversampledMatrix[self.freqDir] / self.matrix[self.freqDir])
         
         self.kAxes = [np.fft.fftfreq(self.oversampledMatrix[dim]) * self.matrix[dim] / self.FOV[dim] for dim in range(len(self.matrix))]
-        self.plainKspace = resampleKspace(self.phantom, self.kAxes)
+        self.plainKspaceComps = resampleKspace(self.phantom, self.kAxes)
     
 
-    @param.depends('object', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', 'fieldStrength', 'pixelBandWidth', 'NSA', watch=True)
+    @param.depends('object', 'fieldStrength', 'FOVX', 'FOVY', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'freqeuencyDirection', 'pixelBandWidth', 'NSA', watch=True)
     def updateSamplingTime(self):
         self.samplingTime = np.fft.fftfreq(len(self.kAxes[self.freqDir])) / self.pixelBandWidth * 1e3 # msec
         self.noiseStd = 1. / np.sqrt(np.diff(self.samplingTime[:2]) * self.NSA) / self.fieldStrength
         self.samplingTime = np.expand_dims(self.samplingTime, axis=[dim for dim in range(len(self.matrix)) if dim != self.freqDir])
     
 
-    @param.depends('object', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', 'TE', 'fieldStrength', 'pixelBandWidth', 'sequence', watch=True)
+    @param.depends('object', 'fieldStrength', 'sequence', 'TE', 'FOVX', 'FOVY', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'freqeuencyDirection', 'pixelBandWidth', 'NSA', watch=True)
     def modulateKspace(self):
         decayTime = self.samplingTime + self.TE
         dephasingTime = decayTime if 'Gradient Echo' in self.sequence else self.samplingTime
         
-        self.kspace = {}
+        self.kspaceComps = {}
         for tissue in self.tissues:
             T2w = getT2w(tissue, decayTime, dephasingTime, self.fieldStrength)
             if TISSUES[tissue]['FF'] == .00:
-                self.kspace[tissue] = self.plainKspace[tissue] * T2w
+                self.kspaceComps[tissue] = self.plainKspaceComps[tissue] * T2w
             else: # fat containing tissues
-                self.kspace[tissue + 'Water'] = self.plainKspace[tissue] * T2w
+                self.kspaceComps[tissue + 'Water'] = self.plainKspaceComps[tissue] * T2w
                 for component, resonance in FATRESONANCES.items():
                     T2w = getT2w(component, decayTime, dephasingTime, self.fieldStrength)
                     dephasing = np.exp(2j*np.pi * GYRO * self.fieldStrength * resonance['shift'] * dephasingTime * 1e-3)
-                    self.kspace[tissue + component] = self.plainKspace[tissue] * dephasing * T2w
+                    self.kspaceComps[tissue + component] = self.plainKspaceComps[tissue] * dephasing * T2w
     
     
-    @param.depends('object', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', 'TE', 'fieldStrength', 'pixelBandWidth', 'NSA', 'sequence', watch=True)
+    # TODO: rethink depends reconmatrix
+    @param.depends('object', 'fieldStrength', 'FOVX', 'FOVY', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'freqeuencyDirection', 'pixelBandWidth', 'NSA', watch=True)
     def addNoise(self):
-        self.kspace['noise'] = np.random.normal(0, self.noiseStd, self.oversampledMatrix) + 1j * np.random.normal(0, self.noiseStd, self.oversampledMatrix)
-
-
-    @param.depends('object', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', 'TE', 'fieldStrength', 'pixelBandWidth', 'NSA', 'sequence', watch=True)
-    def reconstruct(self):
-        self.imageArrays = {}
-        # half pixel shift for even dims (based on reconMatrix, not oversampledReconMatrix!)
-        shift = [.0 if self.reconMatrix[dim]%2 else .5 for dim in range(len(self.reconMatrix))]
-        halfPixelShift = getPixelShiftMatrix(self.oversampledReconMatrix, shift)
-        for component in self.kspace:
-            kspace = zerofill(self.kspace[component], self.oversampledReconMatrix)
-            kspace *= halfPixelShift
-            self.imageArrays[component] = np.fft.fftshift(np.fft.ifft2(kspace))
-            self.imageArrays[component] = crop(self.imageArrays[component], self.reconMatrix)
-        self.iAxes = [(np.arange(self.reconMatrix[dim]) - (self.reconMatrix[dim]-1)/2) / self.reconMatrix[dim] * self.FOV[dim] for dim in range(2)]
-
+        self.noise = np.random.normal(0, self.noiseStd, self.oversampledMatrix) + 1j * np.random.normal(0, self.noiseStd, self.oversampledMatrix)
+    
 
     @param.depends('object', 'fieldStrength', 'sequence', 'TR', 'TE', 'FA', 'TI', watch=True)
     def updatePDandT1w(self):
         self.PDandT1w = {component: getPDandT1w(component, self.sequence, self.TR, self.TE, self.TI, self.FA, self.fieldStrength) for component in self.tissues.union(set(FATRESONANCES.keys()))}
 
 
-    @param.depends('object', 'fieldStrength', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'FOVX', 'FOVY', 'freqeuencyDirection', 'pixelBandWidth', 'NSA', 'sequence', 'TR', 'TE', 'FA', 'TI', 'FatSat')
-    def getImage(self):
-        pixelArray = np.zeros(self.reconMatrix, dtype=complex)
-        for component in self.imageArrays:
-            if component=='noise':
-                continue
+    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVX', 'FOVY', 'matrixX', 'matrixY', 'freqeuencyDirection', 'pixelBandWidth', 'NSA', watch=True)
+    def compileKspace(self):
+        self.kspace = self.noise.copy()
+        for component in self.kspaceComps:
             if 'Fat' in component:
                 tissue = component[:component.find('Fat')]
                 resonance = component[component.find('Fat'):]
                 ratio = FATRESONANCES[resonance]['ratioWithFatSat' if self.FatSat else 'ratio']
                 ratio *= TISSUES[tissue]['FF']
-                pixelArray += self.imageArrays[component] * self.PDandT1w[resonance] * ratio
+                self.kspace += self.kspaceComps[component] * self.PDandT1w[resonance] * ratio
             else:
                 if 'Water' in component:
                     tissue = component[:component.find('Water')]
@@ -396,11 +382,25 @@ class MRIsimulator(param.Parameterized):
                 else:
                     tissue = component
                     ratio = 1.0
-                pixelArray += self.imageArrays[component] * self.PDandT1w[tissue] * ratio
-        pixelArray += self.imageArrays['noise']
-        
+                self.kspace += self.kspaceComps[component] * self.PDandT1w[tissue] * ratio
+
+    
+    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVX', 'FOVY', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'freqeuencyDirection', 'pixelBandWidth', 'NSA', watch=True)
+    def reconstruct(self):
+        # half pixel shift for even dims (based on reconMatrix, not oversampledReconMatrix!)
+        shift = [.0 if self.reconMatrix[dim]%2 else .5 for dim in range(len(self.reconMatrix))]
+        halfPixelShift = getPixelShiftMatrix(self.oversampledReconMatrix, shift)
+        kspace = zerofill(self.kspace, self.oversampledReconMatrix)
+        kspace *= halfPixelShift
+        self.imageArray = np.fft.fftshift(np.fft.ifft2(kspace))
+        self.imageArray = crop(self.imageArray, self.reconMatrix)
+        self.iAxes = [(np.arange(self.reconMatrix[dim]) - (self.reconMatrix[dim]-1)/2) / self.reconMatrix[dim] * self.FOV[dim] for dim in range(2)]
+
+
+    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVX', 'FOVY', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'freqeuencyDirection', 'pixelBandWidth', 'NSA')
+    def getImage(self):
         img = xr.DataArray(
-            np.abs(pixelArray), 
+            np.abs(self.imageArray), 
             dims=('y', 'x'),
             coords={'x': self.iAxes[1], 'y': self.iAxes[0][::-1]}
         )
