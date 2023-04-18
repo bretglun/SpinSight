@@ -229,6 +229,7 @@ class MRIsimulator(param.Parameterized):
         self.addNoise()
         self.updatePDandT1w()
         self.compileKspace()
+        self.zerofill()
         self.reconstruct()
     
 
@@ -312,31 +313,28 @@ class MRIsimulator(param.Parameterized):
                 np.save(file, self.phantom['kspace'][tissue])
     
 
-    @param.depends('object', 'FOVX', 'FOVY', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'freqeuencyDirection', watch=True)
+    @param.depends('object', 'FOVX', 'FOVY', 'matrixX', 'matrixY', 'freqeuencyDirection', watch=True)
     def sampleKspace(self):
         self.matrix = [self.matrixY, self.matrixX]
-        self.reconMatrix = [self.reconMatrixY, self.reconMatrixX]
         self.FOV = [self.FOVY, self.FOVX]
         self.freqDir = DIRECTIONS[self.freqeuencyDirection]
         
         self.oversampledMatrix = self.matrix.copy() # account for oversampling in frequency encoding direction
-        self.oversampledReconMatrix = self.reconMatrix.copy()
         if self.FOV[self.freqDir] < self.phantom['FOV'][self.freqDir]: # At least Nyquist sampling in frequency encoding direction
             self.oversampledMatrix[self.freqDir] = int(np.ceil(self.phantom['FOV'][self.freqDir] * self.matrix[self.freqDir] / self.FOV[self.freqDir]))
-            self.oversampledReconMatrix[self.freqDir] = int(self.reconMatrix[self.freqDir] * self.oversampledMatrix[self.freqDir] / self.matrix[self.freqDir])
         
         self.kAxes = [np.fft.fftfreq(self.oversampledMatrix[dim]) * self.matrix[dim] / self.FOV[dim] for dim in range(len(self.matrix))]
         self.plainKspaceComps = resampleKspace(self.phantom, self.kAxes)
     
 
-    @param.depends('object', 'fieldStrength', 'FOVX', 'FOVY', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'freqeuencyDirection', 'pixelBandWidth', 'NSA', watch=True)
+    @param.depends('object', 'fieldStrength', 'FOVX', 'FOVY', 'matrixX', 'matrixY', 'freqeuencyDirection', 'pixelBandWidth', 'NSA', watch=True)
     def updateSamplingTime(self):
         self.samplingTime = np.fft.fftfreq(len(self.kAxes[self.freqDir])) / self.pixelBandWidth * 1e3 # msec
         self.noiseStd = 1. / np.sqrt(np.diff(self.samplingTime[:2]) * self.NSA) / self.fieldStrength
         self.samplingTime = np.expand_dims(self.samplingTime, axis=[dim for dim in range(len(self.matrix)) if dim != self.freqDir])
     
 
-    @param.depends('object', 'fieldStrength', 'sequence', 'TE', 'FOVX', 'FOVY', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'freqeuencyDirection', 'pixelBandWidth', 'NSA', watch=True)
+    @param.depends('object', 'fieldStrength', 'sequence', 'TE', 'FOVX', 'FOVY', 'matrixX', 'matrixY', 'freqeuencyDirection', 'pixelBandWidth', 'NSA', watch=True)
     def modulateKspace(self):
         decayTime = self.samplingTime + self.TE
         dephasingTime = decayTime if 'Gradient Echo' in self.sequence else self.samplingTime
@@ -354,8 +352,7 @@ class MRIsimulator(param.Parameterized):
                     self.kspaceComps[tissue + component] = self.plainKspaceComps[tissue] * dephasing * T2w
     
     
-    # TODO: rethink depends reconmatrix
-    @param.depends('object', 'fieldStrength', 'FOVX', 'FOVY', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'freqeuencyDirection', 'pixelBandWidth', 'NSA', watch=True)
+    @param.depends('object', 'fieldStrength', 'FOVX', 'FOVY', 'matrixX', 'matrixY', 'freqeuencyDirection', 'pixelBandWidth', 'NSA', watch=True)
     def addNoise(self):
         self.noise = np.random.normal(0, self.noiseStd, self.oversampledMatrix) + 1j * np.random.normal(0, self.noiseStd, self.oversampledMatrix)
     
@@ -386,12 +383,20 @@ class MRIsimulator(param.Parameterized):
 
     
     @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVX', 'FOVY', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'freqeuencyDirection', 'pixelBandWidth', 'NSA', watch=True)
+    def zerofill(self):
+        self.reconMatrix = [self.reconMatrixY, self.reconMatrixX]
+        self.oversampledReconMatrix = self.reconMatrix.copy()
+        if self.FOV[self.freqDir] < self.phantom['FOV'][self.freqDir]: # At least Nyquist sampling in frequency encoding direction
+            self.oversampledReconMatrix[self.freqDir] = int(self.reconMatrix[self.freqDir] * self.oversampledMatrix[self.freqDir] / self.matrix[self.freqDir])
+        self.zerofilledkspace = zerofill(self.kspace, self.oversampledReconMatrix)
+    
+
+    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVX', 'FOVY', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'freqeuencyDirection', 'pixelBandWidth', 'NSA', watch=True)
     def reconstruct(self):
         # half pixel shift for even dims (based on reconMatrix, not oversampledReconMatrix!)
         shift = [.0 if self.reconMatrix[dim]%2 else .5 for dim in range(len(self.reconMatrix))]
         halfPixelShift = getPixelShiftMatrix(self.oversampledReconMatrix, shift)
-        kspace = zerofill(self.kspace, self.oversampledReconMatrix)
-        kspace *= halfPixelShift
+        kspace = self.zerofilledkspace * halfPixelShift
         self.imageArray = np.fft.fftshift(np.fft.ifft2(kspace))
         self.imageArray = crop(self.imageArray, self.reconMatrix)
         self.iAxes = [(np.arange(self.reconMatrix[dim]) - (self.reconMatrix[dim]-1)/2) / self.reconMatrix[dim] * self.FOV[dim] for dim in range(2)]
