@@ -42,7 +42,7 @@ SEQUENCES = ['Spin Echo', 'Spoiled Gradient Echo', 'Inversion Recovery']
 DURATIONS = {'exc': 1.0, 'ref': 4.0, 'inv': 4.0, 'spoil': 1.0} # excitation, refocusing, inversion, spoiling [msec]
 
 PHANTOMS = {
-    'abdomen': {'FOV': (320, 400), 'matrix': (512, 640)}
+    'abdomen': {'FOV': (320, 400), 'matrix': (513, 641)} # odd matrix to ensure kspace center is sampled (not required)
 }
 
 DIRECTIONS = {'anterior-posterior': 0, 'left-right': 1}
@@ -119,6 +119,16 @@ def readSVG(inFile):
     return polygons
 
 
+def getKaxis(matrix, pixelSize, symmetric=True, fftshift=True):
+    kax = np.fft.fftfreq(matrix)
+    if symmetric and not (matrix%2): # half-pixel to make even matrix symmetric
+        kax += 1/(2*matrix)
+    kax /= pixelSize
+    if fftshift:
+        kax = np.fft.fftshift(kax)
+    return kax
+
+
 def kspacePolygon(poly, phantom):
     # analytical 2D Fourier transform of polygon (see https://cvil.ucsd.edu/wp-content/uploads/2016/09/Realistic-analytical-polyhedral-MRI-phantoms.pdf)
     r = np.array(poly[('x', 'y')]) # position vectors of vertices Ve
@@ -138,8 +148,10 @@ def kspacePolygon(poly, phantom):
         nonzero = np.logical_not(zeroarg)
         ksp[nonzero] += L[e] * np.dot(coords[nonzero], n[e]) * np.sin(arg[nonzero]) / arg[nonzero] * np.exp(-2j*np.pi * np.dot(coords[nonzero], rc[e]))
         ksp[zeroarg] += L[e] * np.dot(coords[zeroarg], n[e]) * np.exp(-2j*np.pi * np.dot(coords[zeroarg], rc[e])) # sinc(0)=1
-    ksp[1:] *= 1j / (2 * np.pi * np.linalg.norm(coords[1:], axis=1)**2)
-    ksp[0] = abs(sum([r[e-1,0]*r[e,1] - r[e,0]*r[e-1,1] for e in range(E)]))/2 # kspace center equals polygon area
+    kcenter = np.all(coords==0, axis=1)
+    ksp[kcenter] = abs(sum([r[e-1,0]*r[e,1] - r[e,0]*r[e-1,1] for e in range(E)]))/2 # kspace center equals polygon area
+    notkcenter = np.logical_not(kcenter)
+    ksp[notkcenter] *= 1j / (2 * np.pi * np.linalg.norm(coords[notkcenter], axis=1)**2)
     return ksp.reshape(phantom['matrix'][::-1]).T # TODO: get x/y order right from start!
 
 
@@ -293,7 +305,8 @@ class MRIsimulator(param.Parameterized):
     def loadPhantom(self):
         phantomPath = Path(__file__).parent.resolve() / 'phantoms/{p}'.format(p=self.object)
         self.phantom = PHANTOMS[self.object]
-        self.phantom['kAxes'] = [np.fft.fftfreq(self.phantom['matrix'][dim]) * self.phantom['matrix'][dim] / self.phantom['FOV'][dim] for dim in range(len(self.phantom['matrix']))]
+        self.phantom['kAxes'] = [getKaxis(self.phantom['matrix'][dim], self.phantom['FOV'][dim]/self.phantom['matrix'][dim]) for dim in range(len(self.phantom['matrix']))]
+
         npyFiles = list(phantomPath.glob('*.npy'))
         if npyFiles:
             self.tissues = set()
@@ -323,13 +336,13 @@ class MRIsimulator(param.Parameterized):
         if self.FOV[self.freqDir] < self.phantom['FOV'][self.freqDir]: # At least Nyquist sampling in frequency encoding direction
             self.oversampledMatrix[self.freqDir] = int(np.ceil(self.phantom['FOV'][self.freqDir] * self.matrix[self.freqDir] / self.FOV[self.freqDir]))
         
-        self.kAxes = [np.fft.fftfreq(self.oversampledMatrix[dim]) * self.matrix[dim] / self.FOV[dim] for dim in range(len(self.matrix))]
+        self.kAxes = [getKaxis(self.oversampledMatrix[dim], self.FOV[dim]/self.matrix[dim]) for dim in range(len(self.matrix))]
         self.plainKspaceComps = resampleKspace(self.phantom, self.kAxes)
     
 
     @param.depends('object', 'fieldStrength', 'FOVX', 'FOVY', 'matrixX', 'matrixY', 'freqeuencyDirection', 'pixelBandWidth', 'NSA', watch=True)
     def updateSamplingTime(self):
-        self.samplingTime = np.fft.fftfreq(len(self.kAxes[self.freqDir])) / self.pixelBandWidth * 1e3 # msec
+        self.samplingTime = self.kAxes[self.freqDir] * self.FOV[self.freqDir] / self.matrix[self.freqDir] / self.pixelBandWidth * 1e3 # msec
         self.noiseStd = 1. / np.sqrt(np.diff(self.samplingTime[:2]) * self.NSA) / self.fieldStrength
         self.samplingTime = np.expand_dims(self.samplingTime, axis=[dim for dim in range(len(self.matrix)) if dim != self.freqDir])
     
@@ -388,8 +401,8 @@ class MRIsimulator(param.Parameterized):
         self.oversampledReconMatrix = self.reconMatrix.copy()
         if self.FOV[self.freqDir] < self.phantom['FOV'][self.freqDir]: # At least Nyquist sampling in frequency encoding direction
             self.oversampledReconMatrix[self.freqDir] = int(self.reconMatrix[self.freqDir] * self.oversampledMatrix[self.freqDir] / self.matrix[self.freqDir])
-        self.zerofilledkspace = zerofill(self.kspace, self.oversampledReconMatrix)
-    
+        self.zerofilledkspace = zerofill(np.fft.fftshift(self.kspace), self.oversampledReconMatrix)
+
 
     @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVX', 'FOVY', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'freqeuencyDirection', 'pixelBandWidth', 'NSA', watch=True)
     def reconstruct(self):
