@@ -351,7 +351,7 @@ class MRIsimulator(param.Parameterized):
     def modulateKspace(self):
         decayTime = self.samplingTime + self.TE
         dephasingTime = decayTime if 'Gradient Echo' in self.sequence else self.samplingTime
-        
+
         self.kspaceComps = {}
         for tissue in self.tissues:
             T2w = getT2w(tissue, decayTime, dephasingTime, self.fieldStrength)
@@ -402,7 +402,19 @@ class MRIsimulator(param.Parameterized):
         if self.FOV[self.freqDir] < self.phantom['FOV'][self.freqDir]: # At least Nyquist sampling in frequency encoding direction
             self.oversampledReconMatrix[self.freqDir] = int(self.reconMatrix[self.freqDir] * self.oversampledMatrix[self.freqDir] / self.matrix[self.freqDir])
         self.zerofilledkspace = zerofill(np.fft.fftshift(self.kspace), self.oversampledReconMatrix)
-
+    
+    
+    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVX', 'FOVY', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'freqeuencyDirection', 'pixelBandWidth', 'NSA')
+    def getKspace(self):
+        kAxes = [getKaxis(self.oversampledReconMatrix[dim], self.FOV[dim]/self.reconMatrix[dim]) for dim in range(2)]
+        ksp = xr.DataArray(
+            np.abs(np.fft.ifftshift(self.zerofilledkspace))**.3, 
+            dims=('ky', 'kx'),
+            coords={'kx': kAxes[1], 'ky': kAxes[0][::-1]}
+        )
+        ksp.kx.attrs['units'] = ksp.ky.attrs['units'] = '1/mm'
+        return hv.Image(ksp, vdims=['magnitude']).options(cmap='gray', aspect='equal')
+    
 
     @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVX', 'FOVY', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'freqeuencyDirection', 'pixelBandWidth', 'NSA', watch=True)
     def reconstruct(self):
@@ -423,7 +435,6 @@ class MRIsimulator(param.Parameterized):
             coords={'x': self.iAxes[1], 'y': self.iAxes[0][::-1]}
         )
         img.x.attrs['units'] = img.y.attrs['units'] = 'mm'
-
         return hv.Image(img, vdims=['magnitude']).options(cmap='gray', aspect='equal')
 
 
@@ -432,8 +443,9 @@ title = '# SpinSight MRI simulator'
 author = '*Written by [Johan Berglund](mailto:johan.berglund@akademiska.se), Ph.D.*'
 contrastParams = pn.panel(explorer.param, parameters=['fieldStrength', 'sequence', 'FatSat', 'TR', 'shortTRrange', 'TE', 'shortTErange', 'FA', 'TI'], name='Contrast')
 geometryParams = pn.panel(explorer.param, parameters=['FOVX', 'FOVY', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'freqeuencyDirection', 'pixelBandWidth', 'NSA'], name='Geometry')
+dmapKspace = hv.DynamicMap(explorer.getKspace).opts(frame_height=500)
 dmapMRimage = hv.DynamicMap(explorer.getImage).opts(frame_height=500)
-dashboard = pn.Row(pn.Column(pn.pane.Markdown(title), pn.Row(contrastParams, geometryParams), pn.pane.Markdown(author)), dmapMRimage)
+dashboard = pn.Row(pn.Column(pn.pane.Markdown(title), pn.Row(contrastParams, geometryParams), pn.pane.Markdown(author)), pn.Column(dmapMRimage, dmapKspace))
 dashboard.servable() # run by ´panel serve app.py´, then open http://localhost:5006/app in browser
 
 
@@ -441,7 +453,6 @@ dashboard.servable() # run by ´panel serve app.py´, then open http://localhost
 # TODO: update BW bound wrt TE and TR
 # TODO: add params for matrix/pixelSize and BW like different vendors and handle their correlation
 # TODO: add ACQ time
-# TODO: add k-space plot
 # TODO: add apodization
 # TODO: parallel imaging (GRAPPA)
 # TODO: B0 inhomogeneity
