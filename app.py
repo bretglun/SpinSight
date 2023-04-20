@@ -479,13 +479,16 @@ class MRIsimulator(param.Parameterized):
     
     
     def reconstruct(self):
-        # half pixel shift for even dims (based on reconMatrix, not oversampledReconMatrix!)
-        shift = [.0 if self.reconMatrix[dim]%2 else .5 for dim in range(len(self.reconMatrix))]
-        halfPixelShift = getPixelShiftMatrix(self.oversampledReconMatrix, shift)
+        shifts = [.0] * len(self.reconMatrix) # pixel shift
+        for dim in range(len(shifts)):
+            if not self.oversampledReconMatrix[dim]%2:
+                shifts[dim] += .5 # half pixel shift for even matrixsize due to fft
+            if (self.oversampledReconMatrix[dim] - self.reconMatrix[dim])%2:
+                shifts[dim] += .5 # half pixel shift due to cropping an odd number of pixels in image space
+        halfPixelShift = getPixelShiftMatrix(self.oversampledReconMatrix, shifts)
         kspace = self.zerofilledkspace * halfPixelShift
         self.imageArray = np.fft.fftshift(np.fft.ifft2(kspace))
         self.imageArray = crop(self.imageArray, self.reconMatrix)
-        self.iAxes = [(np.arange(self.reconMatrix[dim]) - (self.reconMatrix[dim]-1)/2) / self.reconMatrix[dim] * self.FOV[dim] for dim in range(2)]
     
     
     @param.depends('fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVX', 'FOVY', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'frequencyDirection', 'pixelBandWidth', 'NSA')
@@ -493,7 +496,7 @@ class MRIsimulator(param.Parameterized):
         self.runPipeline()
         kAxes = [getKaxis(self.oversampledReconMatrix[dim], self.FOV[dim]/self.reconMatrix[dim]) for dim in range(2)]
         ksp = xr.DataArray(
-            np.abs(np.fft.ifftshift(self.zerofilledkspace))**.3, 
+            np.abs(np.fft.ifftshift(self.zerofilledkspace))**.2, 
             dims=('ky', 'kx'),
             coords={'kx': kAxes[1], 'ky': kAxes[0][::-1]}
         )
@@ -504,10 +507,11 @@ class MRIsimulator(param.Parameterized):
     @param.depends('fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVX', 'FOVY', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'frequencyDirection', 'pixelBandWidth', 'NSA')
     def getImage(self):
         self.runPipeline()
+        iAxes = [(np.arange(self.reconMatrix[dim]) - (self.reconMatrix[dim]-1)/2) / self.reconMatrix[dim] * self.FOV[dim] for dim in range(2)]
         img = xr.DataArray(
             np.abs(self.imageArray), 
             dims=('y', 'x'),
-            coords={'x': self.iAxes[1], 'y': self.iAxes[0][::-1]}
+            coords={'x': iAxes[1], 'y': iAxes[0][::-1]}
         )
         img.x.attrs['units'] = img.y.attrs['units'] = 'mm'
         return hv.Image(img, vdims=['magnitude']).options(cmap='gray', aspect='equal')
