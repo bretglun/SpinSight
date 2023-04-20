@@ -463,7 +463,7 @@ class MRIsimulator(param.Parameterized):
         self.oversampledReconMatrix = self.reconMatrix.copy()
         if self.FOV[self.freqDir] < self.phantom['FOV'][self.freqDir]: # At least Nyquist sampling in frequency encoding direction
             self.oversampledReconMatrix[self.freqDir] = int(self.reconMatrix[self.freqDir] * self.oversampledMatrix[self.freqDir] / self.matrix[self.freqDir])
-        self.zerofilledkspace = zerofill(np.fft.fftshift(self.kspace), self.oversampledReconMatrix)
+        self.zerofilledkspace = zerofill(np.fft.ifftshift(self.kspace), self.oversampledReconMatrix)
     
     
     def reconstruct(self):
@@ -485,10 +485,12 @@ class MRIsimulator(param.Parameterized):
         kAxes = []
         for dim in range(2):
             kAxes.append(getKaxis(self.oversampledReconMatrix[dim], self.FOV[dim]/self.reconMatrix[dim]))
+            # half-sample shift axis when odd number of zeroes:
             if (self.oversampledReconMatrix[dim]-self.oversampledMatrix[dim])%2:
-                kAxes[-1] -= self.reconMatrix[dim] / (2 * self.oversampledReconMatrix[dim] * self.FOV[dim])
+                shift = self.reconMatrix[dim] / (2 * self.oversampledReconMatrix[dim] * self.FOV[dim])
+                kAxes[-1] += shift * (-1)**(self.matrix[dim]%2)
         ksp = xr.DataArray(
-            np.abs(np.fft.ifftshift(self.zerofilledkspace))**.2, 
+            np.abs(np.fft.fftshift(self.zerofilledkspace))**.2, 
             dims=('ky', 'kx'),
             coords={'kx': kAxes[1], 'ky': kAxes[0][::-1]}
         )
