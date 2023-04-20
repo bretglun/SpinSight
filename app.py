@@ -467,16 +467,19 @@ class MRIsimulator(param.Parameterized):
     
     
     def reconstruct(self):
-        shifts = [.0] * len(self.reconMatrix) # pixel shift
-        for dim in range(len(shifts)):
+        pixelShifts = [.0] * len(self.reconMatrix) # pixel shift
+        for dim in range(len(pixelShifts)):
             if not self.oversampledReconMatrix[dim]%2:
-                shifts[dim] += 1/2 # half pixel shift for even matrixsize due to fft
+                pixelShifts[dim] += 1/2 # half pixel shift for even matrixsize due to fft
             if (self.oversampledReconMatrix[dim] - self.reconMatrix[dim])%2:
-                shifts[dim] += 1/2 # half pixel shift due to cropping an odd number of pixels in image space
-        halfPixelShift = getPixelShiftMatrix(self.oversampledReconMatrix, shifts)
+                pixelShifts[dim] += 1/2 # half pixel shift due to cropping an odd number of pixels in image space
+        halfPixelShift = getPixelShiftMatrix(self.oversampledReconMatrix, pixelShifts)
+        sampleShifts = [0. if self.matrix[dim]%2 else .5 for dim in range(len(self.matrix))]
+        halfSampleShift = getPixelShiftMatrix(self.oversampledReconMatrix, sampleShifts)
+        
         kspace = self.zerofilledkspace * halfPixelShift
-        self.imageArray = np.fft.fftshift(np.fft.ifft2(kspace))
-        self.imageArray = crop(self.imageArray, self.reconMatrix)
+        self.imageArray = np.fft.ifft2(kspace) * halfSampleShift
+        self.imageArray = crop(np.fft.fftshift(self.imageArray), self.reconMatrix)
     
     
     @param.depends('fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVX', 'FOVY', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'frequencyDirection', 'pixelBandWidth', 'NSA')
@@ -521,6 +524,7 @@ dmapMRimage = hv.DynamicMap(explorer.getImage).opts(frame_height=500)
 dashboard = pn.Row(pn.Column(pn.pane.Markdown(title), pn.Row(contrastParams, geometryParams), pn.pane.Markdown(author)), pn.Column(dmapMRimage, dmapKspace))
 dashboard.servable() # run by ´panel serve app.py´, then open http://localhost:5006/app in browser
 
+# TODO: phase oversampling
 # TODO: abdomen phantom ribs, pancreas, hepatic arteries
 # TODO: update BW bound wrt TE and TR
 # TODO: add params for matrix/pixelSize and BW like different vendors and handle their correlation
