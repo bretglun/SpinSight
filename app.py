@@ -255,7 +255,6 @@ class MRIsimulator(param.Parameterized):
                 self.pipeline.remove(f)
     
 
-    @param.depends('pixelBandWidth', watch=True)
     def updateReadoutDuration(self):
         self.readoutDuration = 1e3 / self.pixelBandWidth # [msec]
     
@@ -292,25 +291,7 @@ class MRIsimulator(param.Parameterized):
         self.param.TI.bounds = (minTI, maxTI)
         self.TI = min(max(self.TI, minTI), maxTI)
 
-    
-    @param.depends('sequence', watch=True)
-    def _updateVisibility(self):
-        self.param.FA.precedence = 1 if self.sequence=='Spoiled Gradient Echo' else -1
-        self.param.TI.precedence = 1 if self.sequence=='Inversion Recovery' else -1
-    
-
-    @param.depends('matrixX', watch=True)
-    def _updateReconMatrixXbounds(self):
-        self.param.reconMatrixX.bounds = (self.matrixX, self.param.reconMatrixX.bounds[1])
-        self.reconMatrixX = max(self.reconMatrixX, self.matrixX)    
-
-
-    @param.depends('matrixY', watch=True)
-    def _updateReconMatrixYbounds(self):
-        self.param.reconMatrixY.bounds = (self.matrixY, self.param.reconMatrixY.bounds[1])
-        self.reconMatrixY = max(self.reconMatrixY, self.matrixY)
-
-    
+        
     @param.depends('object', watch=True)
     def _watch_object(self):
         for f in self.fullPipeline:
@@ -327,6 +308,10 @@ class MRIsimulator(param.Parameterized):
     def _watch_matrix(self):
         for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.addNoise, self.compileKspace, self.zerofill, self.reconstruct]:
             self.pipeline.add(f)
+        self.param.reconMatrixX.bounds = (self.matrixX, self.param.reconMatrixX.bounds[1])
+        self.reconMatrixX = max(self.reconMatrixX, self.matrixX)
+        self.param.reconMatrixY.bounds = (self.matrixY, self.param.reconMatrixY.bounds[1])
+        self.reconMatrixY = max(self.reconMatrixY, self.matrixY)
 
 
     @param.depends('frequencyDirection', watch=True)
@@ -344,7 +329,8 @@ class MRIsimulator(param.Parameterized):
     @param.depends('pixelBandWidth', watch=True)
     def _watch_pixelBandWidth(self):
         for f in [self.updateSamplingTime, self.modulateKspace, self.addNoise, self.compileKspace, self.zerofill, self.reconstruct]:
-            self.pipeline.add(f)    
+            self.pipeline.add(f)
+        self.updateReadoutDuration()
 
 
     @param.depends('NSA', watch=True)
@@ -357,6 +343,8 @@ class MRIsimulator(param.Parameterized):
     def _watch_sequence(self):
         for f in [self.modulateKspace, self.updatePDandT1w, self.compileKspace, self.zerofill, self.reconstruct]:
             self.pipeline.add(f)
+        self.param.FA.precedence = 1 if self.sequence=='Spoiled Gradient Echo' else -1
+        self.param.TI.precedence = 1 if self.sequence=='Inversion Recovery' else -1
 
 
     @param.depends('TE', watch=True)
