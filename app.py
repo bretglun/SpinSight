@@ -482,9 +482,9 @@ class MRIsimulator(param.Parameterized):
         shifts = [.0] * len(self.reconMatrix) # pixel shift
         for dim in range(len(shifts)):
             if not self.oversampledReconMatrix[dim]%2:
-                shifts[dim] += .5 # half pixel shift for even matrixsize due to fft
+                shifts[dim] += 1/2 # half pixel shift for even matrixsize due to fft
             if (self.oversampledReconMatrix[dim] - self.reconMatrix[dim])%2:
-                shifts[dim] += .5 # half pixel shift due to cropping an odd number of pixels in image space
+                shifts[dim] += 1/2 # half pixel shift due to cropping an odd number of pixels in image space
         halfPixelShift = getPixelShiftMatrix(self.oversampledReconMatrix, shifts)
         kspace = self.zerofilledkspace * halfPixelShift
         self.imageArray = np.fft.fftshift(np.fft.ifft2(kspace))
@@ -494,7 +494,11 @@ class MRIsimulator(param.Parameterized):
     @param.depends('fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVX', 'FOVY', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'frequencyDirection', 'pixelBandWidth', 'NSA')
     def getKspace(self):
         self.runPipeline()
-        kAxes = [getKaxis(self.oversampledReconMatrix[dim], self.FOV[dim]/self.reconMatrix[dim]) for dim in range(2)]
+        kAxes = []
+        for dim in range(2):
+            kAxes.append(getKaxis(self.oversampledReconMatrix[dim], self.FOV[dim]/self.reconMatrix[dim]))
+            if (self.oversampledReconMatrix[dim]-self.oversampledMatrix[dim])%2:
+                kAxes[-1] -= self.reconMatrix[dim] / (2 * self.oversampledReconMatrix[dim] * self.FOV[dim])
         ksp = xr.DataArray(
             np.abs(np.fft.ifftshift(self.zerofilledkspace))**.2, 
             dims=('ky', 'kx'),
