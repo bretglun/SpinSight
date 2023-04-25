@@ -207,17 +207,20 @@ def getPDandT1w(component, seqType, TR, TE, TI, FA, B0):
         raise Exception('Unknown sequence type: {}'.format(seqType))
 
 
+TRvalues = [float('{:.2g}'.format(tr)) for tr in 10.**np.linspace(0, 4, 500)]
+TEvalues = [float('{:.2g}'.format(te)) for te in 10.**np.linspace(0, 3, 500)]
+TIvalues = [float('{:.2g}'.format(ti)) for ti in 10.**np.linspace(0, 4, 500)]
+
+
 class MRIsimulator(param.Parameterized):
     object = param.ObjectSelector(default=list(PHANTOMS.keys())[0], objects=PHANTOMS.keys(), label='Phantom object')
     fieldStrength = param.ObjectSelector(default=1.5, objects=[1.5, 3.0], label='B0 field strength [T]')
     sequence = param.ObjectSelector(default=SEQUENCES[0], objects=SEQUENCES, label='Pulse sequence')
     FatSat = param.Boolean(default=False, label='Fat saturation')
-    TR = param.Number(default=8000.0, bounds=(0, 8000.0), label='TR [msec]')
-    shortTRrange = param.Boolean(default=False, label='Short TR range')
-    TE = param.Number(default=7.0, bounds=(0, 400.0), label='TE [msec]')
-    shortTErange = param.Boolean(default=False, label='Short TE range')
+    TR = param.Selector(default=8000, objects=TRvalues, label='TR [msec]')
+    TE = param.Selector(default=7, objects=TEvalues, label='TE [msec]')
     FA = param.Number(default=90.0, bounds=(1, 90.0), precedence=-1, label='Flip angle [°]')
-    TI = param.Number(default=50.0, bounds=(0, 4000.0), precedence=-1, label='TI [msec]')
+    TI = param.Selector(default=50, objects=TIvalues, precedence=-1, label='TI [msec]')
     FOVX = param.Number(default=420, bounds=(100, 600), label='FOV x [mm]')
     FOVY = param.Number(default=420, bounds=(100, 600), label='FOV y [mm]')
     matrixX = param.Integer(default=128, bounds=(16, 600), label='Acquisition matrix x')
@@ -259,16 +262,14 @@ class MRIsimulator(param.Parameterized):
         self.readoutDuration = 1e3 / self.pixelBandWidth # [msec]
     
     
-    @param.depends('sequence', 'shortTRrange', 'TE', 'TI', 'pixelBandWidth', watch=True)
+    @param.depends('sequence', 'TE', 'TI', 'pixelBandWidth', watch=True)
     def updateTRbounds(self):
         minTR = DURATIONS['exc']/2 + self.TE + self.readoutDuration/2 + DURATIONS['spoil']
         if self.sequence == 'Inversion Recovery': minTR += DURATIONS['inv']/2 + self.TI - DURATIONS['exc']/2
-        maxTR = max(minTR, 100 if self.shortTRrange else 8000)
-        self.param.TR.bounds = (minTR, maxTR)
-        self.TR = min(max(self.TR, minTR), maxTR)
+        self.param.TR.objects = [tr for tr in TRvalues if not tr < minTR]
     
     
-    @param.depends('sequence', 'TR', 'shortTErange', 'TI', 'pixelBandWidth', watch=True)
+    @param.depends('sequence', 'TR', 'TI', 'pixelBandWidth', watch=True)
     def updateTEbounds(self):
         if self.sequence in ['Spin Echo', 'Inversion Recovery']: # seqs with refocusing pulse
             minTE = max((DURATIONS['exc'] + DURATIONS['ref']), (DURATIONS['ref'] + self.readoutDuration))
@@ -277,9 +278,7 @@ class MRIsimulator(param.Parameterized):
         maxTE = self.TR - (DURATIONS['exc']/2 + self.readoutDuration/2 + DURATIONS['spoil'])
         if self.sequence == 'Inversion Recovery':
             maxTE += DURATIONS['exc']/2 - DURATIONS['inv']/2 - self.TI
-        maxTE = min(maxTE, 25 if self.shortTErange else 400)
-        self.param.TE.bounds = (minTE, maxTE)
-        self.TE = min(max(self.TE, minTE), maxTE)
+        self.param.TE.objects = [te for te in TEvalues if not te < minTE and not te > maxTE]
     
 
     @param.depends('sequence', 'TR', 'TE', 'pixelBandWidth', watch=True)
@@ -287,11 +286,9 @@ class MRIsimulator(param.Parameterized):
         if self.sequence != 'Inversion Recovery': return
         minTI = (DURATIONS['inv'] + DURATIONS['exc'])/2
         maxTI = self.TR - (DURATIONS['inv']/2 + self.TE + self.readoutDuration/2 + DURATIONS['spoil'])
-        maxTI = min(4000, maxTI)
-        self.param.TI.bounds = (minTI, maxTI)
-        self.TI = min(max(self.TI, minTI), maxTI)
-
-        
+        self.param.TI.objects = [ti for ti in TIvalues if not ti < minTI and not ti > maxTI]
+    
+    
     @param.depends('object', watch=True)
     def _watch_object(self):
         for f in self.fullPipeline:
@@ -517,16 +514,16 @@ class MRIsimulator(param.Parameterized):
 explorer = MRIsimulator(name='')
 title = '# SpinSight MRI simulator'
 author = '*Written by [Johan Berglund](mailto:johan.berglund@akademiska.se), Ph.D.*'
-contrastParams = pn.panel(explorer.param, parameters=['fieldStrength', 'sequence', 'FatSat', 'TR', 'shortTRrange', 'TE', 'shortTErange', 'FA', 'TI'], name='Contrast')
+contrastParams = pn.panel(explorer.param, parameters=['fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI'], widgets={'TR': pn.widgets.DiscreteSlider, 'TE': pn.widgets.DiscreteSlider, 'TI': pn.widgets.DiscreteSlider}, name='Contrast')
 geometryParams = pn.panel(explorer.param, parameters=['FOVX', 'FOVY', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'frequencyDirection', 'pixelBandWidth', 'NSA'], name='Geometry')
 dmapKspace = hv.DynamicMap(explorer.getKspace).opts(frame_height=500)
 dmapMRimage = hv.DynamicMap(explorer.getImage).opts(frame_height=500)
 dashboard = pn.Row(pn.Column(pn.pane.Markdown(title), pn.Row(contrastParams, geometryParams), pn.pane.Markdown(author)), pn.Column(dmapMRimage, dmapKspace))
 dashboard.servable() # run by ´panel serve app.py´, then open http://localhost:5006/app in browser
 
+# TODO: update BW bound wrt TE and TR
 # TODO: phase oversampling
 # TODO: abdomen phantom ribs, pancreas, hepatic arteries
-# TODO: update BW bound wrt TE and TR
 # TODO: add params for matrix/pixelSize and BW like different vendors and handle their correlation
 # TODO: add ACQ time
 # TODO: add apodization
