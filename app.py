@@ -260,47 +260,7 @@ class MRIsimulator(param.Parameterized):
 
     def updateReadoutDuration(self):
         self.readoutDuration = 1e3 / self.pixelBandWidth # [msec]
-    
-    
-    @param.depends('sequence', 'TE', 'TI', 'pixelBandWidth', watch=True)
-    def updateTRbounds(self):
-        minTR = DURATIONS['exc']/2 + self.TE + self.readoutDuration/2 + DURATIONS['spoil']
-        if self.sequence == 'Inversion Recovery': minTR += DURATIONS['inv']/2 + self.TI - DURATIONS['exc']/2
-        self.param.TR.objects = [tr for tr in TRvalues if not tr < minTR]
-    
-    
-    @param.depends('sequence', 'TR', 'TI', 'pixelBandWidth', watch=True)
-    def updateTEbounds(self):
-        if self.sequence in ['Spin Echo', 'Inversion Recovery']: # seqs with refocusing pulse
-            minTE = max((DURATIONS['exc'] + DURATIONS['ref']), (DURATIONS['ref'] + self.readoutDuration))
-        else:
-            minTE = (DURATIONS['exc'] + self.readoutDuration)/2
-        maxTE = self.TR - (DURATIONS['exc']/2 + self.readoutDuration/2 + DURATIONS['spoil'])
-        if self.sequence == 'Inversion Recovery':
-            maxTE += DURATIONS['exc']/2 - DURATIONS['inv']/2 - self.TI
-        self.param.TE.objects = [te for te in TEvalues if not te < minTE and not te > maxTE]
-    
-
-    @param.depends('sequence', 'TR', 'TE', 'pixelBandWidth', watch=True)
-    def updateTIbounds(self):
-        if self.sequence != 'Inversion Recovery': return
-        minTI = (DURATIONS['inv'] + DURATIONS['exc'])/2
-        maxTI = self.TR - (DURATIONS['inv']/2 + self.TE + self.readoutDuration/2 + DURATIONS['spoil'])
-        self.param.TI.objects = [ti for ti in TIvalues if not ti < minTI and not ti > maxTI]
-    
-
-    @param.depends('sequence', 'TR', 'TE', 'TI', watch=True)
-    def updateBWbounds(self):
-        maxReadDurRightHalf = self.TR - self.TE - DURATIONS['exc']/2 - DURATIONS['spoil']
-        if self.sequence == 'Inversion Recovery': maxReadDurRightHalf += (DURATIONS['exc'] - DURATIONS['inv'])/2 - self.TI
-        if self.sequence in ['Spin Echo', 'Inversion Recovery']: # seqs with refocusing pulse
-            maxReadDurLeftHalf = (self.TE - DURATIONS['ref'])/2
-        else:
-            maxReadDurLeftHalf = self.TE - DURATIONS['exc']/2
-        maxReadDur = min(maxReadDurLeftHalf, maxReadDurRightHalf) * 2 * .99 # fudge factor
-        minpBW = max(1e3 / maxReadDur, 50)
-        self.param.pixelBandWidth.bounds = (minpBW, 2000)
-    
+        
     
     @param.depends('object', watch=True)
     def _watch_object(self):
@@ -379,6 +339,46 @@ class MRIsimulator(param.Parameterized):
     def _watch_reconMatrix(self):
         for f in [self.zerofill, self.reconstruct]:
             self.pipeline.add(f)
+    
+
+    @param.depends('sequence', 'TE', 'TI', 'pixelBandWidth', watch=True)
+    def updateTRbounds(self):
+        minTR = DURATIONS['exc']/2 + self.TE + self.readoutDuration/2 + DURATIONS['spoil']
+        if self.sequence == 'Inversion Recovery': minTR += DURATIONS['inv']/2 + self.TI - DURATIONS['exc']/2
+        self.param.TR.objects = [tr for tr in TRvalues if not tr < minTR]
+    
+    
+    @param.depends('sequence', 'TR', 'TI', 'pixelBandWidth', watch=True)
+    def updateTEbounds(self):
+        if self.sequence in ['Spin Echo', 'Inversion Recovery']: # seqs with refocusing pulse
+            minTE = max((DURATIONS['exc'] + DURATIONS['ref']), (DURATIONS['ref'] + self.readoutDuration))
+        else:
+            minTE = (DURATIONS['exc'] + self.readoutDuration)/2
+        maxTE = self.TR - (DURATIONS['exc'] + self.readoutDuration)/2 - DURATIONS['spoil']
+        if self.sequence == 'Inversion Recovery':
+            maxTE += (DURATIONS['exc'] - DURATIONS['inv'])/2 - self.TI
+        self.param.TE.objects = [te for te in TEvalues if not te < minTE and not te > maxTE]
+    
+
+    @param.depends('sequence', 'TR', 'TE', 'pixelBandWidth', watch=True)
+    def updateTIbounds(self):
+        if self.sequence != 'Inversion Recovery': return
+        minTI = (DURATIONS['inv'] + DURATIONS['exc'])/2
+        maxTI = self.TR - (DURATIONS['inv']/2 + self.TE + self.readoutDuration/2 + DURATIONS['spoil'])
+        self.param.TI.objects = [ti for ti in TIvalues if not ti < minTI and not ti > maxTI]
+    
+
+    @param.depends('sequence', 'TR', 'TE', 'TI', watch=True)
+    def updateBWbounds(self):
+        maxReadDurRightHalf = self.TR - self.TE - DURATIONS['exc']/2 - DURATIONS['spoil']
+        if self.sequence == 'Inversion Recovery': maxReadDurRightHalf += (DURATIONS['exc'] - DURATIONS['inv'])/2 - self.TI
+        if self.sequence in ['Spin Echo', 'Inversion Recovery']: # seqs with refocusing pulse
+            maxReadDurLeftHalf = (self.TE - DURATIONS['ref'])/2
+        else:
+            maxReadDurLeftHalf = self.TE - DURATIONS['exc']/2
+        maxReadDur = min(maxReadDurLeftHalf, maxReadDurRightHalf) * 2 * .99 # fudge factor
+        minpBW = max(1e3 / maxReadDur, 50)
+        self.param.pixelBandWidth.bounds = (minpBW, 2000)
 
 
     def loadPhantom(self):
@@ -534,7 +534,7 @@ dmapMRimage = hv.DynamicMap(explorer.getImage).opts(frame_height=500)
 dashboard = pn.Row(pn.Column(pn.pane.Markdown(title), pn.Row(contrastParams, geometryParams), pn.pane.Markdown(author)), pn.Column(dmapMRimage, dmapKspace))
 dashboard.servable() # run by ´panel serve app.py´, then open http://localhost:5006/app in browser
 
-# TODO: update BW bound wrt TE and TR
+# TODO: bug when switching sequence and pulses are tight
 # TODO: phase oversampling
 # TODO: abdomen phantom ribs, pancreas, hepatic arteries
 # TODO: add params for matrix/pixelSize and BW like different vendors and handle their correlation
