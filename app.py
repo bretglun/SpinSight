@@ -505,7 +505,7 @@ class MRIsimulator(param.Parameterized):
         ksp = xr.DataArray(
             np.abs(np.fft.fftshift(self.zerofilledkspace))**.2, 
             dims=('ky', 'kx'),
-            coords={'kx': kAxes[1], 'ky': kAxes[0][::-1]}
+            coords={'kx': kAxes[1], 'ky': kAxes[0]}
         )
         ksp.kx.attrs['units'] = ksp.ky.attrs['units'] = '1/mm'
         return hv.Image(ksp, vdims=['magnitude']).options(cmap='gray', aspect='equal')
