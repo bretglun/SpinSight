@@ -288,6 +288,19 @@ class MRIsimulator(param.Parameterized):
         maxTI = self.TR - (DURATIONS['inv']/2 + self.TE + self.readoutDuration/2 + DURATIONS['spoil'])
         self.param.TI.objects = [ti for ti in TIvalues if not ti < minTI and not ti > maxTI]
     
+
+    @param.depends('sequence', 'TR', 'TE', 'TI', watch=True)
+    def updateBWbounds(self):
+        maxReadDurRightHalf = self.TR - self.TE - DURATIONS['exc']/2 - DURATIONS['spoil']
+        if self.sequence == 'Inversion Recovery': maxReadDurRightHalf += (DURATIONS['exc'] - DURATIONS['inv'])/2 - self.TI
+        if self.sequence in ['Spin Echo', 'Inversion Recovery']: # seqs with refocusing pulse
+            maxReadDurLeftHalf = (self.TE - DURATIONS['ref'])/2
+        else:
+            maxReadDurLeftHalf = self.TE - DURATIONS['exc']/2
+        maxReadDur = min(maxReadDurLeftHalf, maxReadDurRightHalf) * 2 * .99 # fudge factor
+        minpBW = max(1e3 / maxReadDur, 50)
+        self.param.pixelBandWidth.bounds = (minpBW, 2000)
+    
     
     @param.depends('object', watch=True)
     def _watch_object(self):
