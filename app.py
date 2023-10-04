@@ -508,7 +508,7 @@ class MRIsimulator(param.Parameterized):
             coords={'kx': kAxes[1], 'ky': kAxes[0]}
         )
         ksp.kx.attrs['units'] = ksp.ky.attrs['units'] = '1/mm'
-        return hv.Image(ksp, vdims=['magnitude']).options(cmap='gray', aspect='equal')
+        return hv.Image(ksp, vdims=['magnitude']).options(cmap='gray', aspect='equal', toolbar='below')
     
 
     @param.depends('fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVX', 'FOVY', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'frequencyDirection', 'pixelBandWidth', 'NSA')
@@ -521,7 +521,7 @@ class MRIsimulator(param.Parameterized):
             coords={'x': iAxes[1], 'y': iAxes[0][::-1]}
         )
         img.x.attrs['units'] = img.y.attrs['units'] = 'mm'
-        return hv.Image(img, vdims=['magnitude']).options(cmap='gray', aspect='equal')
+        return hv.Image(img, vdims=['magnitude']).options(cmap='gray', aspect='equal', toolbar='below')
 
 
 explorer = MRIsimulator(name='')
@@ -531,9 +531,10 @@ contrastParams = pn.panel(explorer.param, parameters=['fieldStrength', 'sequence
 geometryParams = pn.panel(explorer.param, parameters=['FOVX', 'FOVY', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'frequencyDirection', 'pixelBandWidth', 'NSA'], name='Geometry')
 dmapKspace = hv.DynamicMap(explorer.getKspace).opts(frame_height=500)
 dmapMRimage = hv.DynamicMap(explorer.getImage).opts(frame_height=500)
-dashboard = pn.Row(pn.Column(pn.pane.Markdown(title), pn.Row(contrastParams, geometryParams), pn.pane.Markdown(author)), pn.Column(dmapMRimage, dmapKspace))
+dashboard = pn.Row(pn.Column(pn.pane.Markdown(title), pn.Row(contrastParams, geometryParams), pn.pane.Markdown(author)), dmapMRimage, dmapKspace)
 dashboard.servable() # run by ´panel serve app.py´, then open http://localhost:5006/app in browser
 
+# TODO: username/password, se https://stackoverflow.com/questions/43183531/simple-username-password-protection-of-a-bokeh-server
 # TODO: bug when switching sequence and pulses are tight
 # TODO: phase oversampling
 # TODO: abdomen phantom ribs, pancreas, hepatic arteries
