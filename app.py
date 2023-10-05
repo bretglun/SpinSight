@@ -249,6 +249,8 @@ class MRIsimulator(param.Parameterized):
                                 self.reconstruct]
         
         self.pipeline = set(self.fullPipeline)
+
+        self._watch_reconMatrix()
     
 
     def runPipeline(self):
@@ -279,9 +281,9 @@ class MRIsimulator(param.Parameterized):
         for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.addNoise, self.compileKspace, self.zerofill, self.reconstruct]:
             self.pipeline.add(f)
         self.param.reconMatrixX.bounds = (self.matrixX, self.param.reconMatrixX.bounds[1])
-        self.reconMatrixX = max(self.reconMatrixX, self.matrixX)
+        self.reconMatrixX = max(int(self.matrixX * self.recAcqRatioX), self.matrixX)
         self.param.reconMatrixY.bounds = (self.matrixY, self.param.reconMatrixY.bounds[1])
-        self.reconMatrixY = max(self.reconMatrixY, self.matrixY)
+        self.reconMatrixY = max(int(self.matrixY * self.recAcqRatioY), self.matrixY)
 
 
     @param.depends('frequencyDirection', watch=True)
@@ -337,6 +339,8 @@ class MRIsimulator(param.Parameterized):
     
     @param.depends('reconMatrixX', 'reconMatrixY', watch=True)
     def _watch_reconMatrix(self):
+        self.recAcqRatioX = self.reconMatrixX / self.matrixX
+        self.recAcqRatioY = self.reconMatrixY / self.matrixY
         for f in [self.zerofill, self.reconstruct]:
             self.pipeline.add(f)
     
