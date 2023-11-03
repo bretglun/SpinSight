@@ -528,15 +528,17 @@ class MRIsimulator(param.Parameterized):
         return hv.Image(img, vdims=['magnitude']).options(cmap='gray', aspect='equal', toolbar='below')
 
 
-explorer = MRIsimulator(name='')
-title = '# SpinSight MRI simulator'
-author = '*Written by [Johan Berglund](mailto:johan.berglund@akademiska.se), Ph.D.*'
-contrastParams = pn.panel(explorer.param, parameters=['fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI'], widgets={'TR': pn.widgets.DiscreteSlider, 'TE': pn.widgets.DiscreteSlider, 'TI': pn.widgets.DiscreteSlider}, name='Contrast')
-geometryParams = pn.panel(explorer.param, parameters=['FOVX', 'FOVY', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'frequencyDirection', 'pixelBandWidth', 'NSA'], name='Geometry')
-dmapKspace = hv.DynamicMap(explorer.getKspace).opts(frame_height=500)
-dmapMRimage = hv.DynamicMap(explorer.getImage).opts(frame_height=500)
-dashboard = pn.Row(pn.Column(pn.pane.Markdown(title), pn.Row(contrastParams, geometryParams), pn.pane.Markdown(author)), dmapMRimage, dmapKspace)
-dashboard.servable() # run by ´panel serve app.py´, then open http://localhost:5006/app in browser
+def getApp():
+    explorer = MRIsimulator(name='')
+    title = '# SpinSight MRI simulator'
+    author = '*Written by [Johan Berglund](mailto:johan.berglund@akademiska.se), Ph.D.*'
+    contrastParams = pn.panel(explorer.param, parameters=['fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI'], widgets={'TR': pn.widgets.DiscreteSlider, 'TE': pn.widgets.DiscreteSlider, 'TI': pn.widgets.DiscreteSlider}, name='Contrast')
+    geometryParams = pn.panel(explorer.param, parameters=['FOVX', 'FOVY', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'frequencyDirection', 'pixelBandWidth', 'NSA'], name='Geometry')
+    dmapKspace = hv.DynamicMap(explorer.getKspace).opts(frame_height=500)
+    dmapMRimage = hv.DynamicMap(explorer.getImage).opts(frame_height=500)
+    dashboard = pn.Row(pn.Column(pn.pane.Markdown(title), pn.Row(contrastParams, geometryParams), pn.pane.Markdown(author)), dmapMRimage, dmapKspace)
+    return dashboard
+
 
 # TODO: username/password, se https://stackoverflow.com/questions/43183531/simple-username-password-protection-of-a-bokeh-server
 # TODO: bug when switching sequence and pulses are tight
