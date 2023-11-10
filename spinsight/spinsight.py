@@ -512,7 +512,7 @@ class MRIsimulator(param.Parameterized):
             coords={'kx': kAxes[1], 'ky': kAxes[0]}
         )
         ksp.kx.attrs['units'] = ksp.ky.attrs['units'] = '1/mm'
-        return hv.Image(ksp, vdims=['magnitude']).options(cmap='gray', aspect='equal', toolbar='below')
+        return hv.Image(ksp, vdims=['magnitude']).options(cmap='gray', aspect='equal', toolbar='below', height=500, width=500)
     
 
     @param.depends('fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVX', 'FOVY', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'frequencyDirection', 'pixelBandWidth', 'NSA')
@@ -525,7 +525,7 @@ class MRIsimulator(param.Parameterized):
             coords={'x': iAxes[1], 'y': iAxes[0][::-1]}
         )
         img.x.attrs['units'] = img.y.attrs['units'] = 'mm'
-        return hv.Image(img, vdims=['magnitude']).options(cmap='gray', aspect='equal', toolbar='below')
+        return hv.Image(img, vdims=['magnitude']).options(cmap='gray', aspect='equal', toolbar='below', height=500, width=500)
 
 
 def getApp():
@@ -534,8 +534,8 @@ def getApp():
     author = '*Written by [Johan Berglund](mailto:johan.berglund@akademiska.se), Ph.D.*'
     contrastParams = pn.panel(explorer.param, parameters=['fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI'], widgets={'TR': pn.widgets.DiscreteSlider, 'TE': pn.widgets.DiscreteSlider, 'TI': pn.widgets.DiscreteSlider}, name='Contrast')
     geometryParams = pn.panel(explorer.param, parameters=['FOVX', 'FOVY', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'frequencyDirection', 'pixelBandWidth', 'NSA'], name='Geometry')
-    dmapKspace = hv.DynamicMap(explorer.getKspace).opts(frame_height=500)
-    dmapMRimage = hv.DynamicMap(explorer.getImage).opts(frame_height=500)
+    dmapKspace = hv.DynamicMap(explorer.getKspace)
+    dmapMRimage = hv.DynamicMap(explorer.getImage)
     dashboard = pn.Row(pn.Column(pn.pane.Markdown(title), pn.Row(contrastParams, geometryParams), pn.pane.Markdown(author)), dmapMRimage, dmapKspace)
     return dashboard
 
