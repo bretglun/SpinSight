@@ -30,4 +30,4 @@ if len(hosts)>0:
         print('* http://{}:{}'.format(host, options.port))
 
 # serve application
-pn.serve(spinsight.getApp(), show=False, title='SpinSight', port=options.port, websocket_origin=['{}:{}'.format(host, options.port) for host in hosts])
+pn.serve(spinsight.getApp, show=False, title='SpinSight', port=options.port, websocket_origin=['{}:{}'.format(host, options.port) for host in hosts])
