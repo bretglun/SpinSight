@@ -47,24 +47,33 @@ PHANTOMS = {
 
 DIRECTIONS = {'anterior-posterior': 0, 'left-right': 1}
 
+
 def polygonIsClockwise(coords):
     sum = 0
     for i in range(len(coords)):
         sum += (coords[i][0]-coords[i-1][0]) * (coords[i][1]+coords[i-1][1])
     return sum > 0
 
+
+def closePath(path):
+    if path[0] == path[-1]: 
+        path.pop()
+    return path
+
+
 # Get coords from SVG path defined at https://www.w3.org/TR/SVG/paths.html
-def getCoords(pathString, scale):
+def getSubpaths(pathString, scale):
     supportedCommands = 'MZLHV'
     commands = supportedCommands + 'CSQTA'
 
-    coords = []
+    subpath, subpaths = [], []
     command = ''
     coord = (0, 0)
     x, y  = None, None
     for entry in pathString.strip().replace(',', ' ').split():
-        if command.upper() == 'Z':
-            raise Exception('Warning: unexpected entry following "{}"'.format(command))
+        if command.upper() == 'Z': # new subpath
+            subpaths.append(closePath(subpath))
+            subpath = []
         if entry.upper() in commands:
             if entry.upper() in supportedCommands:
                 command = entry
@@ -84,13 +93,16 @@ def getCoords(pathString, scale):
                 relativeX = command.islower() or command.upper() == 'V'
                 relativeY = command.islower() or command.upper() == 'H'
                 coord = (float(x) * scale + coord[0] * relativeX, float(y) * scale + coord[1] * relativeY)
-                coords.append(coord)
+                subpath.append(coord)
                 x, y  = None, None
-    if coords[0] == coords[-1]: 
-        coords.pop()
-    if not polygonIsClockwise(coords):
-        return coords[::-1]
-    return coords
+    if command.upper() != 'Z':
+        raise Exception('Warning: all paths must be closed')
+    subpaths.append(closePath(subpath))
+    
+    if not polygonIsClockwise(subpaths[0]):
+        for n in range(len(subpaths)):
+            subpaths[n] = subpaths[n][::-1]
+    return subpaths
 
 
 def parseTransform(transformString):
@@ -115,7 +127,9 @@ def readSVG(inFile):
         translation, rotation, scale = parseTransform(path.attrib['transform'] if 'transform' in path.attrib else '')
         if rotation != 0 or translation != (0, 0):
             raise NotImplementedError()
-        polygons.append({('x', 'y'): getCoords(path.attrib['d'], scale), 'tissue': tissue})
+        subpaths = getSubpaths(path.attrib['d'], scale)
+        for subpath in subpaths:
+            polygons.append({('x', 'y'): subpath, 'tissue': tissue})
     return polygons
 
 
