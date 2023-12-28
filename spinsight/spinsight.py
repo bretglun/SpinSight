@@ -42,7 +42,8 @@ SEQUENCES = ['Spin Echo', 'Spoiled Gradient Echo', 'Inversion Recovery']
 DURATIONS = {'exc': 1.0, 'ref': 4.0, 'inv': 4.0, 'spoil': 1.0} # excitation, refocusing, inversion, spoiling [msec]
 
 PHANTOMS = {
-    'abdomen': {'FOV': (320, 400), 'matrix': (513, 641)} # odd matrix to ensure kspace center is sampled (not required)
+    'abdomen': {'FOV': (320, 400), 'matrix': (513, 641)}, # odd matrix to ensure kspace center is sampled (not required)
+    'brain': {'FOV': (188, 156), 'matrix': (601, 601)} # odd matrix to ensure kspace center is sampled (not required)
 }
 
 DIRECTIONS = {'anterior-posterior': 0, 'left-right': 1}
@@ -123,6 +124,8 @@ def readSVG(inFile):
     polygons = []
     for path in ET.parse(inFile).iter('{http://www.w3.org/2000/svg}path'): 
         hexcolor = path.attrib['style'][6:12]
+        if hexcolor not in [v['hexcolor'] for v in TISSUES.values()]:
+            raise Exception('No tissue corresponding to hexcolor {}'.format(hexcolor))
         tissue = [tissue for tissue in TISSUES if TISSUES[tissue]['hexcolor']==hexcolor][0]
         translation, rotation, scale = parseTransform(path.attrib['transform'] if 'transform' in path.attrib else '')
         if rotation != 0 or translation != (0, 0):
@@ -227,7 +230,7 @@ TIvalues = [float('{:.2g}'.format(ti)) for ti in 10.**np.linspace(0, 4, 500)]
 
 
 class MRIsimulator(param.Parameterized):
-    object = param.ObjectSelector(default=list(PHANTOMS.keys())[0], objects=PHANTOMS.keys(), label='Phantom object')
+    object = param.ObjectSelector(default='brain', objects=PHANTOMS.keys(), label='Phantom object')
     fieldStrength = param.ObjectSelector(default=1.5, objects=[1.5, 3.0], label='B0 field strength [T]')
     sequence = param.ObjectSelector(default=SEQUENCES[0], objects=SEQUENCES, label='Pulse sequence')
     FatSat = param.Boolean(default=False, label='Fat saturation')
@@ -510,7 +513,7 @@ class MRIsimulator(param.Parameterized):
         self.imageArray = crop(np.fft.fftshift(self.imageArray), self.reconMatrix)
     
     
-    @param.depends('fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVX', 'FOVY', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'frequencyDirection', 'pixelBandWidth', 'NSA')
+    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVX', 'FOVY', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'frequencyDirection', 'pixelBandWidth', 'NSA')
     def getKspace(self):
         self.runPipeline()
         kAxes = []
@@ -529,7 +532,7 @@ class MRIsimulator(param.Parameterized):
         return hv.Image(ksp, vdims=['magnitude']).options(cmap='gray', aspect='equal', toolbar='below', height=500, width=500)
     
 
-    @param.depends('fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVX', 'FOVY', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'frequencyDirection', 'pixelBandWidth', 'NSA')
+    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVX', 'FOVY', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'frequencyDirection', 'pixelBandWidth', 'NSA')
     def getImage(self):
         self.runPipeline()
         iAxes = [(np.arange(self.reconMatrix[dim]) - (self.reconMatrix[dim]-1)/2) / self.reconMatrix[dim] * self.FOV[dim] for dim in range(2)]
@@ -546,11 +549,12 @@ def getApp():
     explorer = MRIsimulator(name='')
     title = '# SpinSight MRI simulator'
     author = '*Written by [Johan Berglund](mailto:johan.berglund@akademiska.se), Ph.D.*'
+    settingsParams = pn.panel(explorer.param, parameters=['object'], name='Settings')
     contrastParams = pn.panel(explorer.param, parameters=['fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI'], widgets={'TR': pn.widgets.DiscreteSlider, 'TE': pn.widgets.DiscreteSlider, 'TI': pn.widgets.DiscreteSlider}, name='Contrast')
     geometryParams = pn.panel(explorer.param, parameters=['FOVX', 'FOVY', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'frequencyDirection', 'pixelBandWidth', 'NSA'], name='Geometry')
     dmapKspace = hv.DynamicMap(explorer.getKspace)
     dmapMRimage = hv.DynamicMap(explorer.getImage)
-    dashboard = pn.Row(pn.Column(pn.pane.Markdown(title), pn.Row(contrastParams, geometryParams), pn.pane.Markdown(author)), dmapMRimage, dmapKspace)
+    dashboard = pn.Row(pn.Column(pn.pane.Markdown(title), pn.Row(pn.Column(settingsParams, contrastParams), geometryParams), pn.pane.Markdown(author)), dmapMRimage, dmapKspace)
     return dashboard
 
 
