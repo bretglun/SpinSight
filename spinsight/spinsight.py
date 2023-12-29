@@ -50,20 +50,13 @@ DIRECTIONS = {'anterior-posterior': 0, 'left-right': 1}
 
 
 def polygonArea(coords):
-    area = 0.
-    for i in range(len(coords)):
-        area += (coords[i][0]-coords[i-1][0]) * (coords[i][1]+coords[i-1][1])
-    return area / 2
+    return np.sum((coords[0]-np.roll(coords[0], 1)) * (coords[1]+np.roll(coords[1], 1))) / 2
 
 
-def polygonIsClockwise(coords):
-    return polygonArea(coords) > 0
-
-
-def closePath(path):
+def preparePath(path):
     if path[0] == path[-1]: 
         path.pop()
-    return path
+    return np.array(path).T
 
 
 # Get coords from SVG path defined at https://www.w3.org/TR/SVG/paths.html
@@ -77,7 +70,7 @@ def getSubpaths(pathString, scale):
     x, y  = None, None
     for entry in pathString.strip().replace(',', ' ').split():
         if command.upper() == 'Z': # new subpath
-            subpaths.append(closePath(subpath))
+            subpaths.append(preparePath(subpath))
             subpath = []
         if entry.upper() in commands:
             if entry.upper() in supportedCommands:
@@ -97,16 +90,16 @@ def getSubpaths(pathString, scale):
             if x is not None and y is not None:
                 relativeX = command.islower() or command.upper() == 'V'
                 relativeY = command.islower() or command.upper() == 'H'
-                coord = (float(x) * scale + coord[0] * relativeX, float(y) * scale + coord[1] * relativeY)
+                coord = (float(y) * scale + coord[0] * relativeY, float(x) * scale + coord[1] * relativeX)
                 subpath.append(coord)
                 x, y  = None, None
     if command.upper() != 'Z':
         raise Exception('Warning: all paths must be closed')
-    subpaths.append(closePath(subpath))
+    subpaths.append(preparePath(subpath))
     
     if sum([polygonArea(subpath) for subpath in subpaths]) < 0:
         for n in range(len(subpaths)):
-            subpaths[n] = subpaths[n][::-1]
+            subpaths[n] = np.flip(subpaths[n], axis=1) # invert polygons to make total area positive
     return subpaths
 
 
@@ -136,7 +129,7 @@ def readSVG(inFile):
             raise NotImplementedError()
         subpaths = getSubpaths(path.attrib['d'], scale)
         for subpath in subpaths:
-            polygons.append({('x', 'y'): subpath, 'tissue': tissue})
+            polygons.append({'vertices': subpath, 'tissue': tissue})
     return polygons
 
 
@@ -150,35 +143,22 @@ def getKaxis(matrix, pixelSize, symmetric=True, fftshift=True):
     return kax
 
 
-def kspacePolygon(poly, phantom):
-    clockwise = polygonIsClockwise(poly[('x', 'y')])
-    if not clockwise:
-        poly[('x', 'y')] = poly[('x', 'y')][::-1]
+def kspacePolygon(poly, k):
     # analytical 2D Fourier transform of polygon (see https://cvil.ucsd.edu/wp-content/uploads/2016/09/Realistic-analytical-polyhedral-MRI-phantoms.pdf)
-    r = np.array(poly[('x', 'y')]) # position vectors of vertices Ve
-    E = len(r) # number of vertices/edges
-    Lv = np.roll(r, -1, axis=0) - r # edge vectors
-    L = [np.linalg.norm(e) for e in Lv] # edge lengths
-    t = [Lv[e]/L[e] for e in range(E)] # edge unit vectors
-    n = np.roll(t, 1, axis=1)
-    n[:,0] *= -1 # normals to tangents (pointing out from polygon)
+    r = poly['vertices'] # position vectors of vertices Ve
+    Lv = np.roll(r, -1, axis=1) - r # edge vectors
+    L = np.linalg.norm(Lv, axis=0) # edge lengths
+    t = Lv/L # edge unit vectors
+    n = np.array([-t[1,:], t[0,:]]) # normals to tangents (pointing out from polygon)
     rc = r + Lv / 2 # position vector for center of edge
 
-    ksp = np.zeros(np.product(phantom['matrix']), dtype=complex)
-    coords = np.array([(u, v) for u in phantom['kAxes'][1] for v in phantom['kAxes'][0]])
-    for e in range(E):
-        arg = np.pi * np.dot(coords, Lv[e])
-        zeroarg = arg==0
-        nonzero = np.logical_not(zeroarg)
-        ksp[nonzero] += L[e] * np.dot(coords[nonzero], n[e]) * np.sin(arg[nonzero]) / arg[nonzero] * np.exp(-2j*np.pi * np.dot(coords[nonzero], rc[e]))
-        ksp[zeroarg] += L[e] * np.dot(coords[zeroarg], n[e]) * np.exp(-2j*np.pi * np.dot(coords[zeroarg], rc[e])) # sinc(0)=1
-    kcenter = np.all(coords==0, axis=1)
-    ksp[kcenter] = abs(sum([r[e-1,0]*r[e,1] - r[e,0]*r[e-1,1] for e in range(E)]))/2 # kspace center equals polygon area
+    ksp = np.sum(L * np.dot(k, n) * np.sinc(np.dot(k, Lv)) * np.exp(-2j*np.pi * np.dot(k, rc)), axis=-1)
+    
+    kcenter = np.all(k==0, axis=-1)
+    ksp[kcenter] = polygonArea(r)
     notkcenter = np.logical_not(kcenter)
-    ksp[notkcenter] *= 1j / (2 * np.pi * np.linalg.norm(coords[notkcenter], axis=1)**2)
-    if not clockwise:
-        ksp *= -1
-    return ksp.reshape(phantom['matrix'][::-1]).T # TODO: get x/y order right from start!
+    ksp[notkcenter] *= 1j / (2 * np.pi * np.linalg.norm(k[notkcenter], axis=-1)**2)
+    return ksp
 
 
 def resampleKspace(phantom, kAxes):
@@ -425,14 +405,17 @@ class MRIsimulator(param.Parameterized):
                 self.tissues.add(tissue)
                 self.phantom['kspace'][tissue] = np.load(file)
         else:
+            print('Preparing k-space for "{}" phantom. This might take a few minutes on first use...'.format(self.object), end='', flush=True)
             polys = readSVG(Path(phantomPath / self.object).with_suffix('.svg'))
             self.tissues = set([poly['tissue'] for poly in polys])
             self.phantom['kspace'] = {tissue: np.zeros((self.phantom['matrix']), dtype=complex) for tissue in self.tissues}
+            k = np.array(np.meshgrid(self.phantom['kAxes'][0], self.phantom['kAxes'][1])).T
             for poly in polys:
-                self.phantom['kspace'][poly['tissue']] += kspacePolygon(poly, self.phantom)
+                self.phantom['kspace'][poly['tissue']] += kspacePolygon(poly, k)
             for tissue in self.tissues:
                 file = Path(phantomPath / tissue).with_suffix('.npy')
                 np.save(file, self.phantom['kspace'][tissue])
+            print('DONE')
     
 
     def sampleKspace(self):
