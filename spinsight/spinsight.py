@@ -49,11 +49,15 @@ PHANTOMS = {
 DIRECTIONS = {'anterior-posterior': 0, 'left-right': 1}
 
 
-def polygonIsClockwise(coords):
-    sum = 0
+def polygonArea(coords):
+    area = 0.
     for i in range(len(coords)):
-        sum += (coords[i][0]-coords[i-1][0]) * (coords[i][1]+coords[i-1][1])
-    return sum > 0
+        area += (coords[i][0]-coords[i-1][0]) * (coords[i][1]+coords[i-1][1])
+    return area / 2
+
+
+def polygonIsClockwise(coords):
+    return polygonArea(coords) > 0
 
 
 def closePath(path):
@@ -100,7 +104,7 @@ def getSubpaths(pathString, scale):
         raise Exception('Warning: all paths must be closed')
     subpaths.append(closePath(subpath))
     
-    if not polygonIsClockwise(subpaths[0]):
+    if sum([polygonArea(subpath) for subpath in subpaths]) < 0:
         for n in range(len(subpaths)):
             subpaths[n] = subpaths[n][::-1]
     return subpaths
@@ -147,6 +151,9 @@ def getKaxis(matrix, pixelSize, symmetric=True, fftshift=True):
 
 
 def kspacePolygon(poly, phantom):
+    clockwise = polygonIsClockwise(poly[('x', 'y')])
+    if not clockwise:
+        poly[('x', 'y')] = poly[('x', 'y')][::-1]
     # analytical 2D Fourier transform of polygon (see https://cvil.ucsd.edu/wp-content/uploads/2016/09/Realistic-analytical-polyhedral-MRI-phantoms.pdf)
     r = np.array(poly[('x', 'y')]) # position vectors of vertices Ve
     E = len(r) # number of vertices/edges
@@ -169,6 +176,8 @@ def kspacePolygon(poly, phantom):
     ksp[kcenter] = abs(sum([r[e-1,0]*r[e,1] - r[e,0]*r[e-1,1] for e in range(E)]))/2 # kspace center equals polygon area
     notkcenter = np.logical_not(kcenter)
     ksp[notkcenter] *= 1j / (2 * np.pi * np.linalg.norm(coords[notkcenter], axis=1)**2)
+    if not clockwise:
+        ksp *= -1
     return ksp.reshape(phantom['matrix'][::-1]).T # TODO: get x/y order right from start!
 
 
