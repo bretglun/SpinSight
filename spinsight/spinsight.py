@@ -287,9 +287,9 @@ class MRIsimulator(param.Parameterized):
         for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.addNoise, self.compileKspace, self.zerofill, self.reconstruct]:
             self.pipeline.add(f)
         self.param.reconMatrixX.bounds = (self.matrixX, self.param.reconMatrixX.bounds[1])
-        self.reconMatrixX = max(int(self.matrixX * self.recAcqRatioX), self.matrixX)
+        self.reconMatrixX = min(max(int(self.matrixX * self.recAcqRatioX), self.matrixX), self.param.reconMatrixX.bounds[1])
         self.param.reconMatrixY.bounds = (self.matrixY, self.param.reconMatrixY.bounds[1])
-        self.reconMatrixY = max(int(self.matrixY * self.recAcqRatioY), self.matrixY)
+        self.reconMatrixY = min(max(int(self.matrixY * self.recAcqRatioY), self.matrixY), self.param.reconMatrixY.bounds[1])
 
 
     @param.depends('frequencyDirection', watch=True)
