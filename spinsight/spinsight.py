@@ -541,8 +541,8 @@ def getApp():
     explorer = MRIsimulator(name='')
     title = '# SpinSight MRI simulator'
     author = '*Written by [Johan Berglund](mailto:johan.berglund@akademiska.se), Ph.D.*'
-    settingsParams = pn.panel(explorer.param, parameters=['object'], name='Settings')
-    contrastParams = pn.panel(explorer.param, parameters=['fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI'], widgets={'TR': pn.widgets.DiscreteSlider, 'TE': pn.widgets.DiscreteSlider, 'TI': pn.widgets.DiscreteSlider}, name='Contrast')
+    settingsParams = pn.panel(explorer.param, parameters=['object', 'fieldStrength'], name='Settings')
+    contrastParams = pn.panel(explorer.param, parameters=['sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI'], widgets={'TR': pn.widgets.DiscreteSlider, 'TE': pn.widgets.DiscreteSlider, 'TI': pn.widgets.DiscreteSlider}, name='Contrast')
     geometryParams = pn.panel(explorer.param, parameters=['FOVX', 'FOVY', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'frequencyDirection', 'pixelBandWidth', 'NSA'], name='Geometry')
     dmapKspace = hv.DynamicMap(explorer.getKspace)
     dmapMRimage = hv.DynamicMap(explorer.getImage)
