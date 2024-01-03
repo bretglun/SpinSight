@@ -6,6 +6,8 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 import re
 import xarray as xr
+import sequence
+from bokeh.models import HoverTool
 
 hv.extension('bokeh')
 
@@ -47,6 +49,10 @@ PHANTOMS = {
 }
 
 DIRECTIONS = {'anterior-posterior': 0, 'left-right': 1}
+
+
+def isGradientEcho(sequence):
+    return 'Gradient Echo' in sequence
 
 
 def polygonArea(coords):
@@ -256,8 +262,27 @@ class MRIsimulator(param.Parameterized):
         
         self.pipeline = set(self.fullPipeline)
 
+        self.timeDim = hv.Dimension('time', label='time', unit='ms')
+
+        self.boards = { 'frequency': {'dim': hv.Dimension('frequency', label='G read', unit='mT/m', range=(-30, 30)), 'color': 'cadetblue'}, 
+                        'phase': {'dim': hv.Dimension('phase', label='G phase', unit='mT/m', range=(-30, 30)), 'color': 'cadetblue'}, 
+                        'slice': {'dim': hv.Dimension('slice', label='G slice', unit='mT/m', range=(-30, 30)), 'color': 'cadetblue'}, 
+                        'RF': {'dim': hv.Dimension('RF', label='RF', unit='μT', range=(-5, 25)), 'color': 'red'},
+                        'ADC': {'dim': hv.Dimension('ADC', label='ADC', unit=''), 'color': 'orange'} }
+
         self._watch_reconMatrix()
-    
+
+        self.boardPlots = {board: {'hline': hv.HLine(0.0, kdims=[self.timeDim, self.boards[board]['dim']]).opts(tools=['xwheel_zoom', 'xpan', 'reset'], default_tools=[], active_tools=['xwheel_zoom', 'xpan'])} for board in self.boards if board != 'ADC'}
+
+        hv.opts.defaults(hv.opts.Image(width=500, height=500, invert_yaxis=False, toolbar='below', cmap='gray', aspect='equal'))
+        hv.opts.defaults(hv.opts.HLine(line_width=1.5, line_color='gray'))
+        hv.opts.defaults(hv.opts.VSpan(color='orange', fill_alpha=.1, hover_fill_alpha=.8, default_tools=[]))
+        hv.opts.defaults(hv.opts.Overlay(width=1700, height=120, border=4, show_grid=True, xaxis=None))
+        hv.opts.defaults(hv.opts.Area(fill_alpha=.5, line_width=1.5, line_color='gray', default_tools=[]))
+        hv.opts.defaults(hv.opts.Polygons(line_width=1.5, fill_alpha=0, line_alpha=0, line_color='gray', selection_line_color='black', hover_fill_alpha=.8, hover_line_alpha=1, selection_fill_alpha=.8, selection_line_alpha=1, nonselection_line_alpha=0, default_tools=[]))
+
+        self.setupSequence()  # TODO: distribute
+
 
     def runPipeline(self):
         for f in self.fullPipeline:
@@ -439,7 +464,7 @@ class MRIsimulator(param.Parameterized):
 
     def modulateKspace(self):
         decayTime = self.samplingTime + self.TE
-        dephasingTime = decayTime if 'Gradient Echo' in self.sequence else self.samplingTime
+        dephasingTime = decayTime if isGradientEcho(self.sequence) else self.samplingTime
 
         self.kspaceComps = {}
         for tissue in self.tissues:
@@ -521,7 +546,7 @@ class MRIsimulator(param.Parameterized):
             coords={'kx': kAxes[1], 'ky': kAxes[0]}
         )
         ksp.kx.attrs['units'] = ksp.ky.attrs['units'] = '1/mm'
-        return hv.Image(ksp, vdims=['magnitude']).options(cmap='gray', aspect='equal', toolbar='below', height=500, width=500)
+        return hv.Image(ksp, vdims=['magnitude'])
     
 
     @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVX', 'FOVY', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'frequencyDirection', 'pixelBandWidth', 'NSA')
@@ -534,7 +559,103 @@ class MRIsimulator(param.Parameterized):
             coords={'x': iAxes[1], 'y': iAxes[0][::-1]}
         )
         img.x.attrs['units'] = img.y.attrs['units'] = 'mm'
-        return hv.Image(img, vdims=['magnitude']).options(cmap='gray', aspect='equal', toolbar='below', height=500, width=500)
+        return hv.Image(img, vdims=['magnitude'])
+    
+    
+    @param.depends('matrixX', 'matrixY', 'FOVX', 'FOVY', 'TE', 'TI', 'sequence', 'pixelBandWidth', watch=True)
+    def setupSequence(self):  # TODO: distribute
+        for board in self.boards:
+            self.boards[board]['objects'] = {}
+        
+        # RF board
+        self.boards['RF']['objects']['excitation'] = sequence.getRF(flipAngle=90., time=0., dur=2., shape='hammingSinc',  name='excitation')
+        if isGradientEcho(self.sequence):
+            pass #delete refocusing
+        else:
+            self.boards['RF']['objects']['refocusing'] = sequence.getRF(flipAngle=180., time=self.TE/2, dur=3., shape='hammingSinc',  name='refocusing')
+        
+        if self.sequence=='Inversion Recovery':
+            self.boards['RF']['objects']['inversion'] = sequence.getRF(flipAngle=180., time=-self.TI, dur=3., shape='hammingSinc',  name='inversion')
+        else:
+            pass # delete inversion
+        
+        # slice board
+        flatDur = self.boards['RF']['objects']['excitation']['dur_f']
+        amp = 10. # TODO: determine from slice thickness
+        self.boards['slice']['objects']['slice select excitation'] = sequence.getGradient('slice', 0., maxAmp=amp, flatDur=flatDur, name='slice select excitation')
+        sliceRephaserArea = -self.boards['slice']['objects']['slice select excitation']['area_f']/2
+        self.boards['slice']['objects']['slice rephaser'] = sequence.getGradient('slice', totalArea=sliceRephaserArea, name='slice rephaser')
+        rephaserTime = sum([self.boards['slice']['objects'][name]['dur_f'] for name in ['slice select excitation', 'slice rephaser']])/2
+        sequence.moveWaveform(self.boards['slice']['objects']['slice rephaser'], rephaserTime)
+
+        if isGradientEcho(self.sequence):
+            pass #delete refocusing
+        else:
+            flatDur = self.boards['RF']['objects']['refocusing']['dur_f']
+            amp = 10. # TODO: determine from slice thickness
+            self.boards['slice']['objects']['slice select refocusing'] = sequence.getGradient('slice', self.TE/2, maxAmp=amp, flatDur=flatDur, name='slice select refocusing')
+
+        if self.sequence=='Inversion Recovery':
+            flatDur = self.boards['RF']['objects']['inversion']['dur_f']
+            amp = 10. # TODO: determine from slice thickness
+            self.boards['slice']['objects']['slice select inversion'] = sequence.getGradient('slice', -self.TI, maxAmp=amp, flatDur=flatDur, name='slice select inversion')
+
+            spoilerArea = 30. # uTs/m
+            self.boards['slice']['objects']['inversion spoiler'] = sequence.getGradient('slice', totalArea=spoilerArea, name='inversion spoiler')
+            spoilerTime = self.boards['RF']['objects']['inversion']['time'][-1] + self.boards['slice']['objects']['inversion spoiler']['dur_f']/2
+            sequence.moveWaveform(self.boards['slice']['objects']['inversion spoiler'], spoilerTime)
+        else:
+            pass # delete inversion
+        
+        # frequency board
+        flatArea = self.matrixX / (self.FOVX/1e3 * GYRO) # uTs/m
+        amp = self.pixelBandWidth *self.matrixX / (self.FOVX * GYRO) # mT/m
+        self.boards['frequency']['objects']['readout'] = sequence.getGradient('frequency', self.TE, maxAmp=amp, flatArea=flatArea, name='readout')
+        flatDur = self.boards['frequency']['objects']['readout']['flatDur_f']
+        self.boards['ADC']['objects']['sampling'] = sequence.getADC(self.TE, dur=flatDur, name='sampling')
+        dephaseArea = self.boards['frequency']['objects']['readout']['area_f']/2
+        self.boards['frequency']['objects']['read prephaser'] = sequence.getGradient('frequency', totalArea=dephaseArea, name='read prephaser')
+        if isGradientEcho(self.sequence):
+            sequence.rescaleGradient(self.boards['frequency']['objects']['read prephaser'], -1)
+            prephaseTime = self.TE - sum([self.boards['frequency']['objects'][name]['dur_f'] for name in ['readout', 'read prephaser']])/2
+        else:
+            prephaseTime = sum([self.boards[b]['objects'][name]['dur_f'] for (b, name) in [('slice', 'slice select excitation'), ('frequency', 'read prephaser')]])/2
+        sequence.moveWaveform(self.boards['frequency']['objects']['read prephaser'], prephaseTime)
+
+        
+        # phase board
+        maxArea = self.matrixY / (self.FOVY/1e3 * GYRO * 2) # uTs/m
+        self.boards['phase']['objects']['phase encode'] = sequence.getGradient('phase', totalArea=maxArea, name='phase encode')
+        if isGradientEcho(self.sequence):
+            phaserTime = rephaserTime
+        else:
+            phaserTime = self.TE - self.boards['frequency']['objects']['readout']['flatDur_f']/2 - self.boards['phase']['objects']['phase encode']['dur_f']/2
+        sequence.moveWaveform(self.boards['phase']['objects']['phase encode'], phaserTime)
+
+        # spoiler
+        spoilerArea = 30. # uTs/m
+        self.boards['slice']['objects']['spoiler'] = sequence.getGradient('slice', totalArea=spoilerArea, name='spoiler')
+        spoilerTime = self.boards['frequency']['objects']['readout']['time'][-1] + self.boards['slice']['objects']['spoiler']['dur_f']/2
+        sequence.moveWaveform(self.boards['slice']['objects']['spoiler'], spoilerTime)
+
+        for board in self.boards:
+            if board=='ADC': 
+                continue
+            self.boardPlots[board]['area'] = hv.Area(sequence.accumulateWaveforms(list(self.boards[board]['objects'].values()), board), self.timeDim, self.boards[board]['dim']).opts(color=self.boards[board]['color'])
+            
+            self.boards[board]['attributes'] = []
+            if self.boards[board]['objects']:
+                self.boards[board]['attributes'] += [attr for attr in list(self.boards[board]['objects'].values())[0].keys() if attr not in ['time', board] and '_f' not in attr]
+                hover = HoverTool(tooltips=[(attr, '@{}'.format(attr)) for attr in self.boards[board]['attributes']], attachment='below')
+                self.boardPlots[board]['polygons'] = hv.Polygons(list(self.boards[board]['objects'].values()), kdims=[self.timeDim, self.boards[board]['dim']], vdims=self.boards[board]['attributes']).opts(tools=[hover], cmap=[self.boards[board]['color']])
+            
+            if board == 'frequency':
+                self.boardPlots[board]['frequency'] = hv.Overlay([hv.VSpan(obj['time'][0], obj['time'][-1], kdims=[self.timeDim, self.boards['frequency']['dim']]) for obj in self.boards['ADC']['objects'].values()])
+    
+
+    @param.depends('matrixX', 'matrixY', 'FOVX', 'FOVY', 'TE', 'TI', 'sequence', 'pixelBandWidth', watch=True)
+    def getSequencePlot(self):
+        return hv.Layout(list([hv.Overlay(list(boardPlot.values())).opts(xaxis='bottom' if n==len(self.boardPlots)-1 else None) for n, boardPlot in enumerate(self.boardPlots.values())])).cols(1).options(toolbar='below')
 
 
 def getApp():
@@ -546,7 +667,8 @@ def getApp():
     geometryParams = pn.panel(explorer.param, parameters=['FOVX', 'FOVY', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'frequencyDirection', 'pixelBandWidth', 'NSA'], name='Geometry')
     dmapKspace = hv.DynamicMap(explorer.getKspace)
     dmapMRimage = hv.DynamicMap(explorer.getImage)
-    dashboard = pn.Row(pn.Column(pn.pane.Markdown(title), pn.Row(pn.Column(settingsParams, contrastParams), geometryParams), pn.pane.Markdown(author)), dmapMRimage, dmapKspace)
+    dmapSequence = hv.DynamicMap(explorer.getSequencePlot)
+    dashboard = pn.Column(pn.Row(pn.Column(pn.pane.Markdown(title), pn.Row(pn.Column(settingsParams, contrastParams), geometryParams)), dmapMRimage, dmapKspace), dmapSequence, pn.pane.Markdown(author))
     return dashboard
 
 
