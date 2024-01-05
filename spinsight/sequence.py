@@ -93,6 +93,7 @@ def getGradient(dir, time=0., maxAmp=25., maxSlew=80., totalArea=None, flatArea=
         'duration': '{:.1f} ms'.format(dur),
         'dur_f': dur,
         'flatDur_f': flatDur,
+        'riseTime_f': riseTime,
         'area': '{:.1f} μTs/m'.format(area),
         'area_f': area
     }
@@ -122,6 +123,7 @@ def getADC(dur, name, time=0.):
     adc = {
         'name': name,
         'time': np.array([-dur/2, dur/2]) + time,
-        'center_f': time
+        'center_f': time,
+        'dur_f': dur
     }
     return adc

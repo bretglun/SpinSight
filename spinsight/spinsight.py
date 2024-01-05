@@ -240,15 +240,12 @@ class MRIsimulator(param.Parameterized):
     reconMatrixF = param.Integer(default=256, bounds=(matrixF.default, 1024), label='Reconstruction matrix x')
     reconMatrixP = param.Integer(default=256, bounds=(matrixP.default, 1024), label='Reconstruction matrix y')
     frequencyDirection = param.ObjectSelector(default=list(DIRECTIONS.keys())[-1], objects=DIRECTIONS.keys(), label='Frequency encoding direction')
-    pixelBandWidth = param.Number(default=2000, bounds=(50, 2000), label='Pixel bandwidth [Hz]')
+    pixelBandWidth = param.Number(default=2000, bounds=(125, 2000), label='Pixel bandwidth [Hz]')
     NSA = param.Integer(default=1, bounds=(1, 32), label='NSA')
     
 
     def __init__(self, **params):
         super().__init__(**params)
-        self.updateReadoutDuration()
-        self.updateTEbounds()
-        self.updateTRbounds()
 
         self.fullReconPipeline = [
             self.loadPhantom, 
@@ -320,11 +317,12 @@ class MRIsimulator(param.Parameterized):
             if f in self.sequencePipeline:
                 f()
                 self.sequencePipeline.remove(f)
+        self.updateTRbounds()
+        self.updateTEbounds()
+        self.updateTIbounds()
+        self.updateBWbounds()
+        self.updateResolutionBounds()
     
-
-    def updateReadoutDuration(self):
-        self.readoutDuration = 1e3 / self.pixelBandWidth # [msec]
-        
     
     @param.depends('object', watch=True)
     def _watch_object(self):
@@ -386,7 +384,6 @@ class MRIsimulator(param.Parameterized):
         for f in [self.updateSamplingTime, self.modulateKspace, self.addNoise, self.compileKspace, self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
         self.sequencePipeline.add(self.setupReadout)
-        self.updateReadoutDuration()
 
 
     @param.depends('NSA', watch=True)
@@ -448,35 +445,49 @@ class MRIsimulator(param.Parameterized):
         for f in [self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
     
-
-    @param.depends('sequence', 'TE', 'TI', 'pixelBandWidth', watch=True)
+    
     def updateTRbounds(self):
-        minTR = DURATIONS['exc']/2 + self.TE + self.readoutDuration/2 + DURATIONS['spoil']
-        if self.sequence == 'Inversion Recovery': minTR += DURATIONS['inv']/2 + self.TI - DURATIONS['exc']/2
-        self.param.TR.objects = [tr for tr in TRvalues if not tr < minTR]
-    
-    
-    @param.depends('sequence', 'TR', 'TI', 'pixelBandWidth', watch=True)
-    def updateTEbounds(self):
-        if self.sequence in ['Spin Echo', 'Inversion Recovery']: # seqs with refocusing pulse
-            minTE = max((DURATIONS['exc'] + DURATIONS['ref']), (DURATIONS['ref'] + self.readoutDuration))
+        self.minTR = self.boards['slice']['objects']['spoiler']['time'][-1]
+        if self.sequence == 'Inversion Recovery': 
+            self.minTR -= self.boards['slice']['objects']['slice select inversion']['time'][0]
         else:
-            minTE = (DURATIONS['exc'] + self.readoutDuration)/2
-        maxTE = self.TR - (DURATIONS['exc'] + self.readoutDuration)/2 - DURATIONS['spoil']
-        if self.sequence == 'Inversion Recovery':
-            maxTE += (DURATIONS['exc'] - DURATIONS['inv'])/2 - self.TI
+            self.minTR -= self.boards['slice']['objects']['slice select excitation']['time'][0]
+        self.param.TR.objects = [tr for tr in TRvalues if not tr < self.minTR]
+    
+    
+    def updateTEbounds(self):
+        if not isGradientEcho(self.sequence):
+            leftSide = max(
+                self.boards['frequency']['objects']['read prephaser']['time'][-1], 
+                self.boards['slice']['objects']['slice select rephaser']['time'][-1] + (self.boards['slice']['objects']['slice select refocusing']['riseTime_f']))
+            leftSide += self.boards['RF']['objects']['refocusing']['dur_f'] / 2
+            rightSide = max(
+                self.boards['frequency']['objects']['readout']['riseTime_f'],
+                self.boards['phase']['objects']['phase encode']['dur_f'],
+                self.boards['slice']['objects']['slice select refocusing']['riseTime_f'])
+            rightSide += (self.boards['RF']['objects']['refocusing']['dur_f'] + self.boards['ADC']['objects']['sampling']['dur_f']) / 2
+            minTE = max(leftSide, rightSide) * 2
+        else:
+            minTE = max(
+                self.boards['frequency']['objects']['read prephaser']['dur_f'] + self.boards['frequency']['objects']['readout']['riseTime_f'],
+                self.boards['phase']['objects']['phase encode']['dur_f'],
+                self.boards['slice']['objects']['slice select excitation']['riseTime_f'] + self.boards['slice']['objects']['slice select rephaser']['dur_f']
+            )
+            minTE += (self.boards['RF']['objects']['excitation']['dur_f'] + self.boards['ADC']['objects']['sampling']['dur_f']) / 2
+        maxTE = self.TR - self.minTR + self.TE
         self.param.TE.objects = [te for te in TEvalues if not te < minTE and not te > maxTE]
     
 
-    @param.depends('sequence', 'TR', 'TE', 'pixelBandWidth', watch=True)
     def updateTIbounds(self):
         if self.sequence != 'Inversion Recovery': return
-        minTI = (DURATIONS['inv'] + DURATIONS['exc'])/2
-        maxTI = self.TR - (DURATIONS['inv']/2 + self.TE + self.readoutDuration/2 + DURATIONS['spoil'])
+        minTI = sum([
+            self.boards['RF']['objects']['inversion']['dur_f'] / 2, 
+            self.boards['slice']['objects']['inversion spoiler']['dur_f'], 
+            self.boards['RF']['objects']['excitation']['dur_f'] / 2 ])
+        maxTI = self.TR - self.minTR + self.TI
         self.param.TI.objects = [ti for ti in TIvalues if not ti < minTI and not ti > maxTI]
     
 
-    @param.depends('sequence', 'TR', 'TE', 'TI', watch=True)
     def updateBWbounds(self):
         maxReadDurRightHalf = self.TR - self.TE - DURATIONS['exc']/2 - DURATIONS['spoil']
         if self.sequence == 'Inversion Recovery': maxReadDurRightHalf += (DURATIONS['exc'] - DURATIONS['inv'])/2 - self.TI
@@ -485,8 +496,12 @@ class MRIsimulator(param.Parameterized):
         else:
             maxReadDurLeftHalf = self.TE - DURATIONS['exc']/2
         maxReadDur = min(maxReadDurLeftHalf, maxReadDurRightHalf) * 2 * .99 # fudge factor
-        minpBW = max(1e3 / maxReadDur, 50)
+        minpBW = max(1e3 / maxReadDur, 125)
         self.param.pixelBandWidth.bounds = (minpBW, 2000)
+    
+
+    def updateResolutionBounds(self):
+         pass # TODO
 
 
     def loadPhantom(self):
@@ -737,7 +752,7 @@ class MRIsimulator(param.Parameterized):
     
 
     def placeSpoiler(self):
-        spoilerTime = self.boards['frequency']['objects']['readout']['time'][-1] + self.boards['slice']['objects']['spoiler']['dur_f']/2
+        spoilerTime = self.boards['frequency']['objects']['readout']['center_f'] + (self.boards['frequency']['objects']['readout']['flatDur_f'] + self.boards['slice']['objects']['spoiler']['dur_f']) / 2
         sequence.moveWaveform(self.boards['slice']['objects']['spoiler'], spoilerTime)
         self.sequencePipeline.add(self.renderSliceBoard)
 
@@ -820,6 +835,7 @@ def getApp():
     return dashboard
 
 
+# TODO: add slice thickness
 # TODO: username/password, se https://stackoverflow.com/questions/43183531/simple-username-password-protection-of-a-bokeh-server
 # TODO: bug when switching sequence and pulses are tight
 # TODO: phase oversampling
