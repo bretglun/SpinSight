@@ -233,12 +233,12 @@ class MRIsimulator(param.Parameterized):
     TE = param.Selector(default=7, objects=TEvalues, label='TE [msec]')
     FA = param.Number(default=90.0, bounds=(1, 90.0), precedence=-1, label='Flip angle [°]')
     TI = param.Selector(default=50, objects=TIvalues, precedence=-1, label='TI [msec]')
-    FOVX = param.Number(default=420, bounds=(100, 600), label='FOV x [mm]')
-    FOVY = param.Number(default=420, bounds=(100, 600), label='FOV y [mm]')
-    matrixX = param.Integer(default=128, bounds=(16, 600), label='Acquisition matrix x')
-    matrixY = param.Integer(default=128, bounds=(16, 600), label='Acquisition matrix y')
-    reconMatrixX = param.Integer(default=256, bounds=(matrixX.default, 1024), label='Reconstruction matrix x')
-    reconMatrixY = param.Integer(default=256, bounds=(matrixY.default, 1024), label='Reconstruction matrix y')
+    FOVF = param.Number(default=420, bounds=(100, 600), label='FOV x [mm]')
+    FOVP = param.Number(default=420, bounds=(100, 600), label='FOV y [mm]')
+    matrixF = param.Integer(default=128, bounds=(16, 600), label='Acquisition matrix x')
+    matrixP = param.Integer(default=128, bounds=(16, 600), label='Acquisition matrix y')
+    reconMatrixF = param.Integer(default=256, bounds=(matrixF.default, 1024), label='Reconstruction matrix x')
+    reconMatrixP = param.Integer(default=256, bounds=(matrixP.default, 1024), label='Reconstruction matrix y')
     frequencyDirection = param.ObjectSelector(default=list(DIRECTIONS.keys())[-1], objects=DIRECTIONS.keys(), label='Frequency encoding direction')
     pixelBandWidth = param.Number(default=2000, bounds=(50, 2000), label='Pixel bandwidth [Hz]')
     NSA = param.Integer(default=1, bounds=(1, 32), label='NSA')
@@ -301,26 +301,31 @@ class MRIsimulator(param.Parameterized):
             self.pipeline.add(f)
     
 
-    @param.depends('FOVX', 'FOVY', watch=True)
+    @param.depends('FOVF', 'FOVP', watch=True)
     def _watch_FOV(self):
         for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.addNoise, self.compileKspace, self.zerofill, self.reconstruct]:
             self.pipeline.add(f)
     
 
-    @param.depends('matrixX', 'matrixY', watch=True)
+    @param.depends('matrixF', 'matrixP', watch=True)
     def _watch_matrix(self):
         for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.addNoise, self.compileKspace, self.zerofill, self.reconstruct]:
             self.pipeline.add(f)
-        self.param.reconMatrixX.bounds = (self.matrixX, self.param.reconMatrixX.bounds[1])
-        self.reconMatrixX = min(max(int(self.matrixX * self.recAcqRatioX), self.matrixX), self.param.reconMatrixX.bounds[1])
-        self.param.reconMatrixY.bounds = (self.matrixY, self.param.reconMatrixY.bounds[1])
-        self.reconMatrixY = min(max(int(self.matrixY * self.recAcqRatioY), self.matrixY), self.param.reconMatrixY.bounds[1])
+        self.param.reconMatrixF.bounds = (self.matrixF, self.param.reconMatrixF.bounds[1])
+        self.reconMatrixF = min(max(int(self.matrixF * self.recAcqRatioF), self.matrixF), self.param.reconMatrixF.bounds[1])
+        self.param.reconMatrixP.bounds = (self.matrixP, self.param.reconMatrixP.bounds[1])
+        self.reconMatrixP = min(max(int(self.matrixP * self.recAcqRatioP), self.matrixP), self.param.reconMatrixP.bounds[1])
 
 
     @param.depends('frequencyDirection', watch=True)
     def _watch_frequencyDirection(self):
         for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.addNoise, self.compileKspace, self.zerofill, self.reconstruct]:
             self.pipeline.add(f)
+        for p in [self.param.FOVF, self.param.FOVP, self.param.matrixF, self.param.matrixP, self.param.reconMatrixF, self.param.reconMatrixP]:
+            if ' x' in p.label:
+                p.label = p.label.replace(' x', ' y')
+            elif ' y' in p.label:
+                p.label = p.label.replace(' y', ' x')
 
 
     @param.depends('fieldStrength', watch=True)
@@ -368,10 +373,10 @@ class MRIsimulator(param.Parameterized):
             self.pipeline.add(f)
     
     
-    @param.depends('reconMatrixX', 'reconMatrixY', watch=True)
+    @param.depends('reconMatrixF', 'reconMatrixP', watch=True)
     def _watch_reconMatrix(self):
-        self.recAcqRatioX = self.reconMatrixX / self.matrixX
-        self.recAcqRatioY = self.reconMatrixY / self.matrixY
+        self.recAcqRatioF = self.reconMatrixF / self.matrixF
+        self.recAcqRatioP = self.reconMatrixP / self.matrixP
         for f in [self.zerofill, self.reconstruct]:
             self.pipeline.add(f)
     
@@ -444,9 +449,12 @@ class MRIsimulator(param.Parameterized):
     
 
     def sampleKspace(self):
-        self.matrix = [self.matrixY, self.matrixX]
-        self.FOV = [self.FOVY, self.FOVX]
+        self.matrix = [self.matrixP, self.matrixF]
+        self.FOV = [self.FOVP, self.FOVF]
         self.freqDir = DIRECTIONS[self.frequencyDirection]
+        if self.freqDir==0:
+            self.matrix.reverse()
+            self.FOV.reverse()
         
         self.oversampledMatrix = self.matrix.copy() # account for oversampling in frequency encoding direction
         if self.FOV[self.freqDir] < self.phantom['FOV'][self.freqDir]: # At least Nyquist sampling in frequency encoding direction
@@ -507,7 +515,9 @@ class MRIsimulator(param.Parameterized):
 
     
     def zerofill(self):
-        self.reconMatrix = [self.reconMatrixY, self.reconMatrixX]
+        self.reconMatrix = [self.reconMatrixP, self.reconMatrixF]
+        if self.freqDir==0:
+            self.reconMatrix.reverse()
         self.oversampledReconMatrix = self.reconMatrix.copy()
         if self.FOV[self.freqDir] < self.phantom['FOV'][self.freqDir]: # At least Nyquist sampling in frequency encoding direction
             self.oversampledReconMatrix[self.freqDir] = int(self.reconMatrix[self.freqDir] * self.oversampledMatrix[self.freqDir] / self.matrix[self.freqDir])
@@ -530,7 +540,7 @@ class MRIsimulator(param.Parameterized):
         self.imageArray = crop(np.fft.fftshift(self.imageArray), self.reconMatrix)
     
     
-    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVX', 'FOVY', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'frequencyDirection', 'pixelBandWidth', 'NSA')
+    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'frequencyDirection', 'pixelBandWidth', 'NSA')
     def getKspace(self):
         self.runPipeline()
         kAxes = []
@@ -549,7 +559,7 @@ class MRIsimulator(param.Parameterized):
         return hv.Image(ksp, vdims=['magnitude'])
     
 
-    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVX', 'FOVY', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'frequencyDirection', 'pixelBandWidth', 'NSA')
+    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'frequencyDirection', 'pixelBandWidth', 'NSA')
     def getImage(self):
         self.runPipeline()
         iAxes = [(np.arange(self.reconMatrix[dim]) - (self.reconMatrix[dim]-1)/2) / self.reconMatrix[dim] * self.FOV[dim] for dim in range(2)]
@@ -562,7 +572,7 @@ class MRIsimulator(param.Parameterized):
         return hv.Image(img, vdims=['magnitude'])
     
     
-    @param.depends('matrixX', 'matrixY', 'FOVX', 'FOVY', 'TE', 'TI', 'sequence', 'pixelBandWidth', watch=True)
+    @param.depends('matrixF', 'matrixP', 'FOVF', 'FOVP', 'TE', 'TI', 'sequence', 'pixelBandWidth', watch=True)
     def setupSequence(self):  # TODO: distribute
         for board in self.boards:
             self.boards[board]['objects'] = {}
@@ -608,8 +618,8 @@ class MRIsimulator(param.Parameterized):
             pass # delete inversion
         
         # frequency board
-        flatArea = self.matrixX / (self.FOVX/1e3 * GYRO) # uTs/m
-        amp = self.pixelBandWidth *self.matrixX / (self.FOVX * GYRO) # mT/m
+        flatArea = self.matrixF / (self.FOVF/1e3 * GYRO) # uTs/m
+        amp = self.pixelBandWidth *self.matrixF / (self.FOVF * GYRO) # mT/m
         self.boards['frequency']['objects']['readout'] = sequence.getGradient('frequency', self.TE, maxAmp=amp, flatArea=flatArea, name='readout')
         flatDur = self.boards['frequency']['objects']['readout']['flatDur_f']
         self.boards['ADC']['objects']['sampling'] = sequence.getADC(self.TE, dur=flatDur, name='sampling')
@@ -624,7 +634,7 @@ class MRIsimulator(param.Parameterized):
 
         
         # phase board
-        maxArea = self.matrixY / (self.FOVY/1e3 * GYRO * 2) # uTs/m
+        maxArea = self.matrixP / (self.FOVP/1e3 * GYRO * 2) # uTs/m
         self.boards['phase']['objects']['phase encode'] = sequence.getGradient('phase', totalArea=maxArea, name='phase encode')
         if isGradientEcho(self.sequence):
             phaserTime = rephaserTime
@@ -653,7 +663,7 @@ class MRIsimulator(param.Parameterized):
                 self.boardPlots[board]['frequency'] = hv.Overlay([hv.VSpan(obj['time'][0], obj['time'][-1], kdims=[self.timeDim, self.boards['frequency']['dim']]) for obj in self.boards['ADC']['objects'].values()])
     
 
-    @param.depends('matrixX', 'matrixY', 'FOVX', 'FOVY', 'TE', 'TI', 'sequence', 'pixelBandWidth', watch=True)
+    @param.depends('matrixF', 'matrixP', 'FOVF', 'FOVP', 'TE', 'TI', 'sequence', 'pixelBandWidth', watch=True)
     def getSequencePlot(self):
         return hv.Layout(list([hv.Overlay(list(boardPlot.values())).opts(xaxis='bottom' if n==len(self.boardPlots)-1 else None) for n, boardPlot in enumerate(self.boardPlots.values())])).cols(1).options(toolbar='below')
 
@@ -664,7 +674,7 @@ def getApp():
     author = '*Written by [Johan Berglund](mailto:johan.berglund@akademiska.se), Ph.D.*'
     settingsParams = pn.panel(explorer.param, parameters=['object', 'fieldStrength'], name='Settings')
     contrastParams = pn.panel(explorer.param, parameters=['sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI'], widgets={'TR': pn.widgets.DiscreteSlider, 'TE': pn.widgets.DiscreteSlider, 'TI': pn.widgets.DiscreteSlider}, name='Contrast')
-    geometryParams = pn.panel(explorer.param, parameters=['FOVX', 'FOVY', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'frequencyDirection', 'pixelBandWidth', 'NSA'], name='Geometry')
+    geometryParams = pn.panel(explorer.param, parameters=['FOVF', 'FOVP', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'frequencyDirection', 'pixelBandWidth', 'NSA'], name='Geometry')
     dmapKspace = hv.DynamicMap(explorer.getKspace)
     dmapMRimage = hv.DynamicMap(explorer.getImage)
     dmapSequence = hv.DynamicMap(explorer.getSequencePlot)
