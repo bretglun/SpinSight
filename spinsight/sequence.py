@@ -58,11 +58,11 @@ def getRF(flipAngle, dur, name, time=0., shape='hammingSinc'):
     rf = { 'RF': am,
             'time': t,
             'name': name,
-            'center': '{:.2f} ms'.format(time),
+            'center': '{:.1f} ms'.format(time),
             'center_f': time,
-            'duration': '{:.2f} ms'.format(dur),
+            'duration': '{:.1f} ms'.format(dur),
             'dur_f': dur,
-            'flip angle': '{:.2f}°'.format(flipAngle)}
+            'flip_angle': '{:.0f}°'.format(flipAngle)}
     return rf
 
 
@@ -88,12 +88,12 @@ def getGradient(dir, time=0., maxAmp=25., maxSlew=80., totalArea=None, flatArea=
         dir: amp,
         'time': t,
         'name': name,
-        'center': '{:.2f} ms'.format(time),
+        'center': '{:.1f} ms'.format(time),
         'center_f': time,
-        'duration': '{:.2f} ms'.format(dur),
+        'duration': '{:.1f} ms'.format(dur),
         'dur_f': dur,
         'flatDur_f': flatDur,
-        'area': '{:.2f} μTs/m'.format(area),
+        'area': '{:.1f} μTs/m'.format(area),
         'area_f': area
     }
     return gr
