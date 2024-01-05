@@ -118,9 +118,10 @@ def rescaleGradient(g, scale):
     g['area'] = '{:.2f} μTs/m'.format(g['area_f']),
 
 
-def getADC(time, dur, name):
+def getADC(dur, name, time=0.):
     adc = {
         'name': name,
-        'time': np.array([-dur/2, dur/2]) + time
+        'time': np.array([-dur/2, dur/2]) + time,
+        'center_f': time
     }
     return adc
