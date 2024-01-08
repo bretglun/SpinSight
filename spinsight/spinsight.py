@@ -325,9 +325,11 @@ class MRIsimulator(param.Parameterized):
             if f in self.sequencePipeline:
                 f()
                 self.sequencePipeline.remove(f)
-        self.updateTRbounds()
-        self.updateTEbounds()
-        self.updateTIbounds()
+        self.updateMinTE()
+        self.updateMinTI()
+        self.updateMinTR()
+        self.updateMaxTE()
+        self.updateMaxTI()
         self.updateBWbounds()
         self.updateResolutionBounds()
     
@@ -454,16 +456,7 @@ class MRIsimulator(param.Parameterized):
             self.reconPipeline.add(f)
     
     
-    def updateTRbounds(self):
-        self.minTR = self.boards['slice']['objects']['spoiler']['time'][-1]
-        if self.sequence == 'Inversion Recovery': 
-            self.minTR -= self.boards['slice']['objects']['slice select inversion']['time'][0]
-        else:
-            self.minTR -= self.boards['slice']['objects']['slice select excitation']['time'][0]
-        self.param.TR.objects, _ = updateBounds(self.TR, TRvalues, minval=self.minTR)
-    
-    
-    def updateTEbounds(self):
+    def updateMinTE(self):
         if not isGradientEcho(self.sequence):
             leftSide = max(
                 self.boards['frequency']['objects']['read prephaser']['time'][-1], 
@@ -474,26 +467,42 @@ class MRIsimulator(param.Parameterized):
                 self.boards['phase']['objects']['phase encode']['dur_f'],
                 self.boards['slice']['objects']['slice select refocusing']['riseTime_f'])
             rightSide += (self.boards['RF']['objects']['refocusing']['dur_f'] + self.boards['ADC']['objects']['sampling']['dur_f']) / 2
-            minTE = max(leftSide, rightSide) * 2
+            self.minTE = max(leftSide, rightSide) * 2
         else:
-            minTE = max(
+            self.minTE = max(
                 self.boards['frequency']['objects']['read prephaser']['dur_f'] + self.boards['frequency']['objects']['readout']['riseTime_f'],
                 self.boards['phase']['objects']['phase encode']['dur_f'],
                 self.boards['slice']['objects']['slice select excitation']['riseTime_f'] + self.boards['slice']['objects']['slice select rephaser']['dur_f']
             )
-            minTE += (self.boards['RF']['objects']['excitation']['dur_f'] + self.boards['ADC']['objects']['sampling']['dur_f']) / 2
-        maxTE = self.TR - self.minTR + self.TE
-        self.param.TE.objects, _ = updateBounds(self.TE, TEvalues, minval=minTE, maxval=maxTE)
+            self.minTE += (self.boards['RF']['objects']['excitation']['dur_f'] + self.boards['ADC']['objects']['sampling']['dur_f']) / 2
     
     
-    def updateTIbounds(self):
+    def updateMinTI(self):
         if self.sequence != 'Inversion Recovery': return
-        minTI = sum([
+        self.minTI = sum([
             self.boards['RF']['objects']['inversion']['dur_f'] / 2, 
             self.boards['slice']['objects']['inversion spoiler']['dur_f'], 
             self.boards['RF']['objects']['excitation']['dur_f'] / 2 ])
+    
+    
+    def updateMinTR(self):
+        self.minTR = self.boards['slice']['objects']['spoiler']['time'][-1]
+        if self.sequence == 'Inversion Recovery': 
+            self.minTR -= self.boards['slice']['objects']['slice select inversion']['time'][0]
+        else:
+            self.minTR -= self.boards['slice']['objects']['slice select excitation']['time'][0]
+        self.param.TR.objects, _ = updateBounds(self.TR, TRvalues, minval=self.minTR)
+    
+
+    def updateMaxTE(self):
+        maxTE = self.TR - self.minTR + self.TE
+        self.param.TE.objects, _ = updateBounds(self.TE, TEvalues, minval=self.minTE, maxval=maxTE)
+    
+    
+    def updateMaxTI(self):
+        if self.sequence != 'Inversion Recovery': return
         maxTI = self.TR - self.minTR + self.TI
-        self.param.TI.objects, _ = updateBounds(self.TI, TIvalues, minval=minTI, maxval=maxTI)
+        self.param.TI.objects, _ = updateBounds(self.TI, TIvalues, minval=self.minTI, maxval=maxTI)
     
     
     def updateBWbounds(self):
