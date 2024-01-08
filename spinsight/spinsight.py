@@ -410,8 +410,18 @@ class MRIsimulator(param.Parameterized):
             self.sequencePipeline.add(f)
         self.param.FA.precedence = 1 if self.sequence=='Spoiled Gradient Echo' else -1
         self.param.TI.precedence = 1 if self.sequence=='Inversion Recovery' else -1
-
-
+        tr = self.TR
+        self.TR = self.param.TR.objects[-1] # max TR
+        self.runSequencePipeline
+        self.TE = min(self.param.TE.objects, key=lambda x: abs(x-self.TE)) # TE within bounds
+        self.runSequencePipeline
+        if self.sequence=='Inversion Recovery':
+            self.TI = min(self.param.TI.objects, key=lambda x: abs(x-self.TI)) # TI within bounds
+            self.runSequencePipeline
+        self.TR = min(self.param.TR.objects, key=lambda x: abs(x-tr)) # Set back TR within bounds
+        self.runSequencePipeline
+    
+    
     @param.depends('TE', watch=True)
     def _watch_TE(self):
         for f in [self.modulateKspace, self.updatePDandT1w, self.compileKspace, self.zerofill, self.reconstruct]:
@@ -476,7 +486,7 @@ class MRIsimulator(param.Parameterized):
             )
             self.minTE += (self.boards['RF']['objects']['excitation']['dur_f'] + self.boards['ADC']['objects']['sampling']['dur_f']) / 2
     
-    
+
     def updateMinTI(self):
         if self.sequence != 'Inversion Recovery': return
         self.minTI = sum([
