@@ -306,7 +306,14 @@ class MRIsimulator(param.Parameterized):
             self.renderFrequencyBoard, 
             self.renderPhaseBoard, 
             self.renderSliceBoard, 
-            self.renderRFBoard
+            self.renderRFBoard,
+            self.updateMinTE,
+            self.updateMinTI,
+            self.updateMinTR,
+            self.updateMaxTE,
+            self.updateMaxTI,
+            self.updateBWbounds,
+            self.updateResolutionBounds
         ]
 
         self.sequencePipeline = set(self.fullSequencePipeline)
@@ -325,13 +332,6 @@ class MRIsimulator(param.Parameterized):
             if f in self.sequencePipeline:
                 f()
                 self.sequencePipeline.remove(f)
-        self.updateMinTE()
-        self.updateMinTI()
-        self.updateMinTR()
-        self.updateMaxTE()
-        self.updateMaxTI()
-        self.updateBWbounds()
-        self.updateResolutionBounds()
     
     
     @param.depends('object', watch=True)
@@ -421,7 +421,7 @@ class MRIsimulator(param.Parameterized):
         self.TR = min(self.param.TR.objects, key=lambda x: abs(x-tr)) # Set back TR within bounds
         self.runSequencePipeline
     
-    
+
     @param.depends('TE', watch=True)
     def _watch_TE(self):
         for f in [self.modulateKspace, self.updatePDandT1w, self.compileKspace, self.zerofill, self.reconstruct]:
@@ -434,6 +434,8 @@ class MRIsimulator(param.Parameterized):
     def _watch_TR(self):
         for f in [self.updatePDandT1w, self.compileKspace, self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
+        for f in [self.updateMaxTE, self.updateMaxTI]:
+            self.sequencePipeline.add(f)
         # TODO: mark TR in pulse sequence
     
 
@@ -485,7 +487,8 @@ class MRIsimulator(param.Parameterized):
                 self.boards['slice']['objects']['slice select excitation']['riseTime_f'] + self.boards['slice']['objects']['slice select rephaser']['dur_f']
             )
             self.minTE += (self.boards['RF']['objects']['excitation']['dur_f'] + self.boards['ADC']['objects']['sampling']['dur_f']) / 2
-    
+        self.sequencePipeline.add(self.updateMaxTE)
+
 
     def updateMinTI(self):
         if self.sequence != 'Inversion Recovery': return
@@ -493,6 +496,7 @@ class MRIsimulator(param.Parameterized):
             self.boards['RF']['objects']['inversion']['dur_f'] / 2, 
             self.boards['slice']['objects']['inversion spoiler']['dur_f'], 
             self.boards['RF']['objects']['excitation']['dur_f'] / 2 ])
+        self.sequencePipeline.add(self.updateMaxTI)
     
     
     def updateMinTR(self):
@@ -502,11 +506,14 @@ class MRIsimulator(param.Parameterized):
         else:
             self.minTR -= self.boards['slice']['objects']['slice select excitation']['time'][0]
         self.param.TR.objects, _ = updateBounds(self.TR, TRvalues, minval=self.minTR)
+        self.sequencePipeline.add(self.updateMaxTE)
+        self.sequencePipeline.add(self.updateMaxTI)
     
 
     def updateMaxTE(self):
         maxTE = self.TR - self.minTR + self.TE
         self.param.TE.objects, _ = updateBounds(self.TE, TEvalues, minval=self.minTE, maxval=maxTE)
+        print('Updating TE bounds')
     
     
     def updateMaxTI(self):
@@ -516,22 +523,21 @@ class MRIsimulator(param.Parameterized):
     
     
     def updateBWbounds(self):
-        samplingDur = 1e3 / self.pixelBandWidth
-        freeSpaceRight = self.TR - self.minTR + samplingDur / 2
+        firstObject = self.boards['slice']['objects']['slice select {}'.format('inversion' if self.sequence=='Inversion Recovery' else 'excitation')]
+        freeSpaceRight = self.TR - (self.TE - firstObject['time'][0]) - self.boards['slice']['objects']['spoiler']['dur_f']
         if isGradientEcho(self.sequence):
-            freeSpaceLeft = self.boards['ADC']['objects']['sampling']['time'][0] - self.boards['RF']['objects']['excitation']['time'][-1]
+            freeSpaceLeft = self.TE - self.boards['RF']['objects']['excitation']['time'][-1]
             freeSpaceLeft -= max(
                 self.boards['frequency']['objects']['read prephaser']['dur_f'] + self.boards['frequency']['objects']['readout']['riseTime_f'],
                 self.boards['phase']['objects']['phase encode']['dur_f'],
                 self.boards['slice']['objects']['slice select excitation']['riseTime_f'] + self.boards['slice']['objects']['slice select rephaser']['dur_f'])
         else:
-            freeSpaceLeft = self.boards['ADC']['objects']['sampling']['time'][0] - self.boards['RF']['objects']['refocusing']['time'][-1]
+            freeSpaceLeft = self.TE - self.boards['RF']['objects']['refocusing']['time'][-1]
             freeSpaceLeft -= max(
                 self.boards['frequency']['objects']['readout']['riseTime_f'],
                 self.boards['phase']['objects']['phase encode']['dur_f'],
                 self.boards['slice']['objects']['slice select refocusing']['riseTime_f'])
-        maxReadDur = min(freeSpaceLeft, freeSpaceRight) * 2 + self.boards['ADC']['objects']['sampling']['dur_f']
-        maxReadDur *= .999 # fudge factor
+        maxReadDur = min(freeSpaceLeft, freeSpaceRight) * 2
         minpBW = max(1e3 / maxReadDur, 125)
         # TODO: limit lax BW based on prephaser dur and readout maxAmp
         self.param.pixelBandWidth.bounds = (minpBW, 2000)
@@ -665,6 +671,9 @@ class MRIsimulator(param.Parameterized):
         self.boards['RF']['objects']['excitation'] = sequence.getRF(flipAngle=FA, time=0., dur=2., shape='hammingSinc',  name='excitation')
         self.sequencePipeline.add(self.setupSliceSelection)
         self.sequencePipeline.add(self.renderRFBoard)
+        self.sequencePipeline.add(self.updateMinTE)
+        self.sequencePipeline.add(self.updateMinTI)
+        self.sequencePipeline.add(self.updateBWbounds)
 
 
     def setupRefocusing(self):
@@ -676,6 +685,7 @@ class MRIsimulator(param.Parameterized):
                 del self.boards['RF']['objects']['refocusing']
         self.sequencePipeline.add(self.setupSliceSelection)
         self.sequencePipeline.add(self.renderRFBoard)
+        self.sequencePipeline.add(self.updateMinTE)
 
 
     def setupInversion(self):
@@ -687,6 +697,7 @@ class MRIsimulator(param.Parameterized):
                 del self.boards['RF']['objects']['inversion']
         self.sequencePipeline.add(self.setupSliceSelection)
         self.sequencePipeline.add(self.renderRFBoard)
+        self.sequencePipeline.add(self.updateMinTI)
     
 
     def setupSliceSelection(self):
@@ -719,6 +730,10 @@ class MRIsimulator(param.Parameterized):
             del self.boards['slice']['objects']['inversion spoiler']
         
         self.sequencePipeline.add(self.renderSliceBoard)
+        self.sequencePipeline.add(self.updateMinTE)
+        self.sequencePipeline.add(self.updateMinTI)
+        self.sequencePipeline.add(self.updateMinTR)
+        self.sequencePipeline.add(self.updateBWbounds)
     
 
     def setupReadout(self):
@@ -730,12 +745,15 @@ class MRIsimulator(param.Parameterized):
         self.boards['frequency']['objects']['readout'] = readout
         self.boards['frequency']['objects']['read prephaser'] = prephaser
         self.sequencePipeline.add(self.placeReadout)
+        self.sequencePipeline.add(self.updateMinTE)
     
     
     def setupPhaser(self):
         maxArea = self.matrixP / (self.FOVP/1e3 * GYRO * 2) # uTs/m
         self.boards['phase']['objects']['phase encode'] = sequence.getGradient('phase', totalArea=maxArea, name='phase encode')
         self.sequencePipeline.add(self.placePhaser)
+        self.sequencePipeline.add(self.updateMinTE)
+        self.sequencePipeline.add(self.updateBWbounds)
     
 
     def setupSpoiler(self):
@@ -749,6 +767,7 @@ class MRIsimulator(param.Parameterized):
             if name in self.boards[board]['objects']:
                 sequence.moveWaveform(self.boards[board]['objects'][name], self.TE/2)
                 self.sequencePipeline.add(renderer)
+        self.sequencePipeline.add(self.updateBWbounds)
     
 
     def placeInversion(self):
@@ -759,6 +778,8 @@ class MRIsimulator(param.Parameterized):
         if 'inversion spoiler' in self.boards['slice']['objects']:
             spoilerTime = self.boards['RF']['objects']['inversion']['time'][-1] + self.boards['slice']['objects']['inversion spoiler']['dur_f']/2
             sequence.moveWaveform(self.boards['slice']['objects']['inversion spoiler'], spoilerTime)
+        self.sequencePipeline.add(self.updateMinTR)
+        self.sequencePipeline.add(self.updateBWbounds)
     
 
     def placeReadout(self):
@@ -776,6 +797,7 @@ class MRIsimulator(param.Parameterized):
         self.sequencePipeline.add(self.placePhaser)
         self.sequencePipeline.add(self.placeSpoiler)
         self.sequencePipeline.add(self.renderFrequencyBoard)
+        self.sequencePipeline.add(self.updateMinTE)
     
     
     def placePhaser(self):
@@ -792,6 +814,7 @@ class MRIsimulator(param.Parameterized):
         spoilerTime = self.boards['frequency']['objects']['readout']['center_f'] + (self.boards['frequency']['objects']['readout']['flatDur_f'] + self.boards['slice']['objects']['spoiler']['dur_f']) / 2
         sequence.moveWaveform(self.boards['slice']['objects']['spoiler'], spoilerTime)
         self.sequencePipeline.add(self.renderSliceBoard)
+        self.sequencePipeline.add(self.updateMinTR)
 
 
     def renderPolygons(self, board):
@@ -874,7 +897,6 @@ def getApp():
 
 # TODO: add slice thickness
 # TODO: username/password, se https://stackoverflow.com/questions/43183531/simple-username-password-protection-of-a-bokeh-server
-# TODO: bug when switching sequence and pulses are tight
 # TODO: phase oversampling
 # TODO: abdomen phantom ribs, pancreas, hepatic arteries
 # TODO: add params for matrix/pixelSize and BW like different vendors and handle their correlation
