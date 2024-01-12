@@ -447,7 +447,7 @@ class MRIsimulator(param.Parameterized):
     def _watch_TR(self):
         for f in [self.updatePDandT1w, self.compileKspace, self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
-        for f in [self.updateMaxTE, self.updateMaxTI, self.renderFrequencyBoard, self.renderPhaseBoard, self.renderSliceBoard, self.renderRFBoard]:
+        for f in [self.updateMaxTE, self.updateMaxTI, self.updateBWbounds, self.renderFrequencyBoard, self.renderPhaseBoard, self.renderSliceBoard, self.renderRFBoard]:
             self.sequencePipeline.add(f)
     
 
@@ -538,8 +538,7 @@ class MRIsimulator(param.Parameterized):
     
     
     def updateBWbounds(self):
-        firstObject = self.boards['slice']['objects']['slice select {}'.format('inversion' if self.sequence=='Inversion Recovery' else 'excitation')]
-        freeSpaceRight = self.TR - (self.TE - firstObject['time'][0]) - self.boards['slice']['objects']['spoiler']['dur_f']
+        freeSpaceRight = self.TR - (self.TE - self.getSeqStart()) - self.boards['slice']['objects']['spoiler']['dur_f']
         if isGradientEcho(self.sequence):
             freeSpaceLeft = self.TE - self.boards['RF']['objects']['excitation']['time'][-1]
             freeSpaceLeft -= max(
@@ -554,7 +553,7 @@ class MRIsimulator(param.Parameterized):
                 self.boards['slice']['objects']['slice select refocusing']['riseTime_f'])
         maxReadDur = min(freeSpaceLeft, freeSpaceRight) * 2
         minpBW = max(1e3 / maxReadDur, 125)
-        # TODO: limit lax BW based on prephaser dur and readout maxAmp
+        # TODO: limit max BW based on prephaser dur and readout maxAmp
         self.param.pixelBandWidth.bounds = (minpBW, 2000)
     
 
