@@ -8,6 +8,7 @@ import re
 import xarray as xr
 import sequence
 from bokeh.models import HoverTool
+from functools import partial
 
 hv.extension('bokeh')
 
@@ -226,6 +227,18 @@ def updateBounds(curval, values, minval=None, maxval=None):
         return values, value
 
 
+def bounds_hook(plot, elem, xbounds=None):
+    x_range = plot.handles['plot'].x_range
+    if xbounds is not None:
+        x_range.bounds = xbounds
+    else:
+        x_range.bounds = x_range.start, x_range.end 
+
+
+def hideframe_hook(plot, elem):
+    plot.handles['plot'].outline_line_color = None
+
+
 TRvalues = [float('{:.2g}'.format(tr)) for tr in 10.**np.linspace(0, 4, 500)]
 TEvalues = [float('{:.2g}'.format(te)) for te in 10.**np.linspace(0, 3, 500)]
 TIvalues = [float('{:.2g}'.format(ti)) for ti in 10.**np.linspace(0, 4, 500)]
@@ -283,7 +296,7 @@ class MRIsimulator(param.Parameterized):
         hv.opts.defaults(hv.opts.Image(width=500, height=500, invert_yaxis=False, toolbar='below', cmap='gray', aspect='equal'))
         hv.opts.defaults(hv.opts.HLine(line_width=1.5, line_color='gray'))
         hv.opts.defaults(hv.opts.VSpan(color='orange', fill_alpha=.1, hover_fill_alpha=.8, default_tools=[]))
-        hv.opts.defaults(hv.opts.Overlay(width=1700, height=120, border=4, show_grid=True, xaxis=None))
+        hv.opts.defaults(hv.opts.Overlay(width=1700, height=120, border=4, show_grid=False, xaxis=None))
         hv.opts.defaults(hv.opts.Area(fill_alpha=.5, line_width=1.5, line_color='gray', default_tools=[]))
         hv.opts.defaults(hv.opts.Polygons(line_width=1.5, fill_alpha=0, line_alpha=0, line_color='gray', selection_line_color='black', hover_fill_alpha=.8, hover_line_alpha=1, selection_fill_alpha=.8, selection_line_alpha=1, nonselection_line_alpha=0, default_tools=[]))
 
@@ -434,9 +447,8 @@ class MRIsimulator(param.Parameterized):
     def _watch_TR(self):
         for f in [self.updatePDandT1w, self.compileKspace, self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
-        for f in [self.updateMaxTE, self.updateMaxTI]:
+        for f in [self.updateMaxTE, self.updateMaxTI, self.renderFrequencyBoard, self.renderPhaseBoard, self.renderSliceBoard, self.renderRFBoard]:
             self.sequencePipeline.add(f)
-        # TODO: mark TR in pulse sequence
     
 
     @param.depends('TI', watch=True)
@@ -466,6 +478,13 @@ class MRIsimulator(param.Parameterized):
         self.recAcqRatioP = self.reconMatrixP / self.matrixP
         for f in [self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
+    
+    
+    def getSeqStart(self):
+        if self.sequence == 'Inversion Recovery': 
+            return self.boards['slice']['objects']['slice select inversion']['time'][0]
+        else:
+            return self.boards['slice']['objects']['slice select excitation']['time'][0]
     
     
     def updateMinTE(self):
@@ -501,10 +520,7 @@ class MRIsimulator(param.Parameterized):
     
     def updateMinTR(self):
         self.minTR = self.boards['slice']['objects']['spoiler']['time'][-1]
-        if self.sequence == 'Inversion Recovery': 
-            self.minTR -= self.boards['slice']['objects']['slice select inversion']['time'][0]
-        else:
-            self.minTR -= self.boards['slice']['objects']['slice select excitation']['time'][0]
+        self.minTR -= self.getSeqStart()
         self.param.TR.objects, _ = updateBounds(self.TR, TRvalues, minval=self.minTR)
         self.sequencePipeline.add(self.updateMaxTE)
         self.sequencePipeline.add(self.updateMaxTI)
@@ -513,7 +529,6 @@ class MRIsimulator(param.Parameterized):
     def updateMaxTE(self):
         maxTE = self.TR - self.minTR + self.TE
         self.param.TE.objects, _ = updateBounds(self.TE, TEvalues, minval=self.minTE, maxval=maxTE)
-        print('Updating TE bounds')
     
     
     def updateMaxTI(self):
@@ -729,7 +744,10 @@ class MRIsimulator(param.Parameterized):
             del self.boards['slice']['objects']['slice select inversion']
             del self.boards['slice']['objects']['inversion spoiler']
         
+        self.sequencePipeline.add(self.renderFrequencyBoard) # due to TR bounds
+        self.sequencePipeline.add(self.renderPhaseBoard) # due to TR bounds
         self.sequencePipeline.add(self.renderSliceBoard)
+        self.sequencePipeline.add(self.renderRFBoard) # due to TR bounds
         self.sequencePipeline.add(self.updateMinTE)
         self.sequencePipeline.add(self.updateMinTI)
         self.sequencePipeline.add(self.updateMinTR)
@@ -780,6 +798,10 @@ class MRIsimulator(param.Parameterized):
             sequence.moveWaveform(self.boards['slice']['objects']['inversion spoiler'], spoilerTime)
         self.sequencePipeline.add(self.updateMinTR)
         self.sequencePipeline.add(self.updateBWbounds)
+        self.sequencePipeline.add(self.renderFrequencyBoard) # due to TR bounds
+        self.sequencePipeline.add(self.renderPhaseBoard) # due to TR bounds
+        self.sequencePipeline.add(self.renderSliceBoard) # due to TR bounds
+        self.sequencePipeline.add(self.renderRFBoard) # due to TR bounds
     
 
     def placeReadout(self):
@@ -823,24 +845,34 @@ class MRIsimulator(param.Parameterized):
         if self.boards[board]['objects']:
             self.boards[board]['attributes'] += [attr for attr in list(self.boards[board]['objects'].values())[0].keys() if attr not in ['time', board] and '_f' not in attr]
             hover = HoverTool(tooltips=[(attr, '@{}'.format(attr)) for attr in self.boards[board]['attributes']], attachment='below')
-            self.boardPlots[board]['polygons'] = hv.Polygons(list(self.boards[board]['objects'].values()), kdims=[self.timeDim, self.boards[board]['dim']], vdims=self.boards[board]['attributes']).opts(tools=[hover], cmap=[self.boards[board]['color']])
+            self.boardPlots[board]['polygons'] = hv.Polygons(list(self.boards[board]['objects'].values()), kdims=[self.timeDim, self.boards[board]['dim']], vdims=self.boards[board]['attributes']).opts(tools=[hover], cmap=[self.boards[board]['color']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=(-19000, 19000))])
+    
+    
+    def renderTRbounds(self, board):
+        t0 = self.getSeqStart()
+        self.boardPlots[board]['TRbounds'] = hv.VSpan(-20000, t0, kdims=[self.timeDim, self.boards[board]['dim']]).opts(color='gray', fill_alpha=.3)
+        self.boardPlots[board]['TRbounds'] *= hv.VSpan(t0 + self.TR, 20000, kdims=[self.timeDim, self.boards[board]['dim']]).opts(color='gray', fill_alpha=.3)
     
 
     def renderFrequencyBoard(self):
         self.renderPolygons('frequency')
         self.boardPlots['frequency']['ADC'] = hv.Overlay([hv.VSpan(obj['time'][0], obj['time'][-1], kdims=[self.timeDim, self.boards['frequency']['dim']]) for obj in self.boards['ADC']['objects'].values()])
+        self.renderTRbounds('frequency')
     
 
     def renderPhaseBoard(self):
         self.renderPolygons('phase')
+        self.renderTRbounds('phase')
     
 
     def renderSliceBoard(self):
         self.renderPolygons('slice')
+        self.renderTRbounds('slice')
 
 
     def renderRFBoard(self):
         self.renderPolygons('RF')
+        self.renderTRbounds('RF')
     
     
     @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'frequencyDirection', 'pixelBandWidth', 'NSA')
@@ -878,7 +910,7 @@ class MRIsimulator(param.Parameterized):
     @param.depends('sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'matrixF', 'matrixP', 'pixelBandWidth')
     def getSequencePlot(self):
         self.runSequencePipeline()
-        return hv.Layout(list([hv.Overlay(list(boardPlot.values())).opts(xaxis='bottom' if n==len(self.boardPlots)-1 else None) for n, boardPlot in enumerate(self.boardPlots.values())])).cols(1).options(toolbar='below')
+        return hv.Layout(list([hv.Overlay(list(boardPlot.values())).opts(border=0, xaxis='bottom' if n==len(self.boardPlots)-1 else None) for n, boardPlot in enumerate(self.boardPlots.values())])).cols(1).options(toolbar='below')
 
 
 def getApp():
@@ -896,11 +928,10 @@ def getApp():
 
 
 # TODO: add slice thickness
-# TODO: username/password, se https://stackoverflow.com/questions/43183531/simple-username-password-protection-of-a-bokeh-server
 # TODO: phase oversampling
 # TODO: abdomen phantom ribs, pancreas, hepatic arteries
 # TODO: add params for matrix/pixelSize and BW like different vendors and handle their correlation
-# TODO: add ACQ time
+# TODO: add ACQ time and SNR
 # TODO: add apodization
 # TODO: parallel imaging (GRAPPA)
 # TODO: B0 inhomogeneity
