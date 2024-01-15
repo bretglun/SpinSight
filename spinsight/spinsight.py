@@ -357,7 +357,9 @@ class MRIsimulator(param.Parameterized):
     def _watch_FOVF(self):
         for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.addNoise, self.compileKspace, self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
-        self.sequencePipeline.add(self.setupReadout)
+        for f in [self.setupReadout, self.updateBWbounds]:
+            self.sequencePipeline.add(f)
+        
     
 
     @param.depends('FOVP', watch=True)
@@ -371,7 +373,8 @@ class MRIsimulator(param.Parameterized):
     def _watch_matrixF(self):
         for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.addNoise, self.compileKspace, self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
-        self.sequencePipeline.add(self.setupReadout)
+        for f in [self.setupReadout, self.updateBWbounds]:
+            self.sequencePipeline.add(f)
         self.param.reconMatrixF.bounds = (self.matrixF, self.param.reconMatrixF.bounds[1])
         self.reconMatrixF = min(max(int(self.matrixF * self.recAcqRatioF), self.matrixF), self.param.reconMatrixF.bounds[1])
     
@@ -553,8 +556,26 @@ class MRIsimulator(param.Parameterized):
                 self.boards['slice']['objects']['slice select refocusing']['riseTime_f'])
         maxReadDur = min(freeSpaceLeft, freeSpaceRight) * 2
         minpBW = max(1e3 / maxReadDur, 125)
-        # TODO: limit max BW based on prephaser dur and readout maxAmp
-        self.param.pixelBandWidth.bounds = (minpBW, 2000)
+        maxAmp = 25.
+        readoutArea = self.matrixF / (self.FOVF * GYRO)
+        BWlimit = maxAmp / readoutArea
+        maxpBW = min(BWlimit, 2000)
+
+        if not isGradientEcho(self.sequence):
+            maxSlew = 80.
+            maxPrephaserDur =  self.boards['RF']['objects']['refocusing']['time'][0] - self.boards['RF']['objects']['excitation']['time'][-1]
+            maxRiseTime = abs(maxAmp)/maxSlew
+            maxPrephaserFlatDur = maxPrephaserDur - (2 * maxRiseTime)
+            if maxPrephaserFlatDur < 0: # triangle
+                maxPrephaserArea = maxPrephaserDur**2 * maxSlew / 4
+            else: # trapezoid
+                slewArea = maxAmp**2 / maxSlew
+                flatArea = maxAmp * maxPrephaserFlatDur
+                maxPrephaserArea = slewArea + flatArea
+            ampLimit = np.sqrt((maxPrephaserArea * 2 - readoutArea) * maxSlew)
+            BWlimit = ampLimit / readoutArea
+            maxpBW = min(BWlimit, maxpBW)
+        self.param.pixelBandWidth.bounds = (minpBW, maxpBW)
     
 
     def updateResolutionBounds(self):

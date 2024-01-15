@@ -69,7 +69,7 @@ def getRF(flipAngle, dur, name, time=0., shape='hammingSinc'):
 def getGradient(dir, time=0., maxAmp=25., maxSlew=80., totalArea=None, flatArea=None, flatDur=None, name=''):
     assert(sum([x is not None for x in [totalArea, flatArea, flatDur]])==1)
     if totalArea is not None:
-        slewArea = maxAmp**2/maxSlew
+        slewArea = maxAmp**2 / maxSlew
         if abs(totalArea)<slewArea:
             maxAmp = np.sqrt(abs(totalArea)*maxSlew) * np.sign(totalArea)
             flatDur = 0.
