@@ -329,7 +329,8 @@ class MRIsimulator(param.Parameterized):
             self.updateMaxTE,
             self.updateMaxTI,
             self.updateBWbounds,
-            self.updateResolutionBounds
+            self.updateMatrixFBounds,
+            self.updateFOVFbounds
         ]
 
         self.sequencePipeline = set(self.fullSequencePipeline)
@@ -360,7 +361,7 @@ class MRIsimulator(param.Parameterized):
     def _watch_FOVF(self):
         for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.addNoise, self.compileKspace, self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
-        for f in [self.setupReadout, self.updateBWbounds, self.updateResolutionBounds]:
+        for f in [self.setupReadout, self.updateBWbounds, self.updateMatrixFBounds]:
             self.sequencePipeline.add(f)
         
     
@@ -376,7 +377,7 @@ class MRIsimulator(param.Parameterized):
     def _watch_matrixF(self):
         for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.addNoise, self.compileKspace, self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
-        for f in [self.setupReadout, self.updateBWbounds, self.updateResolutionBounds]:
+        for f in [self.setupReadout, self.updateBWbounds, self.updateFOVFbounds]:
             self.sequencePipeline.add(f)
         self.param.reconMatrixF.bounds = (self.matrixF, self.param.reconMatrixF.bounds[1])
         self.reconMatrixF = min(max(int(self.matrixF * self.recAcqRatioF), self.matrixF), self.param.reconMatrixF.bounds[1])
@@ -412,7 +413,7 @@ class MRIsimulator(param.Parameterized):
     def _watch_pixelBandWidth(self):
         for f in [self.updateSamplingTime, self.modulateKspace, self.addNoise, self.compileKspace, self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
-        for f in [self.setupReadout, self.updateResolutionBounds]:
+        for f in [self.setupReadout, self.updateMatrixFBounds, self.updateFOVFbounds]:
             self.sequencePipeline.add(f)
 
 
@@ -446,7 +447,7 @@ class MRIsimulator(param.Parameterized):
     def _watch_TE(self):
         for f in [self.modulateKspace, self.updatePDandT1w, self.compileKspace, self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
-        for f in [self.placeRefocusing, self.placeReadout, self.placePhaser, self.updateResolutionBounds]:
+        for f in [self.placeRefocusing, self.placeReadout, self.placePhaser, self.updateMatrixFBounds, self.updateFOVFbounds]:
             self.sequencePipeline.add(f)
     
 
@@ -545,11 +546,11 @@ class MRIsimulator(param.Parameterized):
     
     
     def getMaxPrephaserArea(self):
+        maxRiseTime = self.maxAmp/self.maxSlew
         if isGradientEcho(self.sequence):
-            maxPrephaserDur =  self.boards['frequency']['objects']['readout']['time'][0] - self.boards['RF']['objects']['excitation']['time'][-1]
+            maxPrephaserDur =  self.boards['ADC']['objects']['sampling']['time'][0] - self.boards['RF']['objects']['excitation']['time'][-1] - maxRiseTime # use max risetime to be on the safe side
         else:
             maxPrephaserDur =  self.boards['RF']['objects']['refocusing']['time'][0] - self.boards['RF']['objects']['excitation']['time'][-1]
-        maxRiseTime = abs(self.maxAmp)/self.maxSlew
         maxPrephaserFlatDur = maxPrephaserDur - (2 * maxRiseTime)
         if maxPrephaserFlatDur < 0: # triangle
             maxPrephaserArea = maxPrephaserDur**2 * self.maxSlew / 4
@@ -558,6 +559,13 @@ class MRIsimulator(param.Parameterized):
             flatArea = self.maxAmp * maxPrephaserFlatDur
             maxPrephaserArea = slewArea + flatArea
         return maxPrephaserArea
+    
+
+    def getMaxReadoutArea(self):
+        # max wrt prephaser (use maxAmp to be on the safe side)
+        maxReadoutArea1 = self.getMaxPrephaserArea() * 2 - self.maxAmp**2 / self.maxSlew
+        maxReadoutArea2 = self.maxAmp * 1e3 / self.pixelBandWidth # max wrt maxAmp
+        return min(maxReadoutArea1, maxReadoutArea2)
     
 
     def updateBWbounds(self):
@@ -574,26 +582,24 @@ class MRIsimulator(param.Parameterized):
                 self.boards['frequency']['objects']['readout']['riseTime_f'],
                 self.boards['phase']['objects']['phase encode']['dur_f'],
                 self.boards['slice']['objects']['slice select refocusing']['riseTime_f'])
-        maxReadDur = min(freeSpaceLeft, freeSpaceRight) * 2
+        maxReadDur = min(freeSpaceLeft, freeSpaceRight) * 2 * .99
         minpBW = max(1e3 / maxReadDur, 125)
-        readoutArea = self.matrixF / (self.FOVF * GYRO)
-        BWlimit = self.maxAmp / readoutArea
+        readoutArea = 1e3 * self.matrixF / (self.FOVF * GYRO)
+        BWlimit = 1e3 * self.maxAmp / readoutArea * .99
         maxpBW = min(BWlimit, 2000)
         ampLimit = np.sqrt((self.getMaxPrephaserArea() * 2 - readoutArea) * self.maxSlew)
-        BWlimit = ampLimit / readoutArea
+        BWlimit = 1e3 * ampLimit / readoutArea * .99
         maxpBW = min(BWlimit, maxpBW)
         self.param.pixelBandWidth.bounds = (minpBW, maxpBW)
     
 
-    def updateResolutionBounds(self):
-        # TODO: limit wrt readout ramps
-        readAmp = self.pixelBandWidth * self.matrixF / (self.FOVF * GYRO) # mT/m
-        maxReadoutArea1 = self.getMaxPrephaserArea() * 2 - readAmp**2 / self.maxSlew # max wrt prephaser
-        maxReadoutArea2 = self.maxAmp * 1e3 / self.pixelBandWidth # max wrt maxAmp
-        maxReadoutArea = min(maxReadoutArea1, maxReadoutArea2)
-        maxMatrixF = int(maxReadoutArea * 1e-3 * (self.FOVF * GYRO))
+    def updateMatrixFBounds(self):
+        maxMatrixF = int(self.getMaxReadoutArea() * 1e-3 * (self.FOVF * GYRO))
         self.param.matrixF.bounds = (16, min(maxMatrixF, 600))
-        minFOVF = 1e3 * self.matrixF / (maxReadoutArea * GYRO)
+
+    
+    def updateFOVFbounds(self):
+        minFOVF = 1e3 * self.matrixF / (self.getMaxReadoutArea() * GYRO) * 1.01
         self.param.FOVF.bounds = (max(minFOVF, 100), 600)
     
 
@@ -719,7 +725,7 @@ class MRIsimulator(param.Parameterized):
     def setupExcitation(self):
         FA = self.FA if isGradientEcho(self.sequence) else 90.
         self.boards['RF']['objects']['excitation'] = sequence.getRF(flipAngle=FA, time=0., dur=2., shape='hammingSinc',  name='excitation')
-        for f in [self.setupSliceSelection, self.renderRFBoard, self.updateMinTE, self.updateMinTI, self.updateBWbounds, self.updateResolutionBounds]:
+        for f in [self.setupSliceSelection, self.renderRFBoard, self.updateMinTE, self.updateMinTI, self.updateBWbounds, self.updateMatrixFBounds, self.updateFOVFbounds]:
             self.sequencePipeline.add(f)
 
     def setupRefocusing(self):
