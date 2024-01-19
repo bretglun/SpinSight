@@ -227,6 +227,16 @@ def updateBounds(curval, values, minval=None, maxval=None):
         return values, value
 
 
+def getBounds(minval, maxval, curval):
+    if curval < minval:
+        print('Warning: trying to set bounds above current value ({} > {})'.format(minval, curval))
+        minval = curval
+    if curval > maxval:
+        print('Warning: trying to set bounds below current value ({} < {})'.format(maxval, curval))
+        maxval = curval
+    return (minval, maxval)
+
+
 def bounds_hook(plot, elem, xbounds=None):
     x_range = plot.handles['plot'].x_range
     if xbounds is not None:
@@ -498,9 +508,9 @@ class MRIsimulator(param.Parameterized):
     def updateMinTE(self):
         if not isGradientEcho(self.sequence):
             leftSide = max(
-                self.boards['frequency']['objects']['read prephaser']['time'][-1], 
-                self.boards['slice']['objects']['slice select rephaser']['time'][-1] + (self.boards['slice']['objects']['slice select refocusing']['riseTime_f']))
-            leftSide += self.boards['RF']['objects']['refocusing']['dur_f'] / 2
+                self.boards['frequency']['objects']['read prephaser']['dur_f'], 
+                self.boards['slice']['objects']['slice select excitation']['riseTime_f'] + self.boards['slice']['objects']['slice select rephaser']['dur_f'] + (self.boards['slice']['objects']['slice select refocusing']['riseTime_f']))
+            leftSide += (self.boards['RF']['objects']['excitation']['dur_f'] + self.boards['RF']['objects']['refocusing']['dur_f']) / 2
             rightSide = max(
                 self.boards['frequency']['objects']['readout']['riseTime_f'],
                 self.boards['phase']['objects']['phase encode']['dur_f'],
@@ -545,13 +555,13 @@ class MRIsimulator(param.Parameterized):
         self.param.TI.objects, _ = updateBounds(self.TI, TIvalues, minval=self.minTI, maxval=maxTI)
     
     
-    def getMaxPrephaserArea(self):
-        maxRiseTime = self.maxAmp/self.maxSlew
+    def getMaxPrephaserArea(self, readAmp):
+        readRiseTime = readAmp/self.maxSlew
         if isGradientEcho(self.sequence):
-            maxPrephaserDur =  self.boards['ADC']['objects']['sampling']['time'][0] - self.boards['RF']['objects']['excitation']['time'][-1] - maxRiseTime # use max risetime to be on the safe side
+            maxPrephaserDur =  self.TE - self.boards['ADC']['objects']['sampling']['dur_f']/2 - self.boards['RF']['objects']['excitation']['dur_f']/2 - readRiseTime # use max risetime to be on the safe side
         else:
-            maxPrephaserDur =  self.boards['RF']['objects']['refocusing']['time'][0] - self.boards['RF']['objects']['excitation']['time'][-1]
-        maxPrephaserFlatDur = maxPrephaserDur - (2 * maxRiseTime)
+            maxPrephaserDur =  self.TE/2 - self.boards['RF']['objects']['refocusing']['dur_f']/2 - self.boards['RF']['objects']['excitation']['dur_f']/2
+        maxPrephaserFlatDur = maxPrephaserDur - (2 * self.maxAmp/self.maxSlew)
         if maxPrephaserFlatDur < 0: # triangle
             maxPrephaserArea = maxPrephaserDur**2 * self.maxSlew / 4
         else: # trapezoid
@@ -562,8 +572,8 @@ class MRIsimulator(param.Parameterized):
     
 
     def getMaxReadoutArea(self):
-        # max wrt prephaser (use maxAmp to be on the safe side)
-        maxReadoutArea1 = self.getMaxPrephaserArea() * 2 - self.maxAmp**2 / self.maxSlew
+        # max wrt prephaser (use maxAmp to be on the safe side) # TODO: more permissive
+        maxReadoutArea1 = self.getMaxPrephaserArea(self.maxAmp) * 2 - self.maxAmp**2 / self.maxSlew
         maxReadoutArea2 = self.maxAmp * 1e3 / self.pixelBandWidth # max wrt maxAmp
         return min(maxReadoutArea1, maxReadoutArea2)
     
@@ -571,13 +581,14 @@ class MRIsimulator(param.Parameterized):
     def updateBWbounds(self):
         freeSpaceRight = self.TR - (self.TE - self.getSeqStart()) - self.boards['slice']['objects']['spoiler']['dur_f']
         if isGradientEcho(self.sequence):
-            freeSpaceLeft = self.TE - self.boards['RF']['objects']['excitation']['time'][-1]
+            freeSpaceLeft = self.TE - self.boards['RF']['objects']['excitation']['dur_f']/2
             freeSpaceLeft -= max(
                 self.boards['frequency']['objects']['read prephaser']['dur_f'] + self.boards['frequency']['objects']['readout']['riseTime_f'],
                 self.boards['phase']['objects']['phase encode']['dur_f'],
                 self.boards['slice']['objects']['slice select excitation']['riseTime_f'] + self.boards['slice']['objects']['slice select rephaser']['dur_f'])
         else:
-            freeSpaceLeft = self.TE - self.boards['RF']['objects']['refocusing']['time'][-1]
+            
+            freeSpaceLeft = (self.TE - self.boards['RF']['objects']['refocusing']['dur_f'])/2
             freeSpaceLeft -= max(
                 self.boards['frequency']['objects']['readout']['riseTime_f'],
                 self.boards['phase']['objects']['phase encode']['dur_f'],
@@ -587,20 +598,23 @@ class MRIsimulator(param.Parameterized):
         readoutArea = 1e3 * self.matrixF / (self.FOVF * GYRO)
         BWlimit = 1e3 * self.maxAmp / readoutArea * .99
         maxpBW = min(BWlimit, 2000)
-        ampLimit = np.sqrt((self.getMaxPrephaserArea() * 2 - readoutArea) * self.maxSlew)
+        readAmp = self.boards['frequency']['objects']['readout']['frequency'][1]
+        if (self.getMaxPrephaserArea(readAmp) * 2 - readoutArea) < 0:
+            pass
+        ampLimit = np.sqrt((self.getMaxPrephaserArea(readAmp) * 2 - readoutArea) * self.maxSlew)
         BWlimit = 1e3 * ampLimit / readoutArea * .99
         maxpBW = min(BWlimit, maxpBW)
-        self.param.pixelBandWidth.bounds = (minpBW, maxpBW)
+        self.param.pixelBandWidth.bounds = getBounds(minpBW, maxpBW, self.pixelBandWidth)
     
 
     def updateMatrixFBounds(self):
         maxMatrixF = int(self.getMaxReadoutArea() * 1e-3 * (self.FOVF * GYRO))
-        self.param.matrixF.bounds = (16, min(maxMatrixF, 600))
+        self.param.matrixF.bounds = getBounds(16, min(maxMatrixF, 600), self.matrixF)
 
     
     def updateFOVFbounds(self):
         minFOVF = 1e3 * self.matrixF / (self.getMaxReadoutArea() * GYRO) * 1.01
-        self.param.FOVF.bounds = (max(minFOVF, 100), 600)
+        self.param.FOVF.bounds = getBounds(max(minFOVF, 100), 600, self.FOVF)
     
 
     def loadPhantom(self):
@@ -856,13 +870,12 @@ class MRIsimulator(param.Parameterized):
         self.sequencePipeline.add(self.placePhaser)
         self.sequencePipeline.add(self.placeSpoiler)
         self.sequencePipeline.add(self.renderFrequencyBoard)
-        self.sequencePipeline.add(self.updateMinTE)
     
     
     def placePhaser(self):
         phaserDur = self.boards['phase']['objects']['phase encode']['dur_f']
         if isGradientEcho(self.sequence):
-            phaserTime = (self.boards['slice']['objects']['slice select excitation']['dur_f'] + phaserDur)/2
+            phaserTime = (self.boards['RF']['objects']['excitation']['dur_f'] + phaserDur)/2
         else:
             phaserTime = self.TE - (self.boards['frequency']['objects']['readout']['flatDur_f'] + phaserDur)/2
         sequence.moveWaveform(self.boards['phase']['objects']['phase encode'], phaserTime)
