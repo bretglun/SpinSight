@@ -950,6 +950,15 @@ class MRIsimulator(param.Parameterized):
         return hv.Layout(list([hv.Overlay(list(boardPlot.values())).opts(border=0, xaxis='bottom' if n==len(self.boardPlots)-1 else None) for n, boardPlot in enumerate(self.boardPlots.values())])).cols(1).options(toolbar='below')
 
 
+def hideShowButtonCallback(pane, event):
+    if 'Show' in event.obj.name:
+        pane.visible = True
+        event.obj.name = event.obj.name.replace('Show', 'Hide')
+    elif 'Hide' in event.obj.name:
+        pane.visible = False
+        event.obj.name = event.obj.name.replace('Hide', 'Show')
+
+
 def getApp():
     explorer = MRIsimulator(name='')
     title = '# SpinSight MRI simulator'
@@ -957,10 +966,14 @@ def getApp():
     settingsParams = pn.panel(explorer.param, parameters=['object', 'fieldStrength'], name='Settings')
     contrastParams = pn.panel(explorer.param, parameters=['sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI'], widgets={'TR': pn.widgets.DiscreteSlider, 'TE': pn.widgets.DiscreteSlider, 'TI': pn.widgets.DiscreteSlider}, name='Contrast')
     geometryParams = pn.panel(explorer.param, parameters=['FOVF', 'FOVP', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'frequencyDirection', 'pixelBandWidth', 'NSA'], name='Geometry')
-    dmapKspace = hv.DynamicMap(explorer.getKspace)
+    dmapKspace = pn.Row(hv.DynamicMap(explorer.getKspace), visible=False)
     dmapMRimage = hv.DynamicMap(explorer.getImage)
-    dmapSequence = hv.DynamicMap(explorer.getSequencePlot)
-    dashboard = pn.Column(pn.Row(pn.Column(pn.pane.Markdown(title), pn.Row(pn.Column(settingsParams, contrastParams), geometryParams)), dmapMRimage, dmapKspace), dmapSequence, pn.pane.Markdown(author))
+    dmapSequence = pn.Row(hv.DynamicMap(explorer.getSequencePlot), visible=False)
+    sequenceButton = pn.widgets.Button(name='Show sequence')
+    sequenceButton.on_click(partial(hideShowButtonCallback, dmapSequence))
+    kSpaceButton = pn.widgets.Button(name='Show k-space')
+    kSpaceButton.on_click(partial(hideShowButtonCallback, dmapKspace))
+    dashboard = pn.Column(pn.Row(pn.Column(pn.pane.Markdown(title), pn.Row(pn.Column(settingsParams, pn.Row(sequenceButton, kSpaceButton), contrastParams), geometryParams)), dmapMRimage, dmapKspace), dmapSequence, pn.pane.Markdown(author))
     return dashboard
 
 
