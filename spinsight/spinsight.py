@@ -556,9 +556,8 @@ class MRIsimulator(param.Parameterized):
     
     
     def getMaxPrephaserArea(self, readAmp):
-        readRiseTime = readAmp/self.maxSlew
         if isGradientEcho(self.sequence):
-            maxPrephaserDur =  self.TE - self.boards['ADC']['objects']['sampling']['dur_f']/2 - self.boards['RF']['objects']['excitation']['dur_f']/2 - readRiseTime # use max risetime to be on the safe side
+            maxPrephaserDur =  self.TE - self.boards['ADC']['objects']['sampling']['dur_f']/2 - self.boards['RF']['objects']['excitation']['dur_f']/2 - readAmp/self.maxSlew
         else:
             maxPrephaserDur =  self.TE/2 - self.boards['RF']['objects']['refocusing']['dur_f']/2 - self.boards['RF']['objects']['excitation']['dur_f']/2
         maxPrephaserFlatDur = maxPrephaserDur - (2 * self.maxAmp/self.maxSlew)
@@ -572,38 +571,59 @@ class MRIsimulator(param.Parameterized):
     
 
     def getMaxReadoutArea(self):
-        # max wrt prephaser (use maxAmp to be on the safe side) # TODO: more permissive
-        maxReadoutArea1 = self.getMaxPrephaserArea(self.maxAmp) * 2 - self.maxAmp**2 / self.maxSlew
+        # See readouts.tex for formulae
+        d = 1e3 / self.pixelBandWidth # readout duration
+        s = self.maxSlew
+        if isGradientEcho(self.sequence):
+            t = self.TE - self.boards['RF']['objects']['excitation']['dur_f']/2
+            h = s * (t - np.sqrt(t**2/2 + d**2/8)) # negative sqrt seems to be the reasonable solution
+            h = min(h, self.maxAmp)
+            A = d * (np.sqrt((d*s+2*h)**2 - 8*h*(h-s*(t-d/2))) - d*s - 2*h) / 2
+            maxReadoutArea1 = A
+        else: # spin echo
+            tr = self.TE/2 - self.boards['RF']['objects']['refocusing']['dur_f']/2
+            tp = self.TE/2 - self.boards['RF']['objects']['refocusing']['dur_f']/2 - self.boards['RF']['objects']['excitation']['dur_f']/2
+            Ar = d*s* tr - d**2*s/2
+            h = s * tp / 2
+            h = min(h, self.maxAmp)
+            Ap = d * (np.sqrt((d*s)**2 - 8*h*(h-s*tp)) - d*s) / 2
+            maxReadoutArea1 = min(Ar, Ap)
         maxReadoutArea2 = self.maxAmp * 1e3 / self.pixelBandWidth # max wrt maxAmp
         return min(maxReadoutArea1, maxReadoutArea2)
     
 
     def updateBWbounds(self):
-        freeSpaceRight = self.TR - (self.TE - self.getSeqStart()) - self.boards['slice']['objects']['spoiler']['dur_f']
+        # See readouts.tex for formulae relating to the readout board
+        s = self.maxSlew
+        A = 1e3 * self.matrixF / (self.FOVF * GYRO) # readout area
+        minReadDurations = [.5] # msec (corresponds to a pixel BW of 2000 Hz)
+        # min limit imposed by maximum gradient amplitude:
+        minReadDurations.append(A / self.maxAmp)
+        maxReadDurations = [8.] # msec (corresponds to a pixel BW of 125 Hz)
+        # max limit imposed by TR:
+        maxReadDurations.append((self.TR - (self.TE - self.getSeqStart()) - self.boards['slice']['objects']['spoiler']['dur_f']) * 2)
         if isGradientEcho(self.sequence):
             freeSpaceLeft = self.TE - self.boards['RF']['objects']['excitation']['dur_f']/2
             freeSpaceLeft -= max(
-                self.boards['frequency']['objects']['read prephaser']['dur_f'] + self.boards['frequency']['objects']['readout']['riseTime_f'],
+                self.boards['frequency']['objects']['read prephaser']['dur_f'] + self.boards['frequency']['objects']['readout']['riseTime_f'], # TODO: consider maximum dur+risetime, not only current (difficult!)
                 self.boards['phase']['objects']['phase encode']['dur_f'],
                 self.boards['slice']['objects']['slice select excitation']['riseTime_f'] + self.boards['slice']['objects']['slice select rephaser']['dur_f'])
-        else:
-            
-            freeSpaceLeft = (self.TE - self.boards['RF']['objects']['refocusing']['dur_f'])/2
-            freeSpaceLeft -= max(
-                self.boards['frequency']['objects']['readout']['riseTime_f'],
-                self.boards['phase']['objects']['phase encode']['dur_f'],
-                self.boards['slice']['objects']['slice select refocusing']['riseTime_f'])
-        maxReadDur = min(freeSpaceLeft, freeSpaceRight) * 2 * .99
-        minpBW = max(1e3 / maxReadDur, 125)
-        readoutArea = 1e3 * self.matrixF / (self.FOVF * GYRO)
-        BWlimit = 1e3 * self.maxAmp / readoutArea * .99
-        maxpBW = min(BWlimit, 2000)
-        readAmp = self.boards['frequency']['objects']['readout']['frequency'][1]
-        if (self.getMaxPrephaserArea(readAmp) * 2 - readoutArea) < 0:
-            pass
-        ampLimit = np.sqrt((self.getMaxPrephaserArea(readAmp) * 2 - readoutArea) * self.maxSlew)
-        BWlimit = 1e3 * ampLimit / readoutArea * .99
-        maxpBW = min(BWlimit, maxpBW)
+            maxReadDurations.append(freeSpaceLeft*2)
+        else: # spin echo
+            # min limit imposed by prephaser duration tp:
+            tp = self.TE/2 - self.boards['RF']['objects']['refocusing']['dur_f']/2 - self.boards['RF']['objects']['excitation']['dur_f']/2
+            h = s * tp / 2
+            h = min(h, self.maxAmp)
+            minReadDurations.append(np.sqrt(A**2/(2*h*s*tp - s*A - 2*h**2)))
+            # maxlimit imposed by readout rise time:
+            tr = (self.TE - self.boards['RF']['objects']['refocusing']['dur_f'])/2
+            maxReadDurations.append(tr + np.sqrt(tr**2 - 2*A/s))
+            # max limit imposed by phaser:
+            maxReadDurations.append((tr - self.boards['phase']['objects']['phase encode']['dur_f']) * 2)
+            # max limit imposed by slice select refocusing down ramp time:
+            maxReadDurations.append((tr - self.boards['slice']['objects']['slice select refocusing']['riseTime_f']) * 2)
+        minpBW = 1e3 / min(maxReadDurations)
+        maxpBW = 1e3 / max(minReadDurations)
         self.param.pixelBandWidth.bounds = getBounds(minpBW, maxpBW, self.pixelBandWidth)
     
 
@@ -612,8 +632,10 @@ class MRIsimulator(param.Parameterized):
         self.param.matrixF.bounds = getBounds(16, min(maxMatrixF, 600), self.matrixF)
 
     
+    #TODO: update FOVPbounds
+    
     def updateFOVFbounds(self):
-        minFOVF = 1e3 * self.matrixF / (self.getMaxReadoutArea() * GYRO) * 1.01
+        minFOVF = 1e3 * self.matrixF / (self.getMaxReadoutArea() * GYRO)
         self.param.FOVF.bounds = getBounds(max(minFOVF, 100), 600, self.FOVF)
     
 
