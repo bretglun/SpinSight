@@ -157,4 +157,47 @@ Using eqs. \ref{eq:readArea}, \ref{eq:slewArea}, \ref{eq:grePrephaserArea}, and 
     A/2 + A^2/{2d^2 s} = h^2/s
 \end{equation}
 Remains to solve for $h$ and then find $d$ as function of $\min(g_{max}, h)$.
+
+\newpage
+
+\section{Minimum slice thickness}
+
+\subsection{Gradient echo}
+We can reuse Fig. \ref{fig:gre}; by reversing the time axis it can represent the excitation pulse slice selection gradient and slice rephaser. 
+In this case, $t$ represents the time between the isodelay point of the excitation pulse ($t=0$) and the start of the signal readout. 
+We can then find the amplitude of the triangular slice rephaser, $h$, from Eq. \ref{eq:GREprephaserAmp} and truncate it to $g_{max}$.
+The minimum slice thickness $T$ is then
+\begin{equation}
+    T = \frac{B_e d}{\gamma A}
+    \label{eq:sliceThickness}
+\end{equation}
+where $B_e$ is the transmit bandwidth (FWHM) of the excitations pulse, $\gamma$ is the gyromagnetic ratio, and $A$ is given by eq. \ref{eq:greArea}.
+
+\subsection{Spin echo}
+The spin echo case is similar to gradient echo, but we now define $t$ as the time between the isodelay point of the excitation pulse and the start of the refocusing pulse. 
+This time additionally needs to encompass the rise time of the refocusing pulse slice selection gradient with amplitude, which is assumed to equal that of the excitation slice selection amplitude $g$ (then, the relative slice thickness of the pulses is determined by their relative transmit bandwidths): 
+\begin{equation}
+    A/2 + B = h(t-d/2-h/s-2g/s)
+    \label{eq:seSliceRephaserArea}
+\end{equation}
+
+Assuming a triangular slice rephaser gradient, we have
+\begin{equation}
+    t = d/2 + 2g/s + 2h/s
+    \label{eq:seTriangleSliceRephaser}
+\end{equation}
+
+The slice rephaser peak amplitude follows from eqs. \ref{eq:readArea}, \ref{eq:slewArea}, \ref{eq:seSliceRephaserArea}, and \ref{eq:seTriangleSliceRephaser}:
+\begin{equation}
+    h = s(\sqrt{2(d + 2t)^2-4d^2}- d - 2t)/4
+    \label{eq:GREprephaserAmp}
+\end{equation}
+After truncating $h$ to $g_{max}$, $A$ follows from eqs. \ref{eq:readArea}, \ref{eq:slewArea}, and \ref{eq:seSliceRephaserArea}:
+\begin{equation}
+    %A = \left( \sqrt{(d(ds + 4h))^2-4d^2h(ds+2h-2st)}-d(ds + 4h) \right)/2
+    A = \frac{\sqrt{(d(ds + 4h))^2-4d^2h(ds+2h-2st)}-d(ds + 4h)}{2}
+    \label{eq:GREprephaserAmp}
+\end{equation}
+The minimum slice thickness is then given by eq. \ref{eq:sliceThickness}.
+
 \end{document}

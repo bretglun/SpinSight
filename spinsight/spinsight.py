@@ -260,7 +260,7 @@ class MRIsimulator(param.Parameterized):
     sequence = param.ObjectSelector(default=SEQUENCES[0], objects=SEQUENCES, label='Pulse sequence')
     FatSat = param.Boolean(default=False, label='Fat saturation')
     TR = param.Selector(default=10000, objects=TRvalues, label='TR [msec]')
-    TE = param.Selector(default=7, objects=TEvalues, label='TE [msec]')
+    TE = param.Selector(default=10, objects=TEvalues, label='TE [msec]')
     FA = param.Number(default=90.0, bounds=(1, 90.0), precedence=-1, label='Flip angle [°]')
     TI = param.Selector(default=50, objects=TIvalues, precedence=-1, label='TI [msec]')
     FOVP = param.Number(default=240, bounds=(100, 600), label='FOV x [mm]')
@@ -269,9 +269,10 @@ class MRIsimulator(param.Parameterized):
     matrixF = param.Integer(default=180, bounds=(16, 600), label='Acquisition matrix y')
     reconMatrixP = param.Integer(default=360, bounds=(matrixP.default, 1024), label='Reconstruction matrix x')
     reconMatrixF = param.Integer(default=360, bounds=(matrixF.default, 1024), label='Reconstruction matrix y')
+    sliceThickness = param.Number(default=3, bounds=(0.5, 10), label='Slice thickness [mm]')
     frequencyDirection = param.ObjectSelector(default=list(DIRECTIONS.keys())[0], objects=DIRECTIONS.keys(), label='Frequency encoding direction')
     pixelBandWidth = param.Number(default=500, bounds=(125, 2000), label='Pixel bandwidth [Hz]')
-    NSA = param.Integer(default=1, bounds=(1, 32), label='NSA')
+    NSA = param.Integer(default=1, bounds=(1, 16), label='NSA')
     
 
     def __init__(self, **params):
@@ -312,6 +313,7 @@ class MRIsimulator(param.Parameterized):
 
         self.maxAmp = 25. # mT/m
         self.maxSlew = 80. # T/m/s
+        self.inversionThkFactor = 1.1 # make inversion slice 10% thicker
 
         for board in self.boards:
             self.boards[board]['objects'] = {}
@@ -342,7 +344,8 @@ class MRIsimulator(param.Parameterized):
             self.updateMatrixFbounds,
             self.updateMatrixPbounds,
             self.updateFOVFbounds, 
-            self.updateFOVPbounds
+            self.updateFOVPbounds,
+            self.updateSliceThicknessBounds
         ]
 
         self.sequencePipeline = set(self.fullSequencePipeline)
@@ -406,6 +409,14 @@ class MRIsimulator(param.Parameterized):
         self.reconMatrixP = min(max(int(self.matrixP * self.recAcqRatioP), self.matrixP), self.param.reconMatrixP.bounds[1])
 
 
+    @param.depends('sliceThickness', watch=True)
+    def _watch_sliceThickness(self):
+        for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.addNoise, self.compileKspace, self.zerofill, self.reconstruct]:
+            self.reconPipeline.add(f)
+        for f in [self.setupSliceSelection]:
+            self.sequencePipeline.add(f)
+    
+    
     @param.depends('frequencyDirection', watch=True)
     def _watch_frequencyDirection(self):
         for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.addNoise, self.compileKspace, self.zerofill, self.reconstruct]:
@@ -469,7 +480,7 @@ class MRIsimulator(param.Parameterized):
     def _watch_TR(self):
         for f in [self.updatePDandT1w, self.compileKspace, self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
-        for f in [self.updateMaxTE, self.updateMaxTI, self.updateBWbounds, self.renderFrequencyBoard, self.renderPhaseBoard, self.renderSliceBoard, self.renderRFBoard]:
+        for f in [self.updateMaxTE, self.updateMaxTI, self.updateBWbounds, self.updateSliceThicknessBounds, self.renderFrequencyBoard, self.renderPhaseBoard, self.renderSliceBoard, self.renderRFBoard]:
             self.sequencePipeline.add(f)
     
 
@@ -665,6 +676,43 @@ class MRIsimulator(param.Parameterized):
         self.param.FOVP.bounds = getBounds(max(minFOVP, 100), 600, self.FOVP)
     
 
+    def updateSliceThicknessBounds(self):
+        minThks = [.5]
+        minThks.append(self.boards['RF']['objects']['excitation']['FWHM_f'] / (self.maxAmp * GYRO))
+        if not isGradientEcho(self.sequence):
+            minThks.append(self.boards['RF']['objects']['refocusing']['FWHM_f'] / (self.maxAmp * GYRO))
+        if self.sequence=='Inversion Recovery':
+            minThks.append(self.boards['RF']['objects']['inversion']['FWHM_f'] / (self.maxAmp * GYRO) * self.inversionThkFactor)
+        
+        # Constraint due to TR: 
+        if self.sequence=='Inversion Recovery':
+            maxRiseTime = self.TR - (self.boards['slice']['objects']['spoiler']['time'][-1] - self.boards['RF']['objects']['inversion']['time'][0])
+            maxAmp = self.maxSlew * maxRiseTime
+            minThks.append(self.boards['RF']['objects']['inversion']['FWHM_f'] / (maxAmp * GYRO))
+        else:
+            maxRiseTime = self.TR - (self.boards['slice']['objects']['spoiler']['time'][-1] - self.boards['RF']['objects']['excitation']['time'][0])
+            maxAmp = self.maxSlew * maxRiseTime
+            minThks.append(self.boards['RF']['objects']['excitation']['FWHM_f'] / (maxAmp * GYRO))
+        
+        # See readouts.tex for formulae
+        s = self.maxSlew
+        d = self.boards['RF']['objects']['excitation']['dur_f']
+        if isGradientEcho(self.sequence): # Constraint due to slice rephaser
+            t = self.boards['ADC']['objects']['sampling']['time'][0]
+            h = s * (t - np.sqrt(t**2/2 + d**2/8))
+            h = min(h, self.maxAmp)
+            A = d * (np.sqrt((d*s+2*h)**2 - 8*h*(h-s*(t-d/2))) - d*s - 2*h) / 2
+        else: # Spin echo: Constraint due to slice rephaser and refocusing slice select rampup
+            t = self.boards['RF']['objects']['refocusing']['time'][0]
+            h = s * (np.sqrt(2*(d + 2*t)**2 - 4*d**2) - d - 2*t) / 4
+            h = min(h, self.maxAmp)
+            A = (np.sqrt((d*(d*s + 4*h))**2 - 4*d**2*h*(d*s + 2*h - 2*s*t)) - d*(d*s + 4*h)) / 2
+        Be = self.boards['RF']['objects']['excitation']['FWHM_f']
+        minThks.append(Be * d / (GYRO * A)) # mm
+        
+        self.param.sliceThickness.bounds = getBounds(max(minThks), 10., self.sliceThickness)
+
+
     def loadPhantom(self):
         phantomPath = Path(__file__).parent.parent.resolve() / 'phantoms/{p}'.format(p=self.object)
         self.phantom = PHANTOMS[self.object]
@@ -706,11 +754,16 @@ class MRIsimulator(param.Parameterized):
         
         self.kAxes = [getKaxis(self.oversampledMatrix[dim], self.FOV[dim]/self.matrix[dim]) for dim in range(len(self.matrix))]
         self.plainKspaceComps = resampleKspace(self.phantom, self.kAxes)
+        
+        # Lorenzian line shape to mimic slice thickness
+        sliceThicknessFilter = np.outer(*[np.exp(-self.sliceThickness * np.abs(ax)/2) for ax in self.kAxes])
+        for comp in self.plainKspaceComps:
+            self.plainKspaceComps[comp] *= sliceThicknessFilter
     
 
     def updateSamplingTime(self):
         self.samplingTime = self.kAxes[self.freqDir] * self.FOV[self.freqDir] / self.matrix[self.freqDir] / self.pixelBandWidth * 1e3 # msec
-        self.noiseStd = 1. / np.sqrt(np.diff(self.samplingTime[:2]) * self.NSA) / self.fieldStrength
+        self.noiseStd = 1. / np.sqrt(np.diff(self.samplingTime[:2]) * self.NSA * self.sliceThickness) / self.fieldStrength
         self.samplingTime = np.expand_dims(self.samplingTime, axis=[dim for dim in range(len(self.matrix)) if dim != self.freqDir])
     
 
@@ -786,11 +839,11 @@ class MRIsimulator(param.Parameterized):
     
     def setupExcitation(self):
         FA = self.FA if isGradientEcho(self.sequence) else 90.
-        self.boards['RF']['objects']['excitation'] = sequence.getRF(flipAngle=FA, time=0., dur=2., shape='hammingSinc',  name='excitation')
-        for f in [self.setupSliceSelection, self.renderRFBoard, self.updateMinTE, self.updateMinTI, self.updateBWbounds, self.updateMatrixFbounds, self.updateFOVFbounds, self.updateMatrixPbounds, self.updateFOVPbounds]:
+        self.boards['RF']['objects']['excitation'] = sequence.getRF(flipAngle=FA, time=0., dur=3., shape='hammingSinc',  name='excitation')
+        for f in [self.setupSliceSelection, self.renderRFBoard, self.updateMinTE, self.updateMinTI, self.updateBWbounds, self.updateMatrixFbounds, self.updateFOVFbounds, self.updateMatrixPbounds, self.updateFOVPbounds, self.updateSliceThicknessBounds]:
             self.sequencePipeline.add(f)
 
-    
+
     def setupRefocusing(self):
         if not isGradientEcho(self.sequence):
             self.boards['RF']['objects']['refocusing'] = sequence.getRF(flipAngle=180., dur=3., shape='hammingSinc',  name='refocusing')
@@ -798,7 +851,7 @@ class MRIsimulator(param.Parameterized):
         else:
             if 'refocusing' in self.boards['RF']['objects']:
                 del self.boards['RF']['objects']['refocusing']
-        for f in [self.setupSliceSelection, self.renderRFBoard, self.updateMinTE, self.updateMatrixPbounds, self.updateFOVPbounds]:
+        for f in [self.setupSliceSelection, self.renderRFBoard, self.updateMinTE, self.updateMatrixPbounds, self.updateFOVPbounds, self.updateSliceThicknessBounds]:
             self.sequencePipeline.add(f)
 
 
@@ -809,15 +862,14 @@ class MRIsimulator(param.Parameterized):
         else:
             if 'inversion' in self.boards['RF']['objects']:
                 del self.boards['RF']['objects']['inversion']
-        self.sequencePipeline.add(self.setupSliceSelection)
-        self.sequencePipeline.add(self.renderRFBoard)
-        self.sequencePipeline.add(self.updateMinTI)
+        for f in [self.setupSliceSelection, self.renderRFBoard, self.updateMinTI, self.updateSliceThicknessBounds]:
+            self.sequencePipeline.add(f)
     
-
+    
     def setupSliceSelection(self):
         flatDur = self.boards['RF']['objects']['excitation']['dur_f']
-        sliceSelectAmp = 10. # TODO: determine from slice thickness
-        sliceSelectExcitation = sequence.getGradient('slice', 0., maxAmp=sliceSelectAmp, flatDur=flatDur, name='slice select excitation')
+        amp = self.boards['RF']['objects']['excitation']['FWHM_f'] / (self.sliceThickness * GYRO)
+        sliceSelectExcitation = sequence.getGradient('slice', 0., maxAmp=amp, flatDur=flatDur, name='slice select excitation')
         sliceRephaserArea = -sliceSelectExcitation['area_f']/2
         sliceSelectRephaser = sequence.getGradient('slice', totalArea=sliceRephaserArea, name='slice select rephaser')
         rephaserTime = (sliceSelectExcitation['dur_f'] + sliceSelectRephaser['dur_f']) / 2
@@ -827,14 +879,16 @@ class MRIsimulator(param.Parameterized):
 
         if 'refocusing' in self.boards['RF']['objects']:
             flatDur = self.boards['RF']['objects']['refocusing']['dur_f']
-            self.boards['slice']['objects']['slice select refocusing'] = sequence.getGradient('slice', maxAmp=sliceSelectAmp, flatDur=flatDur, name='slice select refocusing')
+            amp = self.boards['RF']['objects']['refocusing']['FWHM_f'] / (self.sliceThickness * GYRO)
+            self.boards['slice']['objects']['slice select refocusing'] = sequence.getGradient('slice', maxAmp=amp, flatDur=flatDur, name='slice select refocusing')
             self.sequencePipeline.add(self.placeRefocusing)
         elif 'slice select refocusing' in self.boards['slice']['objects']:
             del self.boards['slice']['objects']['slice select refocusing']
             
         if 'inversion' in self.boards['RF']['objects']:
             flatDur = self.boards['RF']['objects']['inversion']['dur_f']
-            self.boards['slice']['objects']['slice select inversion'] = sequence.getGradient('slice', maxAmp=sliceSelectAmp, flatDur=flatDur, name='slice select inversion')
+            amp = self.boards['RF']['objects']['inversion']['FWHM_f'] / (self.inversionThkFactor * self.sliceThickness * GYRO)
+            self.boards['slice']['objects']['slice select inversion'] = sequence.getGradient('slice', maxAmp=amp, flatDur=flatDur, name='slice select inversion')
 
             spoilerArea = 30. # uTs/m
             self.boards['slice']['objects']['inversion spoiler'] = sequence.getGradient('slice', totalArea=spoilerArea, name='inversion spoiler')
@@ -895,12 +949,8 @@ class MRIsimulator(param.Parameterized):
         if 'inversion spoiler' in self.boards['slice']['objects']:
             spoilerTime = self.boards['RF']['objects']['inversion']['time'][-1] + self.boards['slice']['objects']['inversion spoiler']['dur_f']/2
             sequence.moveWaveform(self.boards['slice']['objects']['inversion spoiler'], spoilerTime)
-        self.sequencePipeline.add(self.updateMinTR)
-        self.sequencePipeline.add(self.updateBWbounds)
-        self.sequencePipeline.add(self.renderFrequencyBoard) # due to TR bounds
-        self.sequencePipeline.add(self.renderPhaseBoard) # due to TR bounds
-        self.sequencePipeline.add(self.renderSliceBoard) # due to TR bounds
-        self.sequencePipeline.add(self.renderRFBoard) # due to TR bounds
+        for f in [self.updateMinTR, self.updateBWbounds, self.updateSliceThicknessBounds, self.renderFrequencyBoard, self.renderPhaseBoard, self.renderSliceBoard, self.renderRFBoard]:
+            self.sequencePipeline.add(f)
     
 
     def placeReadout(self):
@@ -933,8 +983,8 @@ class MRIsimulator(param.Parameterized):
     def placeSpoiler(self):
         spoilerTime = self.boards['frequency']['objects']['readout']['center_f'] + (self.boards['frequency']['objects']['readout']['flatDur_f'] + self.boards['slice']['objects']['spoiler']['dur_f']) / 2
         sequence.moveWaveform(self.boards['slice']['objects']['spoiler'], spoilerTime)
-        self.sequencePipeline.add(self.renderSliceBoard)
-        self.sequencePipeline.add(self.updateMinTR)
+        for f in [self.renderSliceBoard, self.updateMinTR, self.updateSliceThicknessBounds]:
+            self.sequencePipeline.add(f)
 
 
     def renderPolygons(self, board):
@@ -973,7 +1023,7 @@ class MRIsimulator(param.Parameterized):
         self.renderTRbounds('RF')
     
     
-    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'frequencyDirection', 'pixelBandWidth', 'NSA')
+    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'NSA')
     def getKspace(self):
         self.runReconPipeline()
         kAxes = []
@@ -992,7 +1042,7 @@ class MRIsimulator(param.Parameterized):
         return hv.Image(ksp, vdims=['magnitude'])
     
 
-    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'frequencyDirection', 'pixelBandWidth', 'NSA')
+    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'NSA')
     def getImage(self):
         self.runReconPipeline()
         iAxes = [(np.arange(self.reconMatrix[dim]) - (self.reconMatrix[dim]-1)/2) / self.reconMatrix[dim] * self.FOV[dim] for dim in range(2)]
@@ -1005,7 +1055,7 @@ class MRIsimulator(param.Parameterized):
         return hv.Image(img, vdims=['magnitude'])
     
 
-    @param.depends('sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'matrixF', 'matrixP', 'pixelBandWidth')
+    @param.depends('sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'matrixF', 'matrixP', 'sliceThickness', 'pixelBandWidth')
     def getSequencePlot(self):
         self.runSequencePipeline()
         return hv.Layout(list([hv.Overlay(list(boardPlot.values())).opts(border=0, xaxis='bottom' if n==len(self.boardPlots)-1 else None) for n, boardPlot in enumerate(self.boardPlots.values())])).cols(1).options(toolbar='below')
@@ -1026,7 +1076,7 @@ def getApp():
     author = '*Written by [Johan Berglund](mailto:johan.berglund@akademiska.se), Ph.D.*'
     settingsParams = pn.panel(explorer.param, parameters=['object', 'fieldStrength'], name='Settings')
     contrastParams = pn.panel(explorer.param, parameters=['sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI'], widgets={'TR': pn.widgets.DiscreteSlider, 'TE': pn.widgets.DiscreteSlider, 'TI': pn.widgets.DiscreteSlider}, name='Contrast')
-    geometryParams = pn.panel(explorer.param, parameters=['FOVF', 'FOVP', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'frequencyDirection', 'pixelBandWidth', 'NSA'], name='Geometry')
+    geometryParams = pn.panel(explorer.param, parameters=['FOVF', 'FOVP', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness',  'frequencyDirection', 'pixelBandWidth', 'NSA'], name='Geometry')
     dmapKspace = pn.Row(hv.DynamicMap(explorer.getKspace), visible=False)
     dmapMRimage = hv.DynamicMap(explorer.getImage)
     dmapSequence = pn.Row(hv.DynamicMap(explorer.getSequencePlot), visible=False)

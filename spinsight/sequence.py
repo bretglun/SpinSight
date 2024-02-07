@@ -1,6 +1,7 @@
 import numpy as np
 import spinsight
 import scipy.signal as signal
+import scipy.interpolate as interpolate
 
 
 def accumulateSlopes(slopes):
@@ -40,13 +41,21 @@ def prepareWaveform(waveform, t0, t1, scale=1):
     return wf, t
 
 
+def getFWHM(s, t):
+    S = np.abs(np.fft.fftshift(np.fft.fft(s)))
+    f = np.fft.fftshift(np.fft.fftfreq(len(t)) / (t[1]-t[0]) * 1e3)
+    spline = interpolate.UnivariateSpline(f, S-np.max(S)/2, s=0)
+    f1, f2 = spline.roots() # find the roots
+    return abs(f2-f1)
+
+
 def getRF(flipAngle, dur, name, time=0., shape='hammingSinc'):
     match shape:
         case 'rect':
             waveform = np.array([1., 1.])
         case 'hammingSinc':
             n = 51
-            waveform = np.sinc((np.arange(n)-n/2)/n*6) * signal.windows.hamming(n)
+            waveform = np.sinc((np.arange(n)-n/2)/n*5) * signal.windows.hamming(n)
         case _:
             raise NotImplementedError(shape)
 
@@ -62,7 +71,8 @@ def getRF(flipAngle, dur, name, time=0., shape='hammingSinc'):
             'center_f': time,
             'duration': '{:.1f} ms'.format(dur),
             'dur_f': dur,
-            'flip_angle': '{:.0f}°'.format(flipAngle)}
+            'flip_angle': '{:.0f}°'.format(flipAngle),
+            'FWHM_f': getFWHM(am[1:-1], t[1:-1])}
     return rf
 
 
