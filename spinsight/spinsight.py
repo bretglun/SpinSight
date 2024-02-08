@@ -6,6 +6,9 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 import re
 import xarray as xr
+import sequence
+from bokeh.models import HoverTool
+from functools import partial
 
 hv.extension('bokeh')
 
@@ -39,14 +42,16 @@ FATRESONANCES = { 'Fat1':  {'shift': 0.9 - 4.7, 'ratio': .087, 'ratioWithFatSat'
 
 SEQUENCES = ['Spin Echo', 'Spoiled Gradient Echo', 'Inversion Recovery']
 
-DURATIONS = {'exc': 1.0, 'ref': 4.0, 'inv': 4.0, 'spoil': 1.0} # excitation, refocusing, inversion, spoiling [msec]
-
 PHANTOMS = {
     'abdomen': {'FOV': (320, 400), 'matrix': (513, 641)}, # odd matrix to ensure kspace center is sampled (not required)
     'brain': {'FOV': (188, 156), 'matrix': (601, 601)} # odd matrix to ensure kspace center is sampled (not required)
 }
 
 DIRECTIONS = {'anterior-posterior': 0, 'left-right': 1}
+
+
+def isGradientEcho(sequence):
+    return 'Gradient Echo' in sequence
 
 
 def polygonArea(coords):
@@ -213,6 +218,37 @@ def getPDandT1w(component, seqType, TR, TE, TI, FA, B0):
         raise Exception('Unknown sequence type: {}'.format(seqType))
 
 
+def updateBounds(curval, values, minval=None, maxval=None):
+        if minval is not None:
+            values = [val for val in values if not val < minval]
+        if maxval is not None:
+            values = [val for val in values if not val > maxval]
+        value = min(values, key=lambda x: abs(x-curval))
+        return values, value
+
+
+def getBounds(minval, maxval, curval):
+    if curval < minval:
+        print('Warning: trying to set bounds above current value ({} > {})'.format(minval, curval))
+        minval = curval
+    if curval > maxval:
+        print('Warning: trying to set bounds below current value ({} < {})'.format(maxval, curval))
+        maxval = curval
+    return (minval, maxval)
+
+
+def bounds_hook(plot, elem, xbounds=None):
+    x_range = plot.handles['plot'].x_range
+    if xbounds is not None:
+        x_range.bounds = xbounds
+    else:
+        x_range.bounds = x_range.start, x_range.end 
+
+
+def hideframe_hook(plot, elem):
+    plot.handles['plot'].outline_line_color = None
+
+
 TRvalues = [float('{:.2g}'.format(tr)) for tr in 10.**np.linspace(0, 4, 500)]
 TEvalues = [float('{:.2g}'.format(te)) for te in 10.**np.linspace(0, 3, 500)]
 TIvalues = [float('{:.2g}'.format(ti)) for ti in 10.**np.linspace(0, 4, 500)]
@@ -223,172 +259,463 @@ class MRIsimulator(param.Parameterized):
     fieldStrength = param.ObjectSelector(default=1.5, objects=[1.5, 3.0], label='B0 field strength [T]')
     sequence = param.ObjectSelector(default=SEQUENCES[0], objects=SEQUENCES, label='Pulse sequence')
     FatSat = param.Boolean(default=False, label='Fat saturation')
-    TR = param.Selector(default=8000, objects=TRvalues, label='TR [msec]')
-    TE = param.Selector(default=7, objects=TEvalues, label='TE [msec]')
+    TR = param.Selector(default=10000, objects=TRvalues, label='TR [msec]')
+    TE = param.Selector(default=10, objects=TEvalues, label='TE [msec]')
     FA = param.Number(default=90.0, bounds=(1, 90.0), precedence=-1, label='Flip angle [°]')
-    TI = param.Selector(default=50, objects=TIvalues, precedence=-1, label='TI [msec]')
-    FOVX = param.Number(default=420, bounds=(100, 600), label='FOV x [mm]')
-    FOVY = param.Number(default=420, bounds=(100, 600), label='FOV y [mm]')
-    matrixX = param.Integer(default=128, bounds=(16, 600), label='Acquisition matrix x')
-    matrixY = param.Integer(default=128, bounds=(16, 600), label='Acquisition matrix y')
-    reconMatrixX = param.Integer(default=256, bounds=(matrixX.default, 1024), label='Reconstruction matrix x')
-    reconMatrixY = param.Integer(default=256, bounds=(matrixY.default, 1024), label='Reconstruction matrix y')
-    frequencyDirection = param.ObjectSelector(default=list(DIRECTIONS.keys())[-1], objects=DIRECTIONS.keys(), label='Frequency encoding direction')
-    pixelBandWidth = param.Number(default=2000, bounds=(50, 2000), label='Pixel bandwidth [Hz]')
-    NSA = param.Integer(default=1, bounds=(1, 32), label='NSA')
+    TI = param.Selector(default=40, objects=TIvalues, precedence=-1, label='TI [msec]')
+    FOVP = param.Number(default=240, bounds=(100, 600), label='FOV x [mm]')
+    FOVF = param.Number(default=240, bounds=(100, 600), label='FOV y [mm]')
+    matrixP = param.Integer(default=180, bounds=(16, 600), label='Acquisition matrix x')
+    matrixF = param.Integer(default=180, bounds=(16, 600), label='Acquisition matrix y')
+    reconMatrixP = param.Integer(default=360, bounds=(matrixP.default, 1024), label='Reconstruction matrix x')
+    reconMatrixF = param.Integer(default=360, bounds=(matrixF.default, 1024), label='Reconstruction matrix y')
+    sliceThickness = param.Number(default=3, bounds=(0.5, 10), label='Slice thickness [mm]')
+    frequencyDirection = param.ObjectSelector(default=list(DIRECTIONS.keys())[0], objects=DIRECTIONS.keys(), label='Frequency encoding direction')
+    pixelBandWidth = param.Number(default=500, bounds=(125, 2000), label='Pixel bandwidth [Hz]')
+    NSA = param.Integer(default=1, bounds=(1, 16), label='NSA')
     
 
     def __init__(self, **params):
         super().__init__(**params)
-        self.updateReadoutDuration()
-        self.updateTEbounds()
-        self.updateTRbounds()
 
-        self.fullPipeline = [   self.loadPhantom, 
-                                self.sampleKspace, 
-                                self.updateSamplingTime, 
-                                self.modulateKspace, 
-                                self.addNoise, 
-                                self.updatePDandT1w, 
-                                self.compileKspace, 
-                                self.zerofill,
-                                self.reconstruct]
+        self.render = True # semaphore to avoid unneccesary rendering
+
+        self.fullReconPipeline = [
+            self.loadPhantom, 
+            self.sampleKspace, 
+            self.updateSamplingTime, 
+            self.modulateKspace, 
+            self.addNoise, 
+            self.updatePDandT1w, 
+            self.compileKspace, 
+            self.zerofill, 
+            self.reconstruct
+        ]
         
-        self.pipeline = set(self.fullPipeline)
+        self.reconPipeline = set(self.fullReconPipeline)
+
+        self.timeDim = hv.Dimension('time', label='time', unit='ms')
+
+        self.boards = { 'frequency': {'dim': hv.Dimension('frequency', label='G read', unit='mT/m', range=(-30, 30)), 'color': 'cadetblue'}, 
+                        'phase': {'dim': hv.Dimension('phase', label='G phase', unit='mT/m', range=(-30, 30)), 'color': 'cadetblue'}, 
+                        'slice': {'dim': hv.Dimension('slice', label='G slice', unit='mT/m', range=(-30, 30)), 'color': 'cadetblue'}, 
+                        'RF': {'dim': hv.Dimension('RF', label='RF', unit='μT', range=(-5, 25)), 'color': 'red'},
+                        'ADC': {'dim': hv.Dimension('ADC', label='ADC', unit=''), 'color': 'orange'} }
 
         self._watch_reconMatrix()
-    
 
-    def runPipeline(self):
-        for f in self.fullPipeline:
-            if f in self.pipeline:
+        self.boardPlots = {board: {'hline': hv.HLine(0.0, kdims=[self.timeDim, self.boards[board]['dim']]).opts(tools=['xwheel_zoom', 'xpan', 'reset'], default_tools=[], active_tools=['xwheel_zoom', 'xpan'])} for board in self.boards if board != 'ADC'}
+
+        hv.opts.defaults(hv.opts.Image(width=500, height=500, invert_yaxis=False, toolbar='below', cmap='gray', aspect='equal'))
+        hv.opts.defaults(hv.opts.HLine(line_width=1.5, line_color='gray'))
+        hv.opts.defaults(hv.opts.VSpan(color='orange', fill_alpha=.1, hover_fill_alpha=.8, default_tools=[]))
+        hv.opts.defaults(hv.opts.Overlay(width=1700, height=120, border=4, show_grid=False, xaxis=None))
+        hv.opts.defaults(hv.opts.Area(fill_alpha=.5, line_width=1.5, line_color='gray', default_tools=[]))
+        hv.opts.defaults(hv.opts.Polygons(line_width=1.5, fill_alpha=0, line_alpha=0, line_color='gray', selection_line_color='black', hover_fill_alpha=.8, hover_line_alpha=1, selection_fill_alpha=.8, selection_line_alpha=1, nonselection_line_alpha=0, default_tools=[]))
+
+        self.maxAmp = 25. # mT/m
+        self.maxSlew = 80. # T/m/s
+        self.inversionThkFactor = 1.1 # make inversion slice 10% thicker
+
+        for board in self.boards:
+            self.boards[board]['objects'] = {}
+
+        self.fullSequencePipeline = [
+            self.setupExcitation, 
+            self.setupRefocusing,
+            self.setupInversion,
+            self.setupFatSat,
+            self.setupSliceSelection,
+            self.setupReadout,
+            self.setupPhaser,
+            self.setupSpoiler,
+            self.placeRefocusing,
+            self.placeInversion,
+            self.placeFatSat,
+            self.placeReadout,
+            self.placePhaser,
+            self.placeSpoiler,
+            self.renderFrequencyBoard, 
+            self.renderPhaseBoard, 
+            self.renderSliceBoard, 
+            self.renderRFBoard,
+            self.updateMinTE,
+            self.updateMinTR,
+            self.updateMaxTE,
+            self.updateMaxTI,
+            self.updateBWbounds,
+            self.updateMatrixFbounds,
+            self.updateMatrixPbounds,
+            self.updateFOVFbounds, 
+            self.updateFOVPbounds,
+            self.updateSliceThicknessBounds
+        ]
+
+        self.sequencePipeline = set(self.fullSequencePipeline)
+        self.runSequencePipeline()
+
+
+    def runReconPipeline(self):
+        for f in self.fullReconPipeline:
+            if f in self.reconPipeline:
                 f()
-                self.pipeline.remove(f)
-    
+                self.reconPipeline.remove(f)
 
-    def updateReadoutDuration(self):
-        self.readoutDuration = 1e3 / self.pixelBandWidth # [msec]
-        
+
+    def runSequencePipeline(self):
+        for f in self.fullSequencePipeline:
+            if f in self.sequencePipeline:
+                f()
+                self.sequencePipeline.remove(f)
+    
     
     @param.depends('object', watch=True)
     def _watch_object(self):
-        for f in self.fullPipeline:
-            self.pipeline.add(f)
+        for f in self.fullReconPipeline:
+            self.reconPipeline.add(f)
     
 
-    @param.depends('FOVX', 'FOVY', watch=True)
-    def _watch_FOV(self):
+    @param.depends('FOVF', watch=True)
+    def _watch_FOVF(self):
         for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.addNoise, self.compileKspace, self.zerofill, self.reconstruct]:
-            self.pipeline.add(f)
+            self.reconPipeline.add(f)
+        for f in [self.setupReadout, self.updateBWbounds, self.updateMatrixFbounds]:
+            self.sequencePipeline.add(f)
+        
     
 
-    @param.depends('matrixX', 'matrixY', watch=True)
-    def _watch_matrix(self):
+    @param.depends('FOVP', watch=True)
+    def _watch_FOVP(self):
         for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.addNoise, self.compileKspace, self.zerofill, self.reconstruct]:
-            self.pipeline.add(f)
-        self.param.reconMatrixX.bounds = (self.matrixX, self.param.reconMatrixX.bounds[1])
-        self.reconMatrixX = min(max(int(self.matrixX * self.recAcqRatioX), self.matrixX), self.param.reconMatrixX.bounds[1])
-        self.param.reconMatrixY.bounds = (self.matrixY, self.param.reconMatrixY.bounds[1])
-        self.reconMatrixY = min(max(int(self.matrixY * self.recAcqRatioY), self.matrixY), self.param.reconMatrixY.bounds[1])
+            self.reconPipeline.add(f)
+        for f in [self.setupPhaser, self.updateMatrixPbounds]:
+            self.sequencePipeline.add(f)
+    
+    
+    @param.depends('matrixF', watch=True)
+    def _watch_matrixF(self):
+        for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.addNoise, self.compileKspace, self.zerofill, self.reconstruct]:
+            self.reconPipeline.add(f)
+        for f in [self.setupReadout, self.updateBWbounds, self.updateFOVFbounds]:
+            self.sequencePipeline.add(f)
+        self.param.reconMatrixF.bounds = (self.matrixF, self.param.reconMatrixF.bounds[1])
+        self.reconMatrixF = min(max(int(self.matrixF * self.recAcqRatioF), self.matrixF), self.param.reconMatrixF.bounds[1])
+    
+    
+    @param.depends('matrixP', watch=True)
+    def _watch_matrixP(self):
+        for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.addNoise, self.compileKspace, self.zerofill, self.reconstruct]:
+            self.reconPipeline.add(f)
+        for f in [self.setupPhaser, self.updateFOVPbounds]:
+            self.sequencePipeline.add(f)
+        self.param.reconMatrixP.bounds = (self.matrixP, self.param.reconMatrixP.bounds[1])
+        self.reconMatrixP = min(max(int(self.matrixP * self.recAcqRatioP), self.matrixP), self.param.reconMatrixP.bounds[1])
 
 
+    @param.depends('sliceThickness', watch=True)
+    def _watch_sliceThickness(self):
+        for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.addNoise, self.compileKspace, self.zerofill, self.reconstruct]:
+            self.reconPipeline.add(f)
+        for f in [self.setupSliceSelection, self.placeFatSat]:
+            self.sequencePipeline.add(f)
+    
+    
     @param.depends('frequencyDirection', watch=True)
     def _watch_frequencyDirection(self):
         for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.addNoise, self.compileKspace, self.zerofill, self.reconstruct]:
-            self.pipeline.add(f)
+            self.reconPipeline.add(f)
+        for p in [self.param.FOVF, self.param.FOVP, self.param.matrixF, self.param.matrixP, self.param.reconMatrixF, self.param.reconMatrixP]:
+            if ' x' in p.label:
+                p.label = p.label.replace(' x', ' y')
+            elif ' y' in p.label:
+                p.label = p.label.replace(' y', ' x')
 
 
     @param.depends('fieldStrength', watch=True)
     def _watch_fieldStrength(self):
         for f in [self.updateSamplingTime, self.modulateKspace, self.addNoise, self.updatePDandT1w, self.compileKspace, self.zerofill, self.reconstruct]:
-            self.pipeline.add(f)
+            self.reconPipeline.add(f)
+        self._watch_FatSat() # since fatsat pulse duration depends on fieldStrength
     
 
     @param.depends('pixelBandWidth', watch=True)
     def _watch_pixelBandWidth(self):
         for f in [self.updateSamplingTime, self.modulateKspace, self.addNoise, self.compileKspace, self.zerofill, self.reconstruct]:
-            self.pipeline.add(f)
-        self.updateReadoutDuration()
+            self.reconPipeline.add(f)
+        for f in [self.setupReadout, self.updateMatrixFbounds, self.updateFOVFbounds, self.updateMatrixPbounds, self.updateFOVPbounds]:
+            self.sequencePipeline.add(f)
 
 
     @param.depends('NSA', watch=True)
     def _watch_NSA(self):
         for f in [self.updateSamplingTime, self.modulateKspace, self.addNoise, self.compileKspace, self.zerofill, self.reconstruct]:
-            self.pipeline.add(f)
+            self.reconPipeline.add(f)
 
 
     @param.depends('sequence', watch=True)
     def _watch_sequence(self):
         for f in [self.modulateKspace, self.updatePDandT1w, self.compileKspace, self.zerofill, self.reconstruct]:
-            self.pipeline.add(f)
+            self.reconPipeline.add(f)
+        for f in [self.setupExcitation, self.setupRefocusing, self.setupInversion, self.placeReadout, self.placePhaser]:
+            self.sequencePipeline.add(f)
         self.param.FA.precedence = 1 if self.sequence=='Spoiled Gradient Echo' else -1
         self.param.TI.precedence = 1 if self.sequence=='Inversion Recovery' else -1
-
+        tr = self.TR
+        self.render = False
+        self.TR = self.param.TR.objects[-1] # max TR
+        self.runSequencePipeline()
+        self.TE = min(self.param.TE.objects, key=lambda x: abs(x-self.TE)) # TE within bounds
+        self.runSequencePipeline()
+        if self.sequence=='Inversion Recovery':
+            self.TI = min(self.param.TI.objects, key=lambda x: abs(x-self.TI)) # TI within bounds
+            self.runSequencePipeline()
+        self.render = True
+        self.TR = min(self.param.TR.objects, key=lambda x: abs(x-tr)) # Set back TR within bounds
+    
 
     @param.depends('TE', watch=True)
     def _watch_TE(self):
         for f in [self.modulateKspace, self.updatePDandT1w, self.compileKspace, self.zerofill, self.reconstruct]:
-            self.pipeline.add(f)
+            self.reconPipeline.add(f)
+        for f in [self.placeRefocusing, self.placeReadout, self.placePhaser, self.updateMatrixFbounds, self.updateFOVFbounds, self.updateMatrixPbounds, self.updateFOVPbounds]:
+            self.sequencePipeline.add(f)
     
 
-    @param.depends('TR', 'FA', 'TI', watch=True)
-    def _watch_TR_FA_TI(self):
+    @param.depends('TR', watch=True)
+    def _watch_TR(self):
         for f in [self.updatePDandT1w, self.compileKspace, self.zerofill, self.reconstruct]:
-            self.pipeline.add(f)
+            self.reconPipeline.add(f)
+        for f in [self.updateMaxTE, self.updateMaxTI, self.updateBWbounds, self.updateSliceThicknessBounds, self.renderFrequencyBoard, self.renderPhaseBoard, self.renderSliceBoard, self.renderRFBoard]:
+            self.sequencePipeline.add(f)
+    
+
+    @param.depends('TI', watch=True)
+    def _watch_TI(self):
+        for f in [self.updatePDandT1w, self.compileKspace, self.zerofill, self.reconstruct]:
+            self.reconPipeline.add(f)
+        self.sequencePipeline.add(self.placeInversion)
+
+
+    @param.depends('FA', watch=True)
+    def _watch_FA(self):
+        for f in [self.updatePDandT1w, self.compileKspace, self.zerofill, self.reconstruct]:
+            self.reconPipeline.add(f)
+        self.sequencePipeline.add(self.setupExcitation)
     
     
     @param.depends('FatSat', watch=True)
     def _watch_FatSat(self):
         for f in [self.compileKspace, self.zerofill, self.reconstruct]:
-            self.pipeline.add(f)
+            self.reconPipeline.add(f)
+        for f in [self.setupFatSat, self.updateMaxTE, self.updateBWbounds]:
+            self.sequencePipeline.add(f)
+        tr = self.TR
+        self.render = False
+        self.TR = self.param.TR.objects[-1] # max TR
+        self.runSequencePipeline()
+        self.render = True
+        self.TR = min(self.param.TR.objects, key=lambda x: abs(x-tr)) # Set back TR within bounds
     
     
-    @param.depends('reconMatrixX', 'reconMatrixY', watch=True)
+    @param.depends('reconMatrixF', 'reconMatrixP', watch=True)
     def _watch_reconMatrix(self):
-        self.recAcqRatioX = self.reconMatrixX / self.matrixX
-        self.recAcqRatioY = self.reconMatrixY / self.matrixY
+        self.recAcqRatioF = self.reconMatrixF / self.matrixF
+        self.recAcqRatioP = self.reconMatrixP / self.matrixP
         for f in [self.zerofill, self.reconstruct]:
-            self.pipeline.add(f)
-    
-
-    @param.depends('sequence', 'TE', 'TI', 'pixelBandWidth', watch=True)
-    def updateTRbounds(self):
-        minTR = DURATIONS['exc']/2 + self.TE + self.readoutDuration/2 + DURATIONS['spoil']
-        if self.sequence == 'Inversion Recovery': minTR += DURATIONS['inv']/2 + self.TI - DURATIONS['exc']/2
-        self.param.TR.objects = [tr for tr in TRvalues if not tr < minTR]
+            self.reconPipeline.add(f)
     
     
-    @param.depends('sequence', 'TR', 'TI', 'pixelBandWidth', watch=True)
-    def updateTEbounds(self):
-        if self.sequence in ['Spin Echo', 'Inversion Recovery']: # seqs with refocusing pulse
-            minTE = max((DURATIONS['exc'] + DURATIONS['ref']), (DURATIONS['ref'] + self.readoutDuration))
+    def getSeqStart(self):
+        if self.sequence == 'Inversion Recovery': 
+            return self.boards['slice']['objects']['slice select inversion']['time'][0]
+        elif self.FatSat:
+            return self.boards['RF']['objects']['fatsat']['time'][0]
         else:
-            minTE = (DURATIONS['exc'] + self.readoutDuration)/2
-        maxTE = self.TR - (DURATIONS['exc'] + self.readoutDuration)/2 - DURATIONS['spoil']
-        if self.sequence == 'Inversion Recovery':
-            maxTE += (DURATIONS['exc'] - DURATIONS['inv'])/2 - self.TI
-        self.param.TE.objects = [te for te in TEvalues if not te < minTE and not te > maxTE]
+            return self.boards['slice']['objects']['slice select excitation']['time'][0]
+    
+    
+    def updateMinTE(self):
+        if not isGradientEcho(self.sequence):
+            leftSide = max(
+                self.boards['frequency']['objects']['read prephaser']['dur_f'], 
+                self.boards['slice']['objects']['slice select excitation']['riseTime_f'] + self.boards['slice']['objects']['slice select rephaser']['dur_f'] + (self.boards['slice']['objects']['slice select refocusing']['riseTime_f']))
+            leftSide += (self.boards['RF']['objects']['excitation']['dur_f'] + self.boards['RF']['objects']['refocusing']['dur_f']) / 2
+            rightSide = max(
+                self.boards['frequency']['objects']['readout']['riseTime_f'],
+                self.boards['phase']['objects']['phase encode']['dur_f'],
+                self.boards['slice']['objects']['slice select refocusing']['riseTime_f'])
+            rightSide += (self.boards['RF']['objects']['refocusing']['dur_f'] + self.boards['ADC']['objects']['sampling']['dur_f']) / 2
+            self.minTE = max(leftSide, rightSide) * 2
+        else:
+            self.minTE = max(
+                self.boards['frequency']['objects']['read prephaser']['dur_f'] + self.boards['frequency']['objects']['readout']['riseTime_f'],
+                self.boards['phase']['objects']['phase encode']['dur_f'],
+                self.boards['slice']['objects']['slice select excitation']['riseTime_f'] + self.boards['slice']['objects']['slice select rephaser']['dur_f']
+            )
+            self.minTE += (self.boards['RF']['objects']['excitation']['dur_f'] + self.boards['ADC']['objects']['sampling']['dur_f']) / 2
+        self.sequencePipeline.add(self.updateMaxTE)
+    
+    
+    def updateMinTR(self):
+        self.minTR = self.boards['slice']['objects']['spoiler']['time'][-1]
+        self.minTR -= self.getSeqStart()
+        self.param.TR.objects, _ = updateBounds(self.TR, TRvalues, minval=self.minTR)
+        self.sequencePipeline.add(self.updateMaxTE)
+        self.sequencePipeline.add(self.updateMaxTI)
     
 
-    @param.depends('sequence', 'TR', 'TE', 'pixelBandWidth', watch=True)
-    def updateTIbounds(self):
+    def updateMaxTE(self):
+        maxTE = self.TR - self.minTR + self.TE
+        self.param.TE.objects, _ = updateBounds(self.TE, TEvalues, minval=self.minTE, maxval=maxTE)
+    
+    
+    def updateMaxTI(self):
         if self.sequence != 'Inversion Recovery': return
-        minTI = (DURATIONS['inv'] + DURATIONS['exc'])/2
-        maxTI = self.TR - (DURATIONS['inv']/2 + self.TE + self.readoutDuration/2 + DURATIONS['spoil'])
-        self.param.TI.objects = [ti for ti in TIvalues if not ti < minTI and not ti > maxTI]
+        maxTI = self.TR - self.minTR + self.TI
+        self.param.TI.objects, _ = updateBounds(self.TI, TIvalues, minval=40, maxval=maxTI)
+    
+    
+    def getMaxPrephaserArea(self, readAmp):
+        if isGradientEcho(self.sequence):
+            maxPrephaserDur =  self.TE - self.boards['ADC']['objects']['sampling']['dur_f']/2 - self.boards['RF']['objects']['excitation']['dur_f']/2 - readAmp/self.maxSlew
+        else:
+            maxPrephaserDur =  self.TE/2 - self.boards['RF']['objects']['refocusing']['dur_f']/2 - self.boards['RF']['objects']['excitation']['dur_f']/2
+        maxPrephaserFlatDur = maxPrephaserDur - (2 * self.maxAmp/self.maxSlew)
+        if maxPrephaserFlatDur < 0: # triangle
+            maxPrephaserArea = maxPrephaserDur**2 * self.maxSlew / 4
+        else: # trapezoid
+            slewArea = self.maxAmp**2 / self.maxSlew
+            flatArea = self.maxAmp * maxPrephaserFlatDur
+            maxPrephaserArea = slewArea + flatArea
+        return maxPrephaserArea
     
 
-    @param.depends('sequence', 'TR', 'TE', 'TI', watch=True)
-    def updateBWbounds(self):
-        maxReadDurRightHalf = self.TR - self.TE - DURATIONS['exc']/2 - DURATIONS['spoil']
-        if self.sequence == 'Inversion Recovery': maxReadDurRightHalf += (DURATIONS['exc'] - DURATIONS['inv'])/2 - self.TI
-        if self.sequence in ['Spin Echo', 'Inversion Recovery']: # seqs with refocusing pulse
-            maxReadDurLeftHalf = (self.TE - DURATIONS['ref'])/2
+    def getMaxReadoutArea(self):
+        # See readouts.tex for formulae
+        d = 1e3 / self.pixelBandWidth # readout duration
+        s = self.maxSlew
+        if isGradientEcho(self.sequence):
+            t = self.TE - self.boards['RF']['objects']['excitation']['dur_f']/2
+            h = s * (t - np.sqrt(t**2/2 + d**2/8)) # negative sqrt seems to be the reasonable solution
+            h = min(h, self.maxAmp)
+            A = d * (np.sqrt((d*s+2*h)**2 - 8*h*(h-s*(t-d/2))) - d*s - 2*h) / 2
+            maxReadoutArea1 = A
+        else: # spin echo
+            tr = self.TE/2 - self.boards['RF']['objects']['refocusing']['dur_f']/2
+            tp = self.TE/2 - self.boards['RF']['objects']['refocusing']['dur_f']/2 - self.boards['RF']['objects']['excitation']['dur_f']/2
+            Ar = d*s* tr - d**2*s/2
+            h = s * tp / 2
+            h = min(h, self.maxAmp)
+            Ap = d * (np.sqrt((d*s)**2 - 8*h*(h-s*tp)) - d*s) / 2
+            maxReadoutArea1 = min(Ar, Ap)
+        maxReadoutArea2 = self.maxAmp * 1e3 / self.pixelBandWidth # max wrt maxAmp
+        return min(maxReadoutArea1, maxReadoutArea2)
+    
+
+    def getMaxPhaserArea(self):
+        readStart = self.TE - 1e3 / self.pixelBandWidth / 2
+        if isGradientEcho(self.sequence):
+            maxPhaserDuration = readStart - self.boards['RF']['objects']['excitation']['dur_f']/2
         else:
-            maxReadDurLeftHalf = self.TE - DURATIONS['exc']/2
-        maxReadDur = min(maxReadDurLeftHalf, maxReadDurRightHalf) * 2 * .99 # fudge factor
-        minpBW = max(1e3 / maxReadDur, 50)
-        self.param.pixelBandWidth.bounds = (minpBW, 2000)
+            maxPhaserDuration =  readStart - (self.TE/2 + self.boards['RF']['objects']['refocusing']['dur_f']/2)
+        maxRiseTime = self.maxAmp / self.maxSlew
+        if maxPhaserDuration > 2 * maxRiseTime: # trapezoid maxPhaser
+            maxPhaserArea = (maxPhaserDuration - maxRiseTime) * self.maxAmp
+        else: # triangular maxPhaser
+            maxPhaserArea = (maxPhaserDuration/2)**2 * self.maxSlew
+        return maxPhaserArea
+    
+
+    def updateBWbounds(self):
+        # See readouts.tex for formulae relating to the readout board
+        s = self.maxSlew
+        A = 1e3 * self.matrixF / (self.FOVF * GYRO) # readout area
+        minReadDurations = [.5] # msec (corresponds to a pixel BW of 2000 Hz)
+        # min limit imposed by maximum gradient amplitude:
+        minReadDurations.append(A / self.maxAmp)
+        maxReadDurations = [8.] # msec (corresponds to a pixel BW of 125 Hz)
+        # max limit imposed by TR:
+        maxReadDurations.append((self.TR - (self.TE - self.getSeqStart()) - self.boards['slice']['objects']['spoiler']['dur_f']) * 2)
+        if isGradientEcho(self.sequence):
+            freeSpaceLeft = self.TE - self.boards['RF']['objects']['excitation']['dur_f']/2
+            freeSpaceLeft -= max(
+                self.boards['frequency']['objects']['read prephaser']['dur_f'] + self.boards['frequency']['objects']['readout']['riseTime_f'], # TODO: consider maximum dur+risetime, not only current (difficult!)
+                self.boards['phase']['objects']['phase encode']['dur_f'],
+                self.boards['slice']['objects']['slice select excitation']['riseTime_f'] + self.boards['slice']['objects']['slice select rephaser']['dur_f'])
+            maxReadDurations.append(freeSpaceLeft*2)
+        else: # spin echo
+            # min limit imposed by prephaser duration tp:
+            tp = self.TE/2 - self.boards['RF']['objects']['refocusing']['dur_f']/2 - self.boards['RF']['objects']['excitation']['dur_f']/2
+            h = s * tp / 2
+            h = min(h, self.maxAmp)
+            minReadDurations.append(np.sqrt(A**2/(2*h*s*tp - s*A - 2*h**2)))
+            # maxlimit imposed by readout rise time:
+            tr = (self.TE - self.boards['RF']['objects']['refocusing']['dur_f'])/2
+            maxReadDurations.append(tr + np.sqrt(tr**2 - 2*A/s))
+            # max limit imposed by phaser:
+            maxReadDurations.append((tr - self.boards['phase']['objects']['phase encode']['dur_f']) * 2)
+            # max limit imposed by slice select refocusing down ramp time:
+            maxReadDurations.append((tr - self.boards['slice']['objects']['slice select refocusing']['riseTime_f']) * 2)
+        minpBW = 1e3 / min(maxReadDurations)
+        maxpBW = 1e3 / max(minReadDurations)
+        self.param.pixelBandWidth.bounds = getBounds(minpBW, maxpBW, self.pixelBandWidth)
+    
+
+    def updateMatrixFbounds(self):
+        maxMatrixF = int(self.getMaxReadoutArea() * 1e-3 * self.FOVF * GYRO)
+        self.param.matrixF.bounds = getBounds(16, min(maxMatrixF, 600), self.matrixF)
+    
+    
+    def updateMatrixPbounds(self):
+        maxMatrixP = int(self.getMaxPhaserArea() * 2e-3 * self.FOVP * GYRO)
+        self.param.matrixP.bounds = getBounds(16, min(maxMatrixP, 600), self.matrixP)
+
+
+    def updateFOVFbounds(self):
+        minFOVF = 1e3 * self.matrixF / (self.getMaxReadoutArea() * GYRO)
+        self.param.FOVF.bounds = getBounds(max(minFOVF, 100), 600, self.FOVF)
+    
+
+    def updateFOVPbounds(self):
+        minFOVP = 1e3 * self.matrixP / (self.getMaxPhaserArea() * GYRO * 2)
+        self.param.FOVP.bounds = getBounds(max(minFOVP, 100), 600, self.FOVP)
+    
+
+    def updateSliceThicknessBounds(self):
+        minThks = [.5]
+        minThks.append(self.boards['RF']['objects']['excitation']['FWHM_f'] / (self.maxAmp * GYRO))
+        if not isGradientEcho(self.sequence):
+            minThks.append(self.boards['RF']['objects']['refocusing']['FWHM_f'] / (self.maxAmp * GYRO))
+        if self.sequence=='Inversion Recovery':
+            minThks.append(self.boards['RF']['objects']['inversion']['FWHM_f'] / (self.maxAmp * GYRO) * self.inversionThkFactor)
+        
+        # Constraint due to TR: 
+        if self.sequence=='Inversion Recovery':
+            maxRiseTime = self.TR - (self.boards['slice']['objects']['spoiler']['time'][-1] - self.boards['RF']['objects']['inversion']['time'][0])
+            maxAmp = self.maxSlew * maxRiseTime
+            minThks.append(self.boards['RF']['objects']['inversion']['FWHM_f'] / (maxAmp * GYRO))
+        else:
+            maxRiseTime = self.TR - (self.boards['slice']['objects']['spoiler']['time'][-1] - self.boards['RF']['objects']['excitation']['time'][0])
+            maxAmp = self.maxSlew * maxRiseTime
+            minThks.append(self.boards['RF']['objects']['excitation']['FWHM_f'] / (maxAmp * GYRO))
+        
+        # See readouts.tex for formulae
+        s = self.maxSlew
+        d = self.boards['RF']['objects']['excitation']['dur_f']
+        if isGradientEcho(self.sequence): # Constraint due to slice rephaser
+            t = self.boards['ADC']['objects']['sampling']['time'][0]
+            h = s * (t - np.sqrt(t**2/2 + d**2/8))
+            h = min(h, self.maxAmp)
+            A = d * (np.sqrt((d*s+2*h)**2 - 8*h*(h-s*(t-d/2))) - d*s - 2*h) / 2
+        else: # Spin echo: Constraint due to slice rephaser and refocusing slice select rampup
+            t = self.boards['RF']['objects']['refocusing']['time'][0]
+            h = s * (np.sqrt(2*(d + 2*t)**2 - 4*d**2) - d - 2*t) / 4
+            h = min(h, self.maxAmp)
+            A = (np.sqrt((d*(d*s + 4*h))**2 - 4*d**2*h*(d*s + 2*h - 2*s*t)) - d*(d*s + 4*h)) / 2
+        Be = self.boards['RF']['objects']['excitation']['FWHM_f']
+        minThks.append(Be * d / (GYRO * A)) # mm
+        
+        self.param.sliceThickness.bounds = getBounds(max(minThks), 10., self.sliceThickness)
 
 
     def loadPhantom(self):
@@ -419,9 +746,12 @@ class MRIsimulator(param.Parameterized):
     
 
     def sampleKspace(self):
-        self.matrix = [self.matrixY, self.matrixX]
-        self.FOV = [self.FOVY, self.FOVX]
+        self.matrix = [self.matrixP, self.matrixF]
+        self.FOV = [self.FOVP, self.FOVF]
         self.freqDir = DIRECTIONS[self.frequencyDirection]
+        if self.freqDir==0:
+            self.matrix.reverse()
+            self.FOV.reverse()
         
         self.oversampledMatrix = self.matrix.copy() # account for oversampling in frequency encoding direction
         if self.FOV[self.freqDir] < self.phantom['FOV'][self.freqDir]: # At least Nyquist sampling in frequency encoding direction
@@ -429,17 +759,22 @@ class MRIsimulator(param.Parameterized):
         
         self.kAxes = [getKaxis(self.oversampledMatrix[dim], self.FOV[dim]/self.matrix[dim]) for dim in range(len(self.matrix))]
         self.plainKspaceComps = resampleKspace(self.phantom, self.kAxes)
+        
+        # Lorenzian line shape to mimic slice thickness
+        sliceThicknessFilter = np.outer(*[np.exp(-self.sliceThickness * np.abs(ax)/2) for ax in self.kAxes])
+        for comp in self.plainKspaceComps:
+            self.plainKspaceComps[comp] *= sliceThicknessFilter
     
 
     def updateSamplingTime(self):
         self.samplingTime = self.kAxes[self.freqDir] * self.FOV[self.freqDir] / self.matrix[self.freqDir] / self.pixelBandWidth * 1e3 # msec
-        self.noiseStd = 1. / np.sqrt(np.diff(self.samplingTime[:2]) * self.NSA) / self.fieldStrength
+        self.noiseStd = 1. / np.sqrt(np.diff(self.samplingTime[:2]) * self.NSA * self.sliceThickness) / self.fieldStrength
         self.samplingTime = np.expand_dims(self.samplingTime, axis=[dim for dim in range(len(self.matrix)) if dim != self.freqDir])
     
 
     def modulateKspace(self):
         decayTime = self.samplingTime + self.TE
-        dephasingTime = decayTime if 'Gradient Echo' in self.sequence else self.samplingTime
+        dephasingTime = decayTime if isGradientEcho(self.sequence) else self.samplingTime
 
         self.kspaceComps = {}
         for tissue in self.tissues:
@@ -482,7 +817,9 @@ class MRIsimulator(param.Parameterized):
 
     
     def zerofill(self):
-        self.reconMatrix = [self.reconMatrixY, self.reconMatrixX]
+        self.reconMatrix = [self.reconMatrixP, self.reconMatrixF]
+        if self.freqDir==0:
+            self.reconMatrix.reverse()
         self.oversampledReconMatrix = self.reconMatrix.copy()
         if self.FOV[self.freqDir] < self.phantom['FOV'][self.freqDir]: # At least Nyquist sampling in frequency encoding direction
             self.oversampledReconMatrix[self.freqDir] = int(self.reconMatrix[self.freqDir] * self.oversampledMatrix[self.freqDir] / self.matrix[self.freqDir])
@@ -505,36 +842,256 @@ class MRIsimulator(param.Parameterized):
         self.imageArray = crop(np.fft.fftshift(self.imageArray), self.reconMatrix)
     
     
-    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVX', 'FOVY', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'frequencyDirection', 'pixelBandWidth', 'NSA')
-    def getKspace(self):
-        self.runPipeline()
-        kAxes = []
-        for dim in range(2):
-            kAxes.append(getKaxis(self.oversampledReconMatrix[dim], self.FOV[dim]/self.reconMatrix[dim]))
-            # half-sample shift axis when odd number of zeroes:
-            if (self.oversampledReconMatrix[dim]-self.oversampledMatrix[dim])%2:
-                shift = self.reconMatrix[dim] / (2 * self.oversampledReconMatrix[dim] * self.FOV[dim])
-                kAxes[-1] += shift * (-1)**(self.matrix[dim]%2)
-        ksp = xr.DataArray(
-            np.abs(np.fft.fftshift(self.zerofilledkspace))**.2, 
-            dims=('ky', 'kx'),
-            coords={'kx': kAxes[1], 'ky': kAxes[0]}
-        )
-        ksp.kx.attrs['units'] = ksp.ky.attrs['units'] = '1/mm'
-        return hv.Image(ksp, vdims=['magnitude']).options(cmap='gray', aspect='equal', toolbar='below', height=500, width=500)
+    def setupExcitation(self):
+        FA = self.FA if isGradientEcho(self.sequence) else 90.
+        self.boards['RF']['objects']['excitation'] = sequence.getRF(flipAngle=FA, time=0., dur=3., shape='hammingSinc',  name='excitation')
+        for f in [self.setupSliceSelection, self.placeFatSat, self.renderRFBoard, self.updateMinTE, self.updateBWbounds, self.updateMatrixFbounds, self.updateFOVFbounds, self.updateMatrixPbounds, self.updateFOVPbounds, self.updateSliceThicknessBounds]:
+            self.sequencePipeline.add(f)
+
+
+    def setupRefocusing(self):
+        if not isGradientEcho(self.sequence):
+            self.boards['RF']['objects']['refocusing'] = sequence.getRF(flipAngle=180., dur=3., shape='hammingSinc',  name='refocusing')
+            self.sequencePipeline.add(self.placeRefocusing)
+        elif 'refocusing' in self.boards['RF']['objects']:
+            del self.boards['RF']['objects']['refocusing']
+        for f in [self.setupSliceSelection, self.renderRFBoard, self.updateMinTE, self.updateMatrixPbounds, self.updateFOVPbounds, self.updateSliceThicknessBounds]:
+            self.sequencePipeline.add(f)
+
+
+    def setupInversion(self):
+        if self.sequence=='Inversion Recovery':
+            self.boards['RF']['objects']['inversion'] = sequence.getRF(flipAngle=180., dur=3., shape='hammingSinc',  name='inversion')
+            self.sequencePipeline.add(self.placeInversion)
+        elif 'inversion' in self.boards['RF']['objects']:
+            del self.boards['RF']['objects']['inversion']
+        for f in [self.setupSliceSelection, self.renderRFBoard, self.updateMaxTI, self.updateSliceThicknessBounds]:
+            self.sequencePipeline.add(f)
+    
+    
+    def setupFatSat(self):
+        if self.FatSat:
+            self.boards['RF']['objects']['fatsat'] = sequence.getRF(flipAngle=90, time=0., dur=30./self.fieldStrength, shape='hammingSinc',  name='FatSat')
+            spoilerArea = 30. # uTs/m
+            self.boards['slice']['objects']['fatsat spoiler'] = sequence.getGradient('slice', totalArea=spoilerArea, name='FatSat spoiler')
+        elif 'fatsat' in self.boards['RF']['objects']:
+            del self.boards['RF']['objects']['fatsat']
+            del self.boards['slice']['objects']['fatsat spoiler']
+        self.sequencePipeline.add(self.placeFatSat)
+    
+    
+    def setupSliceSelection(self):
+        flatDur = self.boards['RF']['objects']['excitation']['dur_f']
+        amp = self.boards['RF']['objects']['excitation']['FWHM_f'] / (self.sliceThickness * GYRO)
+        sliceSelectExcitation = sequence.getGradient('slice', 0., maxAmp=amp, flatDur=flatDur, name='slice select excitation')
+        sliceRephaserArea = -sliceSelectExcitation['area_f']/2
+        sliceSelectRephaser = sequence.getGradient('slice', totalArea=sliceRephaserArea, name='slice select rephaser')
+        rephaserTime = (sliceSelectExcitation['dur_f'] + sliceSelectRephaser['dur_f']) / 2
+        sequence.moveWaveform(sliceSelectRephaser, rephaserTime)
+        self.boards['slice']['objects']['slice select excitation'] = sliceSelectExcitation
+        self.boards['slice']['objects']['slice select rephaser'] = sliceSelectRephaser
+
+        if 'refocusing' in self.boards['RF']['objects']:
+            flatDur = self.boards['RF']['objects']['refocusing']['dur_f']
+            amp = self.boards['RF']['objects']['refocusing']['FWHM_f'] / (self.sliceThickness * GYRO)
+            self.boards['slice']['objects']['slice select refocusing'] = sequence.getGradient('slice', maxAmp=amp, flatDur=flatDur, name='slice select refocusing')
+            self.sequencePipeline.add(self.placeRefocusing)
+        elif 'slice select refocusing' in self.boards['slice']['objects']:
+            del self.boards['slice']['objects']['slice select refocusing']
+            
+        if 'inversion' in self.boards['RF']['objects']:
+            flatDur = self.boards['RF']['objects']['inversion']['dur_f']
+            amp = self.boards['RF']['objects']['inversion']['FWHM_f'] / (self.inversionThkFactor * self.sliceThickness * GYRO)
+            self.boards['slice']['objects']['slice select inversion'] = sequence.getGradient('slice', maxAmp=amp, flatDur=flatDur, name='slice select inversion')
+
+            spoilerArea = 30. # uTs/m
+            self.boards['slice']['objects']['inversion spoiler'] = sequence.getGradient('slice', totalArea=spoilerArea, name='inversion spoiler')
+            self.sequencePipeline.add(self.placeInversion)
+        elif 'slice select inversion' in self.boards['slice']['objects']:
+            del self.boards['slice']['objects']['slice select inversion']
+            del self.boards['slice']['objects']['inversion spoiler']
+        
+        for f in [self.renderFrequencyBoard, self.renderPhaseBoard, self.renderSliceBoard, self.renderRFBoard, self.updateMinTE, self.updateMaxTI, self.updateMinTR, self.updateBWbounds]:
+            self.sequencePipeline.add(f)
     
 
-    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVX', 'FOVY', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'frequencyDirection', 'pixelBandWidth', 'NSA')
+    def setupReadout(self):
+        flatArea = self.matrixF / (self.FOVF/1e3 * GYRO) # uTs/m
+        amp = self.pixelBandWidth * self.matrixF / (self.FOVF * GYRO) # mT/m
+        readout = sequence.getGradient('frequency', maxAmp=amp, flatArea=flatArea, name='readout')
+        self.boards['ADC']['objects']['sampling'] = sequence.getADC(dur=readout['flatDur_f'], name='sampling')
+        prephaser = sequence.getGradient('frequency', totalArea=readout['area_f']/2, name='read prephaser')        
+        self.boards['frequency']['objects']['readout'] = readout
+        self.boards['frequency']['objects']['read prephaser'] = prephaser
+        self.sequencePipeline.add(self.placeReadout)
+        self.sequencePipeline.add(self.updateMinTE)
+    
+    
+    def setupPhaser(self):
+        maxArea = self.matrixP / (self.FOVP/1e3 * GYRO * 2) # uTs/m
+        self.boards['phase']['objects']['phase encode'] = sequence.getGradient('phase', totalArea=maxArea, name='phase encode')
+        self.sequencePipeline.add(self.placePhaser)
+        self.sequencePipeline.add(self.updateMinTE)
+        self.sequencePipeline.add(self.updateBWbounds)
+    
+
+    def setupSpoiler(self):
+        spoilerArea = 30. # uTs/m
+        self.boards['slice']['objects']['spoiler'] = sequence.getGradient('slice', totalArea=spoilerArea, name='spoiler')
+        self.sequencePipeline.add(self.placeSpoiler)
+    
+    
+    def placeRefocusing(self):
+        for board, name, renderer in [('RF', 'refocusing', self.renderRFBoard), ('slice', 'slice select refocusing', self.renderSliceBoard)]:
+            if name in self.boards[board]['objects']:
+                sequence.moveWaveform(self.boards[board]['objects'][name], self.TE/2)
+                self.sequencePipeline.add(renderer)
+        self.sequencePipeline.add(self.updateBWbounds)
+    
+
+    def placeInversion(self):
+        for board, name, renderer in [('RF', 'inversion', self.renderRFBoard), ('slice', 'slice select inversion', self.renderSliceBoard)]:
+            if name in self.boards[board]['objects']:
+                sequence.moveWaveform(self.boards[board]['objects'][name], -self.TI)
+                self.sequencePipeline.add(renderer)
+        if 'inversion spoiler' in self.boards['slice']['objects']:
+            spoilerTime = self.boards['RF']['objects']['inversion']['time'][-1] + self.boards['slice']['objects']['inversion spoiler']['dur_f']/2
+            sequence.moveWaveform(self.boards['slice']['objects']['inversion spoiler'], spoilerTime)
+        for f in [self.updateMinTR, self.updateBWbounds, self.updateSliceThicknessBounds, self.renderFrequencyBoard, self.renderPhaseBoard, self.renderSliceBoard, self.renderRFBoard]:
+            self.sequencePipeline.add(f)
+    
+    
+    def placeFatSat(self):
+        if 'fatsat' in self.boards['RF']['objects']:
+            t = self.boards['slice']['objects']['slice select excitation']['time'][0] - self.boards['slice']['objects']['fatsat spoiler']['dur_f']/2
+            sequence.moveWaveform(self.boards['slice']['objects']['fatsat spoiler'], t)
+            t -= (self.boards['slice']['objects']['fatsat spoiler']['dur_f'] + self.boards['RF']['objects']['fatsat']['dur_f']) / 2
+            sequence.moveWaveform(self.boards['RF']['objects']['fatsat'], t)
+        for f in [self.updateMinTR, self.renderRFBoard, self.renderFrequencyBoard, self.renderPhaseBoard, self.renderSliceBoard]:
+            self.sequencePipeline.add(f)
+    
+
+    def placeReadout(self):
+        sequence.moveWaveform(self.boards['frequency']['objects']['readout'], self.TE)
+        sequence.moveWaveform(self.boards['ADC']['objects']['sampling'], self.TE)
+        if isGradientEcho(self.sequence):
+            if self.boards['frequency']['objects']['read prephaser']['area_f'] > 0:
+                sequence.rescaleGradient(self.boards['frequency']['objects']['read prephaser'], -1)
+            prephaseTime = self.TE - sum([self.boards['frequency']['objects'][name]['dur_f'] for name in ['readout', 'read prephaser']])/2
+        else:
+            if self.boards['frequency']['objects']['read prephaser']['area_f'] < 0:
+                sequence.rescaleGradient(self.boards['frequency']['objects']['read prephaser'], -1)
+            prephaseTime = sum([self.boards[b]['objects'][name]['dur_f'] for (b, name) in [('RF', 'excitation'), ('frequency', 'read prephaser')]])/2
+        sequence.moveWaveform(self.boards['frequency']['objects']['read prephaser'], prephaseTime)
+        self.sequencePipeline.add(self.placePhaser)
+        self.sequencePipeline.add(self.placeSpoiler)
+        self.sequencePipeline.add(self.renderFrequencyBoard)
+    
+    
+    def placePhaser(self):
+        phaserDur = self.boards['phase']['objects']['phase encode']['dur_f']
+        if isGradientEcho(self.sequence):
+            phaserTime = (self.boards['RF']['objects']['excitation']['dur_f'] + phaserDur)/2
+        else:
+            phaserTime = self.TE - (self.boards['frequency']['objects']['readout']['flatDur_f'] + phaserDur)/2
+        sequence.moveWaveform(self.boards['phase']['objects']['phase encode'], phaserTime)
+        self.sequencePipeline.add(self.renderPhaseBoard)
+    
+
+    def placeSpoiler(self):
+        spoilerTime = self.boards['frequency']['objects']['readout']['center_f'] + (self.boards['frequency']['objects']['readout']['flatDur_f'] + self.boards['slice']['objects']['spoiler']['dur_f']) / 2
+        sequence.moveWaveform(self.boards['slice']['objects']['spoiler'], spoilerTime)
+        for f in [self.renderSliceBoard, self.updateMinTR, self.updateSliceThicknessBounds]:
+            self.sequencePipeline.add(f)
+
+
+    def renderPolygons(self, board):
+        self.boardPlots[board]['area'] = hv.Area(sequence.accumulateWaveforms(list(self.boards[board]['objects'].values()), board), self.timeDim, self.boards[board]['dim']).opts(color=self.boards[board]['color'])
+        self.boards[board]['attributes'] = []
+        if self.boards[board]['objects']:
+            self.boards[board]['attributes'] += [attr for attr in list(self.boards[board]['objects'].values())[0].keys() if attr not in ['time', board] and '_f' not in attr]
+            hover = HoverTool(tooltips=[(attr, '@{}'.format(attr)) for attr in self.boards[board]['attributes']], attachment='below')
+            self.boardPlots[board]['polygons'] = hv.Polygons(list(self.boards[board]['objects'].values()), kdims=[self.timeDim, self.boards[board]['dim']], vdims=self.boards[board]['attributes']).opts(tools=[hover], cmap=[self.boards[board]['color']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=(-19000, 19000))])
+    
+    
+    def renderTRbounds(self, board):
+        t0 = self.getSeqStart()
+        self.boardPlots[board]['TRbounds'] = hv.VSpan(-20000, t0, kdims=[self.timeDim, self.boards[board]['dim']]).opts(color='gray', fill_alpha=.3)
+        self.boardPlots[board]['TRbounds'] *= hv.VSpan(t0 + self.TR, 20000, kdims=[self.timeDim, self.boards[board]['dim']]).opts(color='gray', fill_alpha=.3)
+    
+
+    def renderFrequencyBoard(self):
+        self.renderPolygons('frequency')
+        self.boardPlots['frequency']['ADC'] = hv.Overlay([hv.VSpan(obj['time'][0], obj['time'][-1], kdims=[self.timeDim, self.boards['frequency']['dim']]) for obj in self.boards['ADC']['objects'].values()])
+        self.renderTRbounds('frequency')
+    
+
+    def renderPhaseBoard(self):
+        self.renderPolygons('phase')
+        self.renderTRbounds('phase')
+    
+
+    def renderSliceBoard(self):
+        self.renderPolygons('slice')
+        self.renderTRbounds('slice')
+
+
+    def renderRFBoard(self):
+        self.renderPolygons('RF')
+        self.renderTRbounds('RF')
+    
+    
+    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'NSA')
+    def getKspace(self):
+        if self.render:
+            self.runReconPipeline()
+            kAxes = []
+            for dim in range(2):
+                kAxes.append(getKaxis(self.oversampledReconMatrix[dim], self.FOV[dim]/self.reconMatrix[dim]))
+                # half-sample shift axis when odd number of zeroes:
+                if (self.oversampledReconMatrix[dim]-self.oversampledMatrix[dim])%2:
+                    shift = self.reconMatrix[dim] / (2 * self.oversampledReconMatrix[dim] * self.FOV[dim])
+                    kAxes[-1] += shift * (-1)**(self.matrix[dim]%2)
+            ksp = xr.DataArray(
+                np.abs(np.fft.fftshift(self.zerofilledkspace))**.2, 
+                dims=('ky', 'kx'),
+                coords={'kx': kAxes[1], 'ky': kAxes[0]}
+            )
+            ksp.kx.attrs['units'] = ksp.ky.attrs['units'] = '1/mm'
+            self.kspaceimage = hv.Image(ksp, vdims=['magnitude'])
+        return self.kspaceimage
+    
+
+    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'NSA')
     def getImage(self):
-        self.runPipeline()
-        iAxes = [(np.arange(self.reconMatrix[dim]) - (self.reconMatrix[dim]-1)/2) / self.reconMatrix[dim] * self.FOV[dim] for dim in range(2)]
-        img = xr.DataArray(
-            np.abs(self.imageArray), 
-            dims=('y', 'x'),
-            coords={'x': iAxes[1], 'y': iAxes[0][::-1]}
-        )
-        img.x.attrs['units'] = img.y.attrs['units'] = 'mm'
-        return hv.Image(img, vdims=['magnitude']).options(cmap='gray', aspect='equal', toolbar='below', height=500, width=500)
+        if self.render:
+            self.runReconPipeline()
+            iAxes = [(np.arange(self.reconMatrix[dim]) - (self.reconMatrix[dim]-1)/2) / self.reconMatrix[dim] * self.FOV[dim] for dim in range(2)]
+            img = xr.DataArray(
+                np.abs(self.imageArray), 
+                dims=('y', 'x'),
+                coords={'x': iAxes[1], 'y': iAxes[0][::-1]}
+            )
+            img.x.attrs['units'] = img.y.attrs['units'] = 'mm'
+            self.image = hv.Image(img, vdims=['magnitude'])
+        return self.image
+    
+
+    @param.depends('sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'matrixF', 'matrixP', 'sliceThickness', 'pixelBandWidth')
+    def getSequencePlot(self):
+        if self.render:
+            self.runSequencePipeline()
+            self.seqPlot = hv.Layout(list([hv.Overlay(list(boardPlot.values())).opts(border=0, xaxis='bottom' if n==len(self.boardPlots)-1 else None) for n, boardPlot in enumerate(self.boardPlots.values())])).cols(1).options(toolbar='below')
+        return self.seqPlot
+
+
+def hideShowButtonCallback(pane, event):
+    if 'Show' in event.obj.name:
+        pane.visible = True
+        event.obj.name = event.obj.name.replace('Show', 'Hide')
+    elif 'Hide' in event.obj.name:
+        pane.visible = False
+        event.obj.name = event.obj.name.replace('Hide', 'Show')
 
 
 def getApp():
@@ -543,19 +1100,22 @@ def getApp():
     author = '*Written by [Johan Berglund](mailto:johan.berglund@akademiska.se), Ph.D.*'
     settingsParams = pn.panel(explorer.param, parameters=['object', 'fieldStrength'], name='Settings')
     contrastParams = pn.panel(explorer.param, parameters=['sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI'], widgets={'TR': pn.widgets.DiscreteSlider, 'TE': pn.widgets.DiscreteSlider, 'TI': pn.widgets.DiscreteSlider}, name='Contrast')
-    geometryParams = pn.panel(explorer.param, parameters=['FOVX', 'FOVY', 'matrixX', 'matrixY', 'reconMatrixX', 'reconMatrixY', 'frequencyDirection', 'pixelBandWidth', 'NSA'], name='Geometry')
-    dmapKspace = hv.DynamicMap(explorer.getKspace)
+    geometryParams = pn.panel(explorer.param, parameters=['FOVF', 'FOVP', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness',  'frequencyDirection', 'pixelBandWidth', 'NSA'], name='Geometry')
+    dmapKspace = pn.Row(hv.DynamicMap(explorer.getKspace), visible=False)
     dmapMRimage = hv.DynamicMap(explorer.getImage)
-    dashboard = pn.Row(pn.Column(pn.pane.Markdown(title), pn.Row(pn.Column(settingsParams, contrastParams), geometryParams), pn.pane.Markdown(author)), dmapMRimage, dmapKspace)
+    dmapSequence = pn.Row(hv.DynamicMap(explorer.getSequencePlot), visible=False)
+    sequenceButton = pn.widgets.Button(name='Show sequence')
+    sequenceButton.on_click(partial(hideShowButtonCallback, dmapSequence))
+    kSpaceButton = pn.widgets.Button(name='Show k-space')
+    kSpaceButton.on_click(partial(hideShowButtonCallback, dmapKspace))
+    dashboard = pn.Column(pn.Row(pn.Column(pn.pane.Markdown(title), pn.Row(pn.Column(settingsParams, pn.Row(sequenceButton, kSpaceButton), contrastParams), geometryParams)), dmapMRimage, dmapKspace), dmapSequence, pn.pane.Markdown(author))
     return dashboard
 
 
-# TODO: username/password, se https://stackoverflow.com/questions/43183531/simple-username-password-protection-of-a-bokeh-server
-# TODO: bug when switching sequence and pulses are tight
 # TODO: phase oversampling
 # TODO: abdomen phantom ribs, pancreas, hepatic arteries
 # TODO: add params for matrix/pixelSize and BW like different vendors and handle their correlation
-# TODO: add ACQ time
+# TODO: add ACQ time and SNR
 # TODO: add apodization
 # TODO: parallel imaging (GRAPPA)
 # TODO: B0 inhomogeneity
