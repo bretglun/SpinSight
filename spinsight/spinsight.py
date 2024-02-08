@@ -322,12 +322,14 @@ class MRIsimulator(param.Parameterized):
             self.setupExcitation, 
             self.setupRefocusing,
             self.setupInversion,
+            self.setupFatSat,
             self.setupSliceSelection,
             self.setupReadout,
             self.setupPhaser,
             self.setupSpoiler,
             self.placeRefocusing,
             self.placeInversion,
+            self.placeFatSat,
             self.placeReadout,
             self.placePhaser,
             self.placeSpoiler,
@@ -413,7 +415,7 @@ class MRIsimulator(param.Parameterized):
     def _watch_sliceThickness(self):
         for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.addNoise, self.compileKspace, self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
-        for f in [self.setupSliceSelection]:
+        for f in [self.setupSliceSelection, self.placeFatSat]:
             self.sequencePipeline.add(f)
     
     
@@ -432,6 +434,7 @@ class MRIsimulator(param.Parameterized):
     def _watch_fieldStrength(self):
         for f in [self.updateSamplingTime, self.modulateKspace, self.addNoise, self.updatePDandT1w, self.compileKspace, self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
+        self._watch_FatSat() # since fatsat pulse duration depends on fieldStrength
     
 
     @param.depends('pixelBandWidth', watch=True)
@@ -465,7 +468,6 @@ class MRIsimulator(param.Parameterized):
             self.TI = min(self.param.TI.objects, key=lambda x: abs(x-self.TI)) # TI within bounds
             self.runSequencePipeline()
         self.TR = min(self.param.TR.objects, key=lambda x: abs(x-tr)) # Set back TR within bounds
-        self.runSequencePipeline()
     
 
     @param.depends('TE', watch=True)
@@ -502,7 +504,12 @@ class MRIsimulator(param.Parameterized):
     def _watch_FatSat(self):
         for f in [self.compileKspace, self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
-        # TODO: add fatsat sequence objects!
+        for f in [self.setupFatSat, self.updateMaxTE, self.updateBWbounds]:
+            self.sequencePipeline.add(f)
+        tr = self.TR
+        self.TR = self.param.TR.objects[-1] # max TR
+        self.runSequencePipeline()
+        self.TR = min(self.param.TR.objects, key=lambda x: abs(x-tr)) # Set back TR within bounds
     
     
     @param.depends('reconMatrixF', 'reconMatrixP', watch=True)
@@ -516,6 +523,8 @@ class MRIsimulator(param.Parameterized):
     def getSeqStart(self):
         if self.sequence == 'Inversion Recovery': 
             return self.boards['slice']['objects']['slice select inversion']['time'][0]
+        elif self.FatSat:
+            return self.boards['RF']['objects']['fatsat']['time'][0]
         else:
             return self.boards['slice']['objects']['slice select excitation']['time'][0]
     
@@ -840,7 +849,7 @@ class MRIsimulator(param.Parameterized):
     def setupExcitation(self):
         FA = self.FA if isGradientEcho(self.sequence) else 90.
         self.boards['RF']['objects']['excitation'] = sequence.getRF(flipAngle=FA, time=0., dur=3., shape='hammingSinc',  name='excitation')
-        for f in [self.setupSliceSelection, self.renderRFBoard, self.updateMinTE, self.updateMinTI, self.updateBWbounds, self.updateMatrixFbounds, self.updateFOVFbounds, self.updateMatrixPbounds, self.updateFOVPbounds, self.updateSliceThicknessBounds]:
+        for f in [self.setupSliceSelection, self.placeFatSat, self.renderRFBoard, self.updateMinTE, self.updateMinTI, self.updateBWbounds, self.updateMatrixFbounds, self.updateFOVFbounds, self.updateMatrixPbounds, self.updateFOVPbounds, self.updateSliceThicknessBounds]:
             self.sequencePipeline.add(f)
 
 
@@ -848,9 +857,8 @@ class MRIsimulator(param.Parameterized):
         if not isGradientEcho(self.sequence):
             self.boards['RF']['objects']['refocusing'] = sequence.getRF(flipAngle=180., dur=3., shape='hammingSinc',  name='refocusing')
             self.sequencePipeline.add(self.placeRefocusing)
-        else:
-            if 'refocusing' in self.boards['RF']['objects']:
-                del self.boards['RF']['objects']['refocusing']
+        elif 'refocusing' in self.boards['RF']['objects']:
+            del self.boards['RF']['objects']['refocusing']
         for f in [self.setupSliceSelection, self.renderRFBoard, self.updateMinTE, self.updateMatrixPbounds, self.updateFOVPbounds, self.updateSliceThicknessBounds]:
             self.sequencePipeline.add(f)
 
@@ -859,11 +867,21 @@ class MRIsimulator(param.Parameterized):
         if self.sequence=='Inversion Recovery':
             self.boards['RF']['objects']['inversion'] = sequence.getRF(flipAngle=180., dur=3., shape='hammingSinc',  name='inversion')
             self.sequencePipeline.add(self.placeInversion)
-        else:
-            if 'inversion' in self.boards['RF']['objects']:
-                del self.boards['RF']['objects']['inversion']
+        elif 'inversion' in self.boards['RF']['objects']:
+            del self.boards['RF']['objects']['inversion']
         for f in [self.setupSliceSelection, self.renderRFBoard, self.updateMinTI, self.updateSliceThicknessBounds]:
             self.sequencePipeline.add(f)
+    
+    
+    def setupFatSat(self):
+        if self.FatSat:
+            self.boards['RF']['objects']['fatsat'] = sequence.getRF(flipAngle=90, time=0., dur=30./self.fieldStrength, shape='hammingSinc',  name='FatSat')
+            spoilerArea = 30. # uTs/m
+            self.boards['slice']['objects']['fatsat spoiler'] = sequence.getGradient('slice', totalArea=spoilerArea, name='FatSat spoiler')
+        elif 'fatsat' in self.boards['RF']['objects']:
+            del self.boards['RF']['objects']['fatsat']
+            del self.boards['slice']['objects']['fatsat spoiler']
+        self.sequencePipeline.add(self.placeFatSat)
     
     
     def setupSliceSelection(self):
@@ -897,14 +915,8 @@ class MRIsimulator(param.Parameterized):
             del self.boards['slice']['objects']['slice select inversion']
             del self.boards['slice']['objects']['inversion spoiler']
         
-        self.sequencePipeline.add(self.renderFrequencyBoard) # due to TR bounds
-        self.sequencePipeline.add(self.renderPhaseBoard) # due to TR bounds
-        self.sequencePipeline.add(self.renderSliceBoard)
-        self.sequencePipeline.add(self.renderRFBoard) # due to TR bounds
-        self.sequencePipeline.add(self.updateMinTE)
-        self.sequencePipeline.add(self.updateMinTI)
-        self.sequencePipeline.add(self.updateMinTR)
-        self.sequencePipeline.add(self.updateBWbounds)
+        for f in [self.renderFrequencyBoard, self.renderPhaseBoard, self.renderSliceBoard, self.renderRFBoard, self.updateMinTE, self.updateMinTI, self.updateMinTR, self.updateBWbounds]:
+            self.sequencePipeline.add(f)
     
 
     def setupReadout(self):
@@ -950,6 +962,16 @@ class MRIsimulator(param.Parameterized):
             spoilerTime = self.boards['RF']['objects']['inversion']['time'][-1] + self.boards['slice']['objects']['inversion spoiler']['dur_f']/2
             sequence.moveWaveform(self.boards['slice']['objects']['inversion spoiler'], spoilerTime)
         for f in [self.updateMinTR, self.updateBWbounds, self.updateSliceThicknessBounds, self.renderFrequencyBoard, self.renderPhaseBoard, self.renderSliceBoard, self.renderRFBoard]:
+            self.sequencePipeline.add(f)
+    
+    
+    def placeFatSat(self):
+        if 'fatsat' in self.boards['RF']['objects']:
+            t = self.boards['slice']['objects']['slice select excitation']['time'][0] - self.boards['slice']['objects']['fatsat spoiler']['dur_f']/2
+            sequence.moveWaveform(self.boards['slice']['objects']['fatsat spoiler'], t)
+            t -= (self.boards['slice']['objects']['fatsat spoiler']['dur_f'] + self.boards['RF']['objects']['fatsat']['dur_f']) / 2
+            sequence.moveWaveform(self.boards['RF']['objects']['fatsat'], t)
+        for f in [self.updateMinTR, self.renderRFBoard, self.renderFrequencyBoard, self.renderPhaseBoard, self.renderSliceBoard]:
             self.sequencePipeline.add(f)
     
 
@@ -1088,7 +1110,6 @@ def getApp():
     return dashboard
 
 
-# TODO: add slice thickness
 # TODO: phase oversampling
 # TODO: abdomen phantom ribs, pancreas, hepatic arteries
 # TODO: add params for matrix/pixelSize and BW like different vendors and handle their correlation
