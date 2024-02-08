@@ -278,6 +278,8 @@ class MRIsimulator(param.Parameterized):
     def __init__(self, **params):
         super().__init__(**params)
 
+        self.render = True # semaphore to avoid unneccesary rendering
+
         self.fullReconPipeline = [
             self.loadPhantom, 
             self.sampleKspace, 
@@ -460,6 +462,7 @@ class MRIsimulator(param.Parameterized):
         self.param.FA.precedence = 1 if self.sequence=='Spoiled Gradient Echo' else -1
         self.param.TI.precedence = 1 if self.sequence=='Inversion Recovery' else -1
         tr = self.TR
+        self.render = False
         self.TR = self.param.TR.objects[-1] # max TR
         self.runSequencePipeline()
         self.TE = min(self.param.TE.objects, key=lambda x: abs(x-self.TE)) # TE within bounds
@@ -467,6 +470,7 @@ class MRIsimulator(param.Parameterized):
         if self.sequence=='Inversion Recovery':
             self.TI = min(self.param.TI.objects, key=lambda x: abs(x-self.TI)) # TI within bounds
             self.runSequencePipeline()
+        self.render = True
         self.TR = min(self.param.TR.objects, key=lambda x: abs(x-tr)) # Set back TR within bounds
     
 
@@ -507,8 +511,10 @@ class MRIsimulator(param.Parameterized):
         for f in [self.setupFatSat, self.updateMaxTE, self.updateBWbounds]:
             self.sequencePipeline.add(f)
         tr = self.TR
+        self.render = False
         self.TR = self.param.TR.objects[-1] # max TR
         self.runSequencePipeline()
+        self.render = True
         self.TR = min(self.param.TR.objects, key=lambda x: abs(x-tr)) # Set back TR within bounds
     
     
@@ -1047,40 +1053,46 @@ class MRIsimulator(param.Parameterized):
     
     @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'NSA')
     def getKspace(self):
-        self.runReconPipeline()
-        kAxes = []
-        for dim in range(2):
-            kAxes.append(getKaxis(self.oversampledReconMatrix[dim], self.FOV[dim]/self.reconMatrix[dim]))
-            # half-sample shift axis when odd number of zeroes:
-            if (self.oversampledReconMatrix[dim]-self.oversampledMatrix[dim])%2:
-                shift = self.reconMatrix[dim] / (2 * self.oversampledReconMatrix[dim] * self.FOV[dim])
-                kAxes[-1] += shift * (-1)**(self.matrix[dim]%2)
-        ksp = xr.DataArray(
-            np.abs(np.fft.fftshift(self.zerofilledkspace))**.2, 
-            dims=('ky', 'kx'),
-            coords={'kx': kAxes[1], 'ky': kAxes[0]}
-        )
-        ksp.kx.attrs['units'] = ksp.ky.attrs['units'] = '1/mm'
-        return hv.Image(ksp, vdims=['magnitude'])
+        if self.render:
+            self.runReconPipeline()
+            kAxes = []
+            for dim in range(2):
+                kAxes.append(getKaxis(self.oversampledReconMatrix[dim], self.FOV[dim]/self.reconMatrix[dim]))
+                # half-sample shift axis when odd number of zeroes:
+                if (self.oversampledReconMatrix[dim]-self.oversampledMatrix[dim])%2:
+                    shift = self.reconMatrix[dim] / (2 * self.oversampledReconMatrix[dim] * self.FOV[dim])
+                    kAxes[-1] += shift * (-1)**(self.matrix[dim]%2)
+            ksp = xr.DataArray(
+                np.abs(np.fft.fftshift(self.zerofilledkspace))**.2, 
+                dims=('ky', 'kx'),
+                coords={'kx': kAxes[1], 'ky': kAxes[0]}
+            )
+            ksp.kx.attrs['units'] = ksp.ky.attrs['units'] = '1/mm'
+            self.kspaceimage = hv.Image(ksp, vdims=['magnitude'])
+        return self.kspaceimage
     
 
     @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'NSA')
     def getImage(self):
-        self.runReconPipeline()
-        iAxes = [(np.arange(self.reconMatrix[dim]) - (self.reconMatrix[dim]-1)/2) / self.reconMatrix[dim] * self.FOV[dim] for dim in range(2)]
-        img = xr.DataArray(
-            np.abs(self.imageArray), 
-            dims=('y', 'x'),
-            coords={'x': iAxes[1], 'y': iAxes[0][::-1]}
-        )
-        img.x.attrs['units'] = img.y.attrs['units'] = 'mm'
-        return hv.Image(img, vdims=['magnitude'])
+        if self.render:
+            self.runReconPipeline()
+            iAxes = [(np.arange(self.reconMatrix[dim]) - (self.reconMatrix[dim]-1)/2) / self.reconMatrix[dim] * self.FOV[dim] for dim in range(2)]
+            img = xr.DataArray(
+                np.abs(self.imageArray), 
+                dims=('y', 'x'),
+                coords={'x': iAxes[1], 'y': iAxes[0][::-1]}
+            )
+            img.x.attrs['units'] = img.y.attrs['units'] = 'mm'
+            self.image = hv.Image(img, vdims=['magnitude'])
+        return self.image
     
 
     @param.depends('sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'matrixF', 'matrixP', 'sliceThickness', 'pixelBandWidth')
     def getSequencePlot(self):
-        self.runSequencePipeline()
-        return hv.Layout(list([hv.Overlay(list(boardPlot.values())).opts(border=0, xaxis='bottom' if n==len(self.boardPlots)-1 else None) for n, boardPlot in enumerate(self.boardPlots.values())])).cols(1).options(toolbar='below')
+        if self.render:
+            self.runSequencePipeline()
+            self.seqPlot = hv.Layout(list([hv.Overlay(list(boardPlot.values())).opts(border=0, xaxis='bottom' if n==len(self.boardPlots)-1 else None) for n, boardPlot in enumerate(self.boardPlots.values())])).cols(1).options(toolbar='below')
+        return self.seqPlot
 
 
 def hideShowButtonCallback(pane, event):
