@@ -458,14 +458,14 @@ class MRIsimulator(param.Parameterized):
         self.param.TI.precedence = 1 if self.sequence=='Inversion Recovery' else -1
         tr = self.TR
         self.TR = self.param.TR.objects[-1] # max TR
-        self.runSequencePipeline
+        self.runSequencePipeline()
         self.TE = min(self.param.TE.objects, key=lambda x: abs(x-self.TE)) # TE within bounds
-        self.runSequencePipeline
+        self.runSequencePipeline()
         if self.sequence=='Inversion Recovery':
             self.TI = min(self.param.TI.objects, key=lambda x: abs(x-self.TI)) # TI within bounds
-            self.runSequencePipeline
+            self.runSequencePipeline()
         self.TR = min(self.param.TR.objects, key=lambda x: abs(x-tr)) # Set back TR within bounds
-        self.runSequencePipeline
+        self.runSequencePipeline()
     
 
     @param.depends('TE', watch=True)
