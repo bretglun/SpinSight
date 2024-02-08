@@ -262,7 +262,7 @@ class MRIsimulator(param.Parameterized):
     TR = param.Selector(default=10000, objects=TRvalues, label='TR [msec]')
     TE = param.Selector(default=10, objects=TEvalues, label='TE [msec]')
     FA = param.Number(default=90.0, bounds=(1, 90.0), precedence=-1, label='Flip angle [°]')
-    TI = param.Selector(default=50, objects=TIvalues, precedence=-1, label='TI [msec]')
+    TI = param.Selector(default=40, objects=TIvalues, precedence=-1, label='TI [msec]')
     FOVP = param.Number(default=240, bounds=(100, 600), label='FOV x [mm]')
     FOVF = param.Number(default=240, bounds=(100, 600), label='FOV y [mm]')
     matrixP = param.Integer(default=180, bounds=(16, 600), label='Acquisition matrix x')
@@ -340,7 +340,6 @@ class MRIsimulator(param.Parameterized):
             self.renderSliceBoard, 
             self.renderRFBoard,
             self.updateMinTE,
-            self.updateMinTI,
             self.updateMinTR,
             self.updateMaxTE,
             self.updateMaxTI,
@@ -555,15 +554,6 @@ class MRIsimulator(param.Parameterized):
             )
             self.minTE += (self.boards['RF']['objects']['excitation']['dur_f'] + self.boards['ADC']['objects']['sampling']['dur_f']) / 2
         self.sequencePipeline.add(self.updateMaxTE)
-
-
-    def updateMinTI(self):
-        if self.sequence != 'Inversion Recovery': return
-        self.minTI = sum([
-            self.boards['RF']['objects']['inversion']['dur_f'] / 2, 
-            self.boards['slice']['objects']['inversion spoiler']['dur_f'], 
-            self.boards['RF']['objects']['excitation']['dur_f'] / 2 ])
-        self.sequencePipeline.add(self.updateMaxTI)
     
     
     def updateMinTR(self):
@@ -582,7 +572,7 @@ class MRIsimulator(param.Parameterized):
     def updateMaxTI(self):
         if self.sequence != 'Inversion Recovery': return
         maxTI = self.TR - self.minTR + self.TI
-        self.param.TI.objects, _ = updateBounds(self.TI, TIvalues, minval=self.minTI, maxval=maxTI)
+        self.param.TI.objects, _ = updateBounds(self.TI, TIvalues, minval=40, maxval=maxTI)
     
     
     def getMaxPrephaserArea(self, readAmp):
@@ -855,7 +845,7 @@ class MRIsimulator(param.Parameterized):
     def setupExcitation(self):
         FA = self.FA if isGradientEcho(self.sequence) else 90.
         self.boards['RF']['objects']['excitation'] = sequence.getRF(flipAngle=FA, time=0., dur=3., shape='hammingSinc',  name='excitation')
-        for f in [self.setupSliceSelection, self.placeFatSat, self.renderRFBoard, self.updateMinTE, self.updateMinTI, self.updateBWbounds, self.updateMatrixFbounds, self.updateFOVFbounds, self.updateMatrixPbounds, self.updateFOVPbounds, self.updateSliceThicknessBounds]:
+        for f in [self.setupSliceSelection, self.placeFatSat, self.renderRFBoard, self.updateMinTE, self.updateBWbounds, self.updateMatrixFbounds, self.updateFOVFbounds, self.updateMatrixPbounds, self.updateFOVPbounds, self.updateSliceThicknessBounds]:
             self.sequencePipeline.add(f)
 
 
@@ -875,7 +865,7 @@ class MRIsimulator(param.Parameterized):
             self.sequencePipeline.add(self.placeInversion)
         elif 'inversion' in self.boards['RF']['objects']:
             del self.boards['RF']['objects']['inversion']
-        for f in [self.setupSliceSelection, self.renderRFBoard, self.updateMinTI, self.updateSliceThicknessBounds]:
+        for f in [self.setupSliceSelection, self.renderRFBoard, self.updateMaxTI, self.updateSliceThicknessBounds]:
             self.sequencePipeline.add(f)
     
     
@@ -921,7 +911,7 @@ class MRIsimulator(param.Parameterized):
             del self.boards['slice']['objects']['slice select inversion']
             del self.boards['slice']['objects']['inversion spoiler']
         
-        for f in [self.renderFrequencyBoard, self.renderPhaseBoard, self.renderSliceBoard, self.renderRFBoard, self.updateMinTE, self.updateMinTI, self.updateMinTR, self.updateBWbounds]:
+        for f in [self.renderFrequencyBoard, self.renderPhaseBoard, self.renderSliceBoard, self.renderRFBoard, self.updateMinTE, self.updateMaxTI, self.updateMinTR, self.updateBWbounds]:
             self.sequencePipeline.add(f)
     
 
