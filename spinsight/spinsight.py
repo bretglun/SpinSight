@@ -379,15 +379,18 @@ class MRIsimulator(param.Parameterized):
 
     @param.depends('FOVF', watch=True)
     def _watch_FOVF(self):
+        self.updateVoxelFobjects()
+        self.voxelF = min(self.param.voxelF.objects, key=lambda x: abs(x-self.FOVF/self.matrixF))
         for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.addNoise, self.compileKspace, self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
         for f in [self.setupReadout, self.updateBWbounds, self.updateMatrixFbounds]:
             self.sequencePipeline.add(f)
-        
     
 
     @param.depends('FOVP', watch=True)
     def _watch_FOVP(self):
+        self.updateVoxelPobjects()
+        self.voxelP = min(self.param.voxelP.objects, key=lambda x: abs(x-self.FOVP/self.matrixP))
         for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.addNoise, self.compileKspace, self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
         for f in [self.setupPhaser, self.updateMatrixPbounds]:
@@ -678,12 +681,14 @@ class MRIsimulator(param.Parameterized):
     def updateMatrixFbounds(self):
         maxMatrixF = int(self.getMaxReadoutArea() * 1e-3 * self.FOVF * GYRO)
         self.param.matrixF.bounds = getBounds(16, min(maxMatrixF, 600), self.matrixF)
-        self.param.voxelF.objects = [float('{:.3g}'.format(self.FOVF/matrix)) for matrix in range(*self.param.matrixF.bounds[::-1], -1)]
+        self.updateVoxelFobjects()
     
+
     def updateMatrixPbounds(self):
         maxMatrixP = int(self.getMaxPhaserArea() * 2e-3 * self.FOVP * GYRO)
         self.param.matrixP.bounds = getBounds(16, min(maxMatrixP, 600), self.matrixP)
-        self.param.voxelP.objects = [float('{:.3g}'.format(self.FOVP/matrix)) for matrix in range(*self.param.matrixP.bounds[::-1], -1)]
+        self.updateVoxelPobjects()
+    
 
     def updateFOVFbounds(self):
         minFOVF = 1e3 * self.matrixF / (self.getMaxReadoutArea() * GYRO)
@@ -693,6 +698,14 @@ class MRIsimulator(param.Parameterized):
     def updateFOVPbounds(self):
         minFOVP = 1e3 * self.matrixP / (self.getMaxPhaserArea() * GYRO * 2)
         self.param.FOVP.bounds = getBounds(max(minFOVP, 100), 600, self.FOVP)
+
+    
+    def updateVoxelFobjects(self):
+        self.param.voxelF.objects = [float('{:.3g}'.format(self.FOVF/matrix)) for matrix in range(*self.param.matrixF.bounds[::-1], -1)]
+    
+
+    def updateVoxelPobjects(self):
+        self.param.voxelP.objects = [float('{:.3g}'.format(self.FOVP/matrix)) for matrix in range(*self.param.matrixP.bounds[::-1], -1)]
     
 
     def updateSliceThicknessBounds(self):
