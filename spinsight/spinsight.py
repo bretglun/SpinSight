@@ -265,6 +265,8 @@ class MRIsimulator(param.Parameterized):
     TI = param.Selector(default=40, objects=TIvalues, precedence=-1, label='TI [msec]')
     FOVP = param.Number(default=240, bounds=(100, 600), label='FOV x [mm]')
     FOVF = param.Number(default=240, bounds=(100, 600), label='FOV y [mm]')
+    voxelP = param.Selector(default=1.33, label='Voxel size x [mm]')
+    voxelF = param.Selector(default=1.33, label='Voxel size y [mm]')
     matrixP = param.Integer(default=180, bounds=(16, 600), label='Acquisition matrix x')
     matrixF = param.Integer(default=180, bounds=(16, 600), label='Acquisition matrix y')
     reconMatrixP = param.Integer(default=360, bounds=(matrixP.default, 1024), label='Reconstruction matrix x')
@@ -394,6 +396,7 @@ class MRIsimulator(param.Parameterized):
     
     @param.depends('matrixF', watch=True)
     def _watch_matrixF(self):
+        self.voxelF = min(self.param.voxelF.objects, key=lambda x: abs(x-self.FOVF/self.matrixF))
         for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.addNoise, self.compileKspace, self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
         for f in [self.setupReadout, self.updateBWbounds, self.updateFOVFbounds]:
@@ -404,12 +407,23 @@ class MRIsimulator(param.Parameterized):
     
     @param.depends('matrixP', watch=True)
     def _watch_matrixP(self):
+        self.voxelP = min(self.param.voxelP.objects, key=lambda x: abs(x-self.FOVP/self.matrixP))
         for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.addNoise, self.compileKspace, self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
         for f in [self.setupPhaser, self.updateFOVPbounds]:
             self.sequencePipeline.add(f)
         self.param.reconMatrixP.bounds = (self.matrixP, self.param.reconMatrixP.bounds[1])
         self.reconMatrixP = min(max(int(self.matrixP * self.recAcqRatioP), self.matrixP), self.param.reconMatrixP.bounds[1])
+
+
+    @param.depends('voxelF', watch=True)
+    def _watch_voxelF(self):
+        self.matrixF = int(np.round(self.FOVF/self.voxelF))
+
+
+    @param.depends('voxelP', watch=True)
+    def _watch_voxelP(self):
+        self.matrixP = int(np.round(self.FOVP/self.voxelP))
 
 
     @param.depends('sliceThickness', watch=True)
@@ -664,12 +678,12 @@ class MRIsimulator(param.Parameterized):
     def updateMatrixFbounds(self):
         maxMatrixF = int(self.getMaxReadoutArea() * 1e-3 * self.FOVF * GYRO)
         self.param.matrixF.bounds = getBounds(16, min(maxMatrixF, 600), self.matrixF)
-    
+        self.param.voxelF.objects = [float('{:.3g}'.format(self.FOVF/matrix)) for matrix in range(*self.param.matrixF.bounds[::-1], -1)]
     
     def updateMatrixPbounds(self):
         maxMatrixP = int(self.getMaxPhaserArea() * 2e-3 * self.FOVP * GYRO)
         self.param.matrixP.bounds = getBounds(16, min(maxMatrixP, 600), self.matrixP)
-
+        self.param.voxelP.objects = [float('{:.3g}'.format(self.FOVP/matrix)) for matrix in range(*self.param.matrixP.bounds[::-1], -1)]
 
     def updateFOVFbounds(self):
         minFOVF = 1e3 * self.matrixF / (self.getMaxReadoutArea() * GYRO)
@@ -1100,7 +1114,7 @@ def getApp():
     author = '*Written by [Johan Berglund](mailto:johan.berglund@akademiska.se), Ph.D.*'
     settingsParams = pn.panel(explorer.param, parameters=['object', 'fieldStrength'], name='Settings')
     contrastParams = pn.panel(explorer.param, parameters=['sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI'], widgets={'TR': pn.widgets.DiscreteSlider, 'TE': pn.widgets.DiscreteSlider, 'TI': pn.widgets.DiscreteSlider}, name='Contrast')
-    geometryParams = pn.panel(explorer.param, parameters=['FOVF', 'FOVP', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness',  'frequencyDirection', 'pixelBandWidth', 'NSA'], name='Geometry')
+    geometryParams = pn.panel(explorer.param, parameters=['FOVF', 'FOVP', 'voxelF', 'voxelP', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness',  'frequencyDirection', 'pixelBandWidth', 'NSA'], widgets={'voxelF': pn.widgets.DiscreteSlider, 'voxelP': pn.widgets.DiscreteSlider}, name='Geometry')
     dmapKspace = pn.Row(hv.DynamicMap(explorer.getKspace), visible=False)
     dmapMRimage = hv.DynamicMap(explorer.getImage)
     dmapSequence = pn.Row(hv.DynamicMap(explorer.getSequencePlot), visible=False)
