@@ -265,8 +265,8 @@ class MRIsimulator(param.Parameterized):
     TI = param.Selector(default=40, objects=TIvalues, precedence=-1, label='TI [msec]')
     FOVP = param.Number(default=240, bounds=(100, 600), label='FOV x [mm]')
     FOVF = param.Number(default=240, bounds=(100, 600), label='FOV y [mm]')
-    voxelP = param.Selector(default=1.33, label='Voxel size x [mm]')
-    voxelF = param.Selector(default=1.33, label='Voxel size y [mm]')
+    voxelP = param.Selector(default=1.333, label='Voxel size x [mm]')
+    voxelF = param.Selector(default=1.333, label='Voxel size y [mm]')
     matrixP = param.Integer(default=180, bounds=(16, 600), label='Acquisition matrix x')
     matrixF = param.Integer(default=180, bounds=(16, 600), label='Acquisition matrix y')
     reconMatrixP = param.Integer(default=360, bounds=(matrixP.default, 1024), label='Reconstruction matrix x')
@@ -701,11 +701,11 @@ class MRIsimulator(param.Parameterized):
 
     
     def updateVoxelFobjects(self):
-        self.param.voxelF.objects = [float('{:.3g}'.format(self.FOVF/matrix)) for matrix in range(*self.param.matrixF.bounds[::-1], -1)]
+        self.param.voxelF.objects = [float('{:.4g}'.format(self.FOVF/matrix)) for matrix in range(*self.param.matrixF.bounds[::-1], -1)]
     
 
     def updateVoxelPobjects(self):
-        self.param.voxelP.objects = [float('{:.3g}'.format(self.FOVP/matrix)) for matrix in range(*self.param.matrixP.bounds[::-1], -1)]
+        self.param.voxelP.objects = [float('{:.4g}'.format(self.FOVP/matrix)) for matrix in range(*self.param.matrixP.bounds[::-1], -1)]
     
 
     def updateSliceThicknessBounds(self):
