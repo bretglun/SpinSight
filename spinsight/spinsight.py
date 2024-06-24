@@ -257,24 +257,25 @@ TIvalues = [float('{:.2g}'.format(ti)) for ti in 10.**np.linspace(0, 4, 500)]
 class MRIsimulator(param.Parameterized):
     object = param.ObjectSelector(default='brain', objects=PHANTOMS.keys(), label='Phantom object')
     fieldStrength = param.ObjectSelector(default=1.5, objects=[1.5, 3.0], label='B0 field strength [T]')
+    parameterStyle = param.ObjectSelector(default='Siemens', objects=['Siemens', 'Philips', 'GE'], label='Parameter Style')
     sequence = param.ObjectSelector(default=SEQUENCES[0], objects=SEQUENCES, label='Pulse sequence')
     FatSat = param.Boolean(default=False, label='Fat saturation')
     TR = param.Selector(default=10000, objects=TRvalues, label='TR [msec]')
     TE = param.Selector(default=10, objects=TEvalues, label='TE [msec]')
     FA = param.Number(default=90.0, bounds=(1, 90.0), precedence=-1, label='Flip angle [°]')
     TI = param.Selector(default=40, objects=TIvalues, precedence=-1, label='TI [msec]')
-    FOVP = param.Number(default=240, bounds=(100, 600), label='FOV x [mm]')
-    FOVF = param.Number(default=240, bounds=(100, 600), label='FOV y [mm]')
-    voxelP = param.Selector(default=1.333, label='Voxel size x [mm]')
-    voxelF = param.Selector(default=1.333, label='Voxel size y [mm]')
-    matrixP = param.Integer(default=180, bounds=(16, 600), label='Acquisition matrix x')
-    matrixF = param.Integer(default=180, bounds=(16, 600), label='Acquisition matrix y')
-    reconMatrixP = param.Integer(default=360, bounds=(matrixP.default, 1024), label='Reconstruction matrix x')
-    reconMatrixF = param.Integer(default=360, bounds=(matrixF.default, 1024), label='Reconstruction matrix y')
-    sliceThickness = param.Number(default=3, bounds=(0.5, 10), label='Slice thickness [mm]')
-    frequencyDirection = param.ObjectSelector(default=list(DIRECTIONS.keys())[0], objects=DIRECTIONS.keys(), label='Frequency encoding direction')
-    pixelBandWidth = param.Number(default=500, bounds=(125, 2000), label='Pixel bandwidth [Hz]')
-    NSA = param.Integer(default=1, bounds=(1, 16), label='NSA')
+    FOVP = param.Number(default=240, bounds=(100, 600), precedence=1, label='FOV x [mm]')
+    FOVF = param.Number(default=240, bounds=(100, 600), precedence=1, label='FOV y [mm]')
+    voxelP = param.Selector(default=1.333, precedence=-1, label='Voxel size x [mm]')
+    voxelF = param.Selector(default=1.333, precedence=-1, label='Voxel size y [mm]')
+    matrixP = param.Integer(default=180, bounds=(16, 600), precedence=2, label='Acquisition matrix x')
+    matrixF = param.Integer(default=180, bounds=(16, 600), precedence=2, label='Acquisition matrix y')
+    reconMatrixP = param.Integer(default=360, bounds=(matrixP.default, 1024), precedence=3, label='Reconstruction matrix x')
+    reconMatrixF = param.Integer(default=360, bounds=(matrixF.default, 1024), precedence=3, label='Reconstruction matrix y')
+    sliceThickness = param.Number(default=3, bounds=(0.5, 10), precedence=4, label='Slice thickness [mm]')
+    frequencyDirection = param.ObjectSelector(default=list(DIRECTIONS.keys())[0], objects=DIRECTIONS.keys(), precedence=5, label='Frequency encoding direction')
+    pixelBandWidth = param.Number(default=500, bounds=(125, 2000), precedence=6, label='Pixel bandwidth [Hz]')
+    NSA = param.Integer(default=1, bounds=(1, 16), precedence=7, label='NSA')
     
 
     def __init__(self, **params):
@@ -377,8 +378,24 @@ class MRIsimulator(param.Parameterized):
             self.reconPipeline.add(f)
     
 
+    @param.depends('parameterStyle', watch=True)
+    def _watch_parameterStyle(self):
+        if self.parameterStyle == 'Philips':
+            self.param.voxelF.precedence = 2
+            self.param.voxelP.precedence = 2
+            self.param.matrixF.precedence = -1
+            self.param.matrixP.precedence = -1
+        else:
+            self.param.voxelF.precedence = -1
+            self.param.voxelP.precedence = -1
+            self.param.matrixF.precedence = 2
+            self.param.matrixP.precedence = 2
+    
+
     @param.depends('FOVF', watch=True)
     def _watch_FOVF(self):
+        if self.parameterStyle=='Philips': # Philips style, update matrix
+            self.matrixF = int(np.round(self.FOVF / self.voxelF))
         self.updateVoxelFobjects()
         self.voxelF = min(self.param.voxelF.objects, key=lambda x: abs(x-self.FOVF/self.matrixF))
         for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.addNoise, self.compileKspace, self.zerofill, self.reconstruct]:
@@ -389,6 +406,8 @@ class MRIsimulator(param.Parameterized):
 
     @param.depends('FOVP', watch=True)
     def _watch_FOVP(self):
+        if self.parameterStyle=='Philips': # Philips style, update matrix
+            self.matrixP = int(np.round(self.FOVP / self.voxelP))
         self.updateVoxelPobjects()
         self.voxelP = min(self.param.voxelP.objects, key=lambda x: abs(x-self.FOVP/self.matrixP))
         for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.addNoise, self.compileKspace, self.zerofill, self.reconstruct]:
@@ -1125,7 +1144,7 @@ def getApp():
     explorer = MRIsimulator(name='')
     title = '# SpinSight MRI simulator'
     author = '*Written by [Johan Berglund](mailto:johan.berglund@akademiska.se), Ph.D.*'
-    settingsParams = pn.panel(explorer.param, parameters=['object', 'fieldStrength'], name='Settings')
+    settingsParams = pn.panel(explorer.param, parameters=['object', 'fieldStrength', 'parameterStyle'], name='Settings')
     contrastParams = pn.panel(explorer.param, parameters=['sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI'], widgets={'TR': pn.widgets.DiscreteSlider, 'TE': pn.widgets.DiscreteSlider, 'TI': pn.widgets.DiscreteSlider}, name='Contrast')
     geometryParams = pn.panel(explorer.param, parameters=['FOVF', 'FOVP', 'voxelF', 'voxelP', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness',  'frequencyDirection', 'pixelBandWidth', 'NSA'], widgets={'voxelF': pn.widgets.DiscreteSlider, 'voxelP': pn.widgets.DiscreteSlider}, name='Geometry')
     dmapKspace = pn.Row(hv.DynamicMap(explorer.getKspace), visible=False)
