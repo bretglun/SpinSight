@@ -363,10 +363,6 @@ class MRIsimulator(param.Parameterized):
             self.placeReadout,
             self.placePhaser,
             self.placeSpoiler,
-            self.renderFrequencyBoard, 
-            self.renderPhaseBoard, 
-            self.renderSliceBoard, 
-            self.renderRFBoard,
             self.updateMinTE,
             self.updateMinTR,
             self.updateMaxTE,
@@ -376,7 +372,11 @@ class MRIsimulator(param.Parameterized):
             self.updateMatrixPbounds,
             self.updateFOVFbounds, 
             self.updateFOVPbounds,
-            self.updateSliceThicknessBounds
+            self.updateSliceThicknessBounds,
+            self.renderFrequencyBoard, 
+            self.renderPhaseBoard, 
+            self.renderSliceBoard, 
+            self.renderRFBoard
         ]
 
         self.sequencePipeline = set(self.fullSequencePipeline)
