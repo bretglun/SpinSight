@@ -1151,31 +1151,31 @@ class MRIsimulator(param.Parameterized):
             self.boardPlots[board]['polygons'] = hv.Polygons(list(self.boards[board]['objects'].values()), kdims=[self.timeDim, self.boards[board]['dim']], vdims=self.boards[board]['attributes']).opts(tools=[hover], cmap=[self.boards[board]['color']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=(-19000, 19000))])
     
     
-    def renderTRbounds(self, board):
+    def renderTRspan(self, board):
         t0 = self.getSeqStart()
-        self.boardPlots[board]['TRbounds'] = hv.VSpan(-20000, t0, kdims=[self.timeDim, self.boards[board]['dim']]).opts(color='gray', fill_alpha=.3)
-        self.boardPlots[board]['TRbounds'] *= hv.VSpan(t0 + self.TR, 20000, kdims=[self.timeDim, self.boards[board]['dim']]).opts(color='gray', fill_alpha=.3)
+        self.boardPlots[board]['TRspan'] = hv.VSpan(-20000, t0, kdims=[self.timeDim, self.boards[board]['dim']]).opts(color='gray', fill_alpha=.3)
+        self.boardPlots[board]['TRspan'] *= hv.VSpan(t0 + self.TR, 20000, kdims=[self.timeDim, self.boards[board]['dim']]).opts(color='gray', fill_alpha=.3)
     
 
     def renderFrequencyBoard(self):
         self.renderPolygons('frequency')
         self.boardPlots['frequency']['ADC'] = hv.Overlay([hv.VSpan(obj['time'][0], obj['time'][-1], kdims=[self.timeDim, self.boards['frequency']['dim']]) for obj in self.boards['ADC']['objects'].values()])
-        self.renderTRbounds('frequency')
+        self.renderTRspan('frequency')
     
 
     def renderPhaseBoard(self):
         self.renderPolygons('phase')
-        self.renderTRbounds('phase')
+        self.renderTRspan('phase')
     
 
     def renderSliceBoard(self):
         self.renderPolygons('slice')
-        self.renderTRbounds('slice')
+        self.renderTRspan('slice')
 
 
     def renderRFBoard(self):
         self.renderPolygons('RF')
-        self.renderTRbounds('RF')
+        self.renderTRspan('RF')
     
     
     @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'NSA')
