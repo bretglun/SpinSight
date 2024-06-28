@@ -286,20 +286,21 @@ class MRIsimulator(param.Parameterized):
     TI = param.Selector(default=40, objects=TIvalues, precedence=-1, label='TI [msec]')
     FOVP = param.Number(default=240, bounds=(100, 600), precedence=1, label='FOV x [mm]')
     FOVF = param.Number(default=240, bounds=(100, 600), precedence=1, label='FOV y [mm]')
-    voxelP = param.Selector(default=1.333, precedence=-2, label='Voxel size x [mm]')
-    voxelF = param.Selector(default=1.333, precedence=-2, label='Voxel size y [mm]')
-    matrixP = param.Integer(default=180, bounds=(16, 600), precedence=2, label='Acquisition matrix x')
-    matrixF = param.Integer(default=180, bounds=(16, 600), precedence=2, label='Acquisition matrix y')
-    reconVoxelP = param.Selector(default=0.666, precedence=-3, label='Reconstructed voxel size x [mm]')
-    reconVoxelF = param.Selector(default=0.666, precedence=-3, label='Reconstructed voxel size y [mm]')
-    reconMatrixP = param.Integer(default=360, bounds=(matrixP.default, 1024), precedence=3, label='Reconstruction matrix x')
-    reconMatrixF = param.Integer(default=360, bounds=(matrixF.default, 1024), precedence=3, label='Reconstruction matrix y')
-    sliceThickness = param.Number(default=3, bounds=(0.5, 10), precedence=4, label='Slice thickness [mm]')
-    frequencyDirection = param.ObjectSelector(default=list(DIRECTIONS.keys())[0], objects=DIRECTIONS.keys(), precedence=5, label='Frequency encoding direction')
-    pixelBandWidth = param.Number(default=500, bounds=(125, 2000), precedence=6, label='Pixel bandwidth [Hz]')
-    FOVbandwidth = param.Number(default=45, bounds=(1, 600), precedence=-6, label='FOV bandwidth [±kHz]')
-    FWshift = param.Number(default=pixelBW2shift(500), bounds=(pixelBW2shift(2000), pixelBW2shift(125)), precedence=-6, label='Fat/water shift [pixels]')
-    NSA = param.Integer(default=1, bounds=(1, 16), precedence=7, label='NSA')
+    phaseOversampling = param.Number(default=0, bounds=(0, 100), precedence=2, label='Phase oversampling [%]')
+    voxelP = param.Selector(default=1.333, precedence=-3, label='Voxel size x [mm]')
+    voxelF = param.Selector(default=1.333, precedence=-3, label='Voxel size y [mm]')
+    matrixP = param.Integer(default=180, bounds=(16, 600), precedence=3, label='Acquisition matrix x')
+    matrixF = param.Integer(default=180, bounds=(16, 600), precedence=3, label='Acquisition matrix y')
+    reconVoxelP = param.Selector(default=0.666, precedence=-4, label='Reconstructed voxel size x [mm]')
+    reconVoxelF = param.Selector(default=0.666, precedence=-4, label='Reconstructed voxel size y [mm]')
+    reconMatrixP = param.Integer(default=360, bounds=(matrixP.default, 1024), precedence=4, label='Reconstruction matrix x')
+    reconMatrixF = param.Integer(default=360, bounds=(matrixF.default, 1024), precedence=4, label='Reconstruction matrix y')
+    sliceThickness = param.Number(default=3, bounds=(0.5, 10), precedence=5, label='Slice thickness [mm]')
+    frequencyDirection = param.ObjectSelector(default=list(DIRECTIONS.keys())[0], objects=DIRECTIONS.keys(), precedence=6, label='Frequency encoding direction')
+    pixelBandWidth = param.Number(default=500, bounds=(125, 2000), precedence=7, label='Pixel bandwidth [Hz]')
+    FOVbandwidth = param.Number(default=45, bounds=(1, 600), precedence=-7, label='FOV bandwidth [±kHz]')
+    FWshift = param.Number(default=pixelBW2shift(500), bounds=(pixelBW2shift(2000), pixelBW2shift(125)), precedence=-7, label='Fat/water shift [pixels]')
+    NSA = param.Integer(default=1, bounds=(1, 16), precedence=8, label='NSA')
     
 
     def __init__(self, **params):
@@ -408,21 +409,21 @@ class MRIsimulator(param.Parameterized):
         for param in [self.param.voxelF, self.param.voxelP, self.param.matrixF, self.param.matrixP, self.param.reconVoxelF, self.param.reconVoxelP, self.param.reconMatrixF, self.param.reconMatrixP, self.param.pixelBandWidth, self.param.FOVbandwidth, self.param.FWshift]:
             param.precedence = -1
         if self.parameterStyle == 'Philips':
-            self.param.voxelF.precedence = 2
-            self.param.voxelP.precedence = 2
-            self.param.reconVoxelF.precedence = 3
-            self.param.reconVoxelP.precedence = 3
-            self.param.FWshift.precedence = 6
+            self.param.voxelF.precedence = 3
+            self.param.voxelP.precedence = 3
+            self.param.reconVoxelF.precedence = 4
+            self.param.reconVoxelP.precedence = 4
+            self.param.FWshift.precedence = 7
         else:
-            self.param.matrixF.precedence = 2
-            self.param.matrixP.precedence = 2
-            self.param.reconMatrixF.precedence = 3
-            self.param.reconMatrixP.precedence = 3
+            self.param.matrixF.precedence = 3
+            self.param.matrixP.precedence = 3
+            self.param.reconMatrixF.precedence = 4
+            self.param.reconMatrixP.precedence = 4
             if self.parameterStyle == 'Siemens':
-                self.param.pixelBandWidth.precedence = 6
+                self.param.pixelBandWidth.precedence = 7
             elif self.parameterStyle == 'GE':
-                self.param.FOVbandwidth.precedence = 6
-    
+                self.param.FOVbandwidth.precedence = 7
+
 
     @param.depends('FOVF', watch=True)
     def _watch_FOVF(self):
@@ -452,8 +453,13 @@ class MRIsimulator(param.Parameterized):
             self.reconPipeline.add(f)
         for f in [self.setupPhaser, self.updateMatrixPbounds]:
             self.sequencePipeline.add(f)
-    
-    
+
+
+    @param.depends('phaseOversampling', watch=True)
+    def _watch_phaseOversampling(self):
+        self._watch_FOVP()
+
+
     @param.depends('matrixF', watch=True)
     def _watch_matrixF(self):
         if self.parameterStyle == 'GE':
@@ -886,11 +892,13 @@ class MRIsimulator(param.Parameterized):
         self.matrix = [self.matrixP, self.matrixF]
         self.FOV = [self.FOVP, self.FOVF]
         self.freqDir = DIRECTIONS[self.frequencyDirection]
+        self.phaseDir = 1 - self.freqDir
         if self.freqDir==0:
             self.matrix.reverse()
             self.FOV.reverse()
         
         self.oversampledMatrix = self.matrix.copy() # account for oversampling in frequency encoding direction
+        self.oversampledMatrix[self.phaseDir] = int(np.ceil((1 + self.phaseOversampling / 100) * self.matrix[self.phaseDir]))
         if self.FOV[self.freqDir] < self.phantom['FOV'][self.freqDir]: # At least Nyquist sampling in frequency encoding direction
             self.oversampledMatrix[self.freqDir] = int(np.ceil(self.phantom['FOV'][self.freqDir] * self.matrix[self.freqDir] / self.FOV[self.freqDir]))
         
@@ -958,6 +966,7 @@ class MRIsimulator(param.Parameterized):
         if self.freqDir==0:
             self.reconMatrix.reverse()
         self.oversampledReconMatrix = self.reconMatrix.copy()
+        self.oversampledReconMatrix[self.phaseDir] = int(np.ceil((1 + self.phaseOversampling / 100) * self.reconMatrix[self.phaseDir]))
         if self.FOV[self.freqDir] < self.phantom['FOV'][self.freqDir]: # At least Nyquist sampling in frequency encoding direction
             self.oversampledReconMatrix[self.freqDir] = int(self.reconMatrix[self.freqDir] * self.oversampledMatrix[self.freqDir] / self.matrix[self.freqDir])
         self.zerofilledkspace = zerofill(np.fft.ifftshift(self.kspace), self.oversampledReconMatrix)
@@ -1178,7 +1187,7 @@ class MRIsimulator(param.Parameterized):
         self.renderTRspan('RF')
     
     
-    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'NSA')
+    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'NSA')
     def getKspace(self):
         if self.render:
             self.runReconPipeline()
@@ -1199,7 +1208,7 @@ class MRIsimulator(param.Parameterized):
         return self.kspaceimage
     
 
-    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'NSA')
+    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'NSA')
     def getImage(self):
         if self.render:
             self.runReconPipeline()
@@ -1237,7 +1246,7 @@ def getApp():
     author = '*Written by [Johan Berglund](mailto:johan.berglund@akademiska.se), Ph.D.*'
     settingsParams = pn.panel(explorer.param, parameters=['object', 'fieldStrength', 'parameterStyle'], name='Settings')
     contrastParams = pn.panel(explorer.param, parameters=['sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI'], widgets={'TR': pn.widgets.DiscreteSlider, 'TE': pn.widgets.DiscreteSlider, 'TI': pn.widgets.DiscreteSlider}, name='Contrast')
-    geometryParams = pn.panel(explorer.param, parameters=['FOVF', 'FOVP', 'voxelF', 'voxelP', 'matrixF', 'matrixP', 'reconVoxelF', 'reconVoxelP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness',  'frequencyDirection', 'pixelBandWidth', 'FOVbandwidth', 'FWshift', 'NSA'], widgets={'voxelF': pn.widgets.DiscreteSlider, 'voxelP': pn.widgets.DiscreteSlider, 'reconVoxelF': pn.widgets.DiscreteSlider, 'reconVoxelP': pn.widgets.DiscreteSlider}, name='Geometry')
+    geometryParams = pn.panel(explorer.param, parameters=['FOVF', 'FOVP', 'phaseOversampling', 'voxelF', 'voxelP', 'matrixF', 'matrixP', 'reconVoxelF', 'reconVoxelP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness',  'frequencyDirection', 'pixelBandWidth', 'FOVbandwidth', 'FWshift', 'NSA'], widgets={'voxelF': pn.widgets.DiscreteSlider, 'voxelP': pn.widgets.DiscreteSlider, 'reconVoxelF': pn.widgets.DiscreteSlider, 'reconVoxelP': pn.widgets.DiscreteSlider}, name='Geometry')
     dmapKspace = pn.Row(hv.DynamicMap(explorer.getKspace), visible=False)
     dmapMRimage = hv.DynamicMap(explorer.getImage)
     dmapSequence = pn.Row(hv.DynamicMap(explorer.getSequencePlot), visible=False)
@@ -1249,7 +1258,9 @@ def getApp():
     return dashboard
 
 
-# TODO: phase oversampling
+# TODO: fix FOVbandWidth outOfBounds bug
+# TODO: dark mode
+# TODO: toggle FOV box on/off, including phase oversampling
 # TODO: abdomen phantom ribs, pancreas, hepatic arteries
 # TODO: add ACQ time and SNR
 # TODO: add apodization
