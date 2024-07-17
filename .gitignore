@@ -6,4 +6,5 @@
 *.jpg
 *.npy
 notes.md
+TODO.md
 deploy.sh

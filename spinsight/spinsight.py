@@ -1269,13 +1269,3 @@ def getApp():
     kSpaceButton.on_click(partial(hideShowButtonCallback, dmapKspace))
     dashboard = pn.Column(pn.Row(pn.Column(pn.pane.Markdown(title), pn.Row(pn.Column(settingsParams, pn.Row(sequenceButton, kSpaceButton), contrastParams), geometryParams)), pn.Column(dmapMRimage, explorer.param.showFOV), dmapKspace), dmapSequence, pn.pane.Markdown(author))
     return dashboard
-
-
-# TODO: fix FOVbandWidth outOfBounds bug
-# TODO: display info like ACQ time and SNR
-# TODO: Fast spin echo
-# TODO: EPI
-# TODO: abdomen phantom ribs, pancreas, hepatic arteries
-# TODO: add apodization
-# TODO: parallel imaging (GRAPPA)
-# TODO: B0 inhomogeneity
