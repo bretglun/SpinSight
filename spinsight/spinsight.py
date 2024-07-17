@@ -302,6 +302,7 @@ class MRIsimulator(param.Parameterized):
     FOVbandwidth = param.Number(default=45, bounds=(1, 600), precedence=-7, label='FOV bandwidth [±kHz]')
     FWshift = param.Number(default=pixelBW2shift(500), bounds=(pixelBW2shift(2000), pixelBW2shift(125)), precedence=-7, label='Fat/water shift [pixels]')
     NSA = param.Integer(default=1, bounds=(1, 16), precedence=8, label='NSA')
+    showFOV = param.Boolean(default=False, label='Show FOV')
     
 
     def __init__(self, **params):
@@ -339,7 +340,7 @@ class MRIsimulator(param.Parameterized):
         hv.opts.defaults(hv.opts.Image(width=500, height=500, invert_yaxis=False, toolbar='below', cmap='gray', aspect='equal'))
         hv.opts.defaults(hv.opts.HLine(line_width=1.5, line_color='gray'))
         hv.opts.defaults(hv.opts.VSpan(color='orange', fill_alpha=.1, hover_fill_alpha=.8, default_tools=[]))
-        hv.opts.defaults(hv.opts.Overlay(width=1700, height=120, border=4, show_grid=False, xaxis=None))
+        hv.opts.defaults(hv.opts.Box(line_width=3))
         hv.opts.defaults(hv.opts.Area(fill_alpha=.5, line_width=1.5, line_color='gray', default_tools=[]))
         hv.opts.defaults(hv.opts.Polygons(line_width=1.5, fill_alpha=0, line_alpha=0, line_color='gray', selection_line_color='black', hover_fill_alpha=.8, hover_line_alpha=1, selection_fill_alpha=.8, selection_line_alpha=1, nonselection_line_alpha=0, default_tools=[]))
 
@@ -1207,9 +1208,17 @@ class MRIsimulator(param.Parameterized):
             ksp.kx.attrs['units'] = ksp.ky.attrs['units'] = '1/mm'
             self.kspaceimage = hv.Image(ksp, vdims=['magnitude'])
         return self.kspaceimage
-    
 
-    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'NSA')
+
+    def getFOVbox(self):
+        FOV = (self.FOVP, self.FOVF)
+        acqFOV = (self.FOVP * (1 + self.phaseOversampling/100), self.FOVF)
+        if self.frequencyDirection == 'left-right':
+            FOV, acqFOV = FOV[::-1], acqFOV[::-1]
+        return hv.Box(0, 0, acqFOV).opts(color='lightblue') * hv.Box(0, 0, FOV).opts(color='yellow')
+
+
+    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'showFOV')
     def getImage(self):
         if self.render:
             self.runReconPipeline()
@@ -1220,15 +1229,18 @@ class MRIsimulator(param.Parameterized):
                 coords={'x': iAxes[1], 'y': iAxes[0][::-1]}
             )
             img.x.attrs['units'] = img.y.attrs['units'] = 'mm'
-            self.image = hv.Image(img, vdims=['magnitude'])
+            self.image = hv.Overlay([hv.Image(img, vdims=['magnitude'])])
+        
+        if self.showFOV:
+            self.image *= self.getFOVbox()
         return self.image
-    
+
 
     @param.depends('sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'matrixF', 'matrixP', 'sliceThickness', 'pixelBandWidth')
     def getSequencePlot(self):
         if self.render:
             self.runSequencePipeline()
-            self.seqPlot = hv.Layout(list([hv.Overlay(list(boardPlot.values())).opts(border=0, xaxis='bottom' if n==len(self.boardPlots)-1 else None) for n, boardPlot in enumerate(self.boardPlots.values())])).cols(1).options(toolbar='below')
+            self.seqPlot = hv.Layout(list([hv.Overlay(list(boardPlot.values())).opts(width=1700, height=120, border=0, xaxis='bottom' if n==len(self.boardPlots)-1 else None) for n, boardPlot in enumerate(self.boardPlots.values())])).cols(1).options(toolbar='below')
         return self.seqPlot
 
 
@@ -1255,12 +1267,11 @@ def getApp():
     sequenceButton.on_click(partial(hideShowButtonCallback, dmapSequence))
     kSpaceButton = pn.widgets.Button(name='Show k-space')
     kSpaceButton.on_click(partial(hideShowButtonCallback, dmapKspace))
-    dashboard = pn.Column(pn.Row(pn.Column(pn.pane.Markdown(title), pn.Row(pn.Column(settingsParams, pn.Row(sequenceButton, kSpaceButton), contrastParams), geometryParams)), dmapMRimage, dmapKspace), dmapSequence, pn.pane.Markdown(author))
+    dashboard = pn.Column(pn.Row(pn.Column(pn.pane.Markdown(title), pn.Row(pn.Column(settingsParams, pn.Row(sequenceButton, kSpaceButton), contrastParams), geometryParams)), pn.Column(dmapMRimage, explorer.param.showFOV), dmapKspace), dmapSequence, pn.pane.Markdown(author))
     return dashboard
 
 
 # TODO: fix FOVbandWidth outOfBounds bug
-# TODO: toggle FOV box on/off, including phase oversampling
 # TODO: display info like ACQ time and SNR
 # TODO: Fast spin echo
 # TODO: EPI
