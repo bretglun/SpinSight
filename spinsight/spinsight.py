@@ -11,6 +11,7 @@ from bokeh.models import HoverTool
 from functools import partial
 
 hv.extension('bokeh')
+pn.config.theme = 'dark' # 'default' / 'dark'
 
 
 GYRO = 42.577 # 1H gyromagnetic ratio [MHz/T]
@@ -1259,12 +1260,11 @@ def getApp():
 
 
 # TODO: fix FOVbandWidth outOfBounds bug
-# TODO: dark mode
 # TODO: toggle FOV box on/off, including phase oversampling
+# TODO: display info like ACQ time and SNR
+# TODO: Fast spin echo
+# TODO: EPI
 # TODO: abdomen phantom ribs, pancreas, hepatic arteries
-# TODO: add ACQ time and SNR
 # TODO: add apodization
 # TODO: parallel imaging (GRAPPA)
 # TODO: B0 inhomogeneity
-# TODO: Fast spin echo
-# TODO: EPI
