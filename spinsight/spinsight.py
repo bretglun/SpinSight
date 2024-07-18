@@ -407,6 +407,13 @@ class MRIsimulator(param.Parameterized):
     def _watch_object(self):
         for f in self.fullReconPipeline:
             self.reconPipeline.add(f)
+        minFOV = PHANTOMS[self.object]['FOV']
+        if self.frequencyDirection=='left-right':
+            minFOV = minFOV[::-1]
+        self.FOVF = max(self.FOVF, minFOV[0])
+        self.FOVP = max(self.FOVP, minFOV[1])
+        self.reconPipeline.add(self.setReferenceSNR)
+        self.runReconPipeline() # rerun recon pipeline to set referenceSNR after FOV update
     
 
     @param.depends('parameterStyle', watch=True)
