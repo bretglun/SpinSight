@@ -304,7 +304,7 @@ class MRIsimulator(param.Parameterized):
     NSA = param.Integer(default=1, bounds=(1, 16), precedence=8, label='NSA')
     showFOV = param.Boolean(default=False, label='Show FOV')
     SNR = param.Number(label='SNR')
-    referenceSNR = param.Number(default=0, label='Reference SNR')
+    referenceSNR = param.Number(label='Reference SNR')
     relativeSNR = param.Number(label='Relative SNR [%]')
 
     def __init__(self, **params):
@@ -321,7 +321,8 @@ class MRIsimulator(param.Parameterized):
             self.updatePDandT1w, 
             self.compileKspace, 
             self.zerofill, 
-            self.reconstruct
+            self.reconstruct,
+            self.setReferenceSNR
         ]
         
         self.reconPipeline = set(self.fullReconPipeline)
@@ -946,13 +947,20 @@ class MRIsimulator(param.Parameterized):
         self.PDandT1w = {component: getPDandT1w(component, self.sequence, self.TR, self.TE, self.TI, self.FA, self.fieldStrength) for component in self.tissues.union(set(FATRESONANCES.keys()))}
 
 
+    def setReferenceSNR(self, event=None):
+        self.referenceSNR = self.SNR
+        self.setRelativeSNR()
+
+
+    def setRelativeSNR(self):
+        self.relativeSNR = self.SNR / self.referenceSNR * 100
+
+
     def updateSNR(self, signal):
         self.SNR = signal / self.noiseStd[0]
-        if self.referenceSNR==0: # reference SNR has not been set
-            self.referenceSNR = self.SNR
-        self.relativeSNR = self.SNR / self.referenceSNR * 100
-    
-    
+        self.setRelativeSNR()
+
+
     def compileKspace(self):
         self.kspace = self.noise.copy()
         self.referenceTissue = 'muscle'
@@ -1288,5 +1296,7 @@ def getApp():
     sequenceButton.on_click(partial(hideShowButtonCallback, dmapSequence))
     kSpaceButton = pn.widgets.Button(name='Show k-space')
     kSpaceButton.on_click(partial(hideShowButtonCallback, dmapKspace))
-    dashboard = pn.Column(pn.Row(pn.Column(pn.pane.Markdown(title), pn.Row(pn.Column(settingsParams, pn.Row(sequenceButton, kSpaceButton), contrastParams), geometryParams)), pn.Column(dmapMRimage, pn.Column(explorer.param.showFOV, infoPane)), dmapKspace), dmapSequence, pn.pane.Markdown(author))
+    resetSNRbutton = pn.widgets.Button(name='Set reference SNR')
+    resetSNRbutton.on_click(explorer.setReferenceSNR)
+    dashboard = pn.Column(pn.Row(pn.Column(pn.pane.Markdown(title), pn.Row(pn.Column(settingsParams, pn.Row(sequenceButton, kSpaceButton), contrastParams), geometryParams)), pn.Column(dmapMRimage, pn.Column(explorer.param.showFOV, infoPane, resetSNRbutton)), dmapKspace), dmapSequence, pn.pane.Markdown(author))
     return dashboard
