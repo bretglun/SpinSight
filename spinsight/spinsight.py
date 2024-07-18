@@ -1265,6 +1265,10 @@ def hideShowButtonCallback(pane, event):
         event.obj.name = event.obj.name.replace('Hide', 'Show')
 
 
+def infoNumber(name, value, format):
+    return pn.indicators.Number(default_color='white', name=name, format=format, font_size='12pt', title_size='12pt', value=value)
+
+
 def getApp():
     explorer = MRIsimulator(name='')
     title = '# SpinSight MRI simulator'
@@ -1272,6 +1276,11 @@ def getApp():
     settingsParams = pn.panel(explorer.param, parameters=['object', 'fieldStrength', 'parameterStyle'], name='Settings')
     contrastParams = pn.panel(explorer.param, parameters=['sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI'], widgets={'TR': pn.widgets.DiscreteSlider, 'TE': pn.widgets.DiscreteSlider, 'TI': pn.widgets.DiscreteSlider}, name='Contrast')
     geometryParams = pn.panel(explorer.param, parameters=['FOVF', 'FOVP', 'phaseOversampling', 'voxelF', 'voxelP', 'matrixF', 'matrixP', 'reconVoxelF', 'reconVoxelP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness',  'frequencyDirection', 'pixelBandWidth', 'FOVbandwidth', 'FWshift', 'NSA'], widgets={'voxelF': pn.widgets.DiscreteSlider, 'voxelP': pn.widgets.DiscreteSlider, 'reconVoxelF': pn.widgets.DiscreteSlider, 'reconVoxelP': pn.widgets.DiscreteSlider}, name='Geometry')
+    
+    infoPane = pn.Row(infoNumber(name='Relative SNR', format='{value:.0f}%', value=explorer.param.relativeSNR),
+                      infoNumber(name='Fat/water shift', format='{value:.2f} pixels', value=explorer.param.FWshift),
+                      infoNumber(name='Bandwidth', format='{value:.0f} Hz/pixel', value=explorer.param.pixelBandWidth))
+
     dmapKspace = pn.Row(hv.DynamicMap(explorer.getKspace), visible=False)
     dmapMRimage = hv.DynamicMap(explorer.getImage)
     dmapSequence = pn.Row(hv.DynamicMap(explorer.getSequencePlot), visible=False)
@@ -1279,5 +1288,5 @@ def getApp():
     sequenceButton.on_click(partial(hideShowButtonCallback, dmapSequence))
     kSpaceButton = pn.widgets.Button(name='Show k-space')
     kSpaceButton.on_click(partial(hideShowButtonCallback, dmapKspace))
-    dashboard = pn.Column(pn.Row(pn.Column(pn.pane.Markdown(title), pn.Row(pn.Column(settingsParams, pn.Row(sequenceButton, kSpaceButton), contrastParams), geometryParams)), pn.Column(dmapMRimage, explorer.param.showFOV), dmapKspace), dmapSequence, pn.pane.Markdown(author))
+    dashboard = pn.Column(pn.Row(pn.Column(pn.pane.Markdown(title), pn.Row(pn.Column(settingsParams, pn.Row(sequenceButton, kSpaceButton), contrastParams), geometryParams)), pn.Column(dmapMRimage, pn.Column(explorer.param.showFOV, infoPane)), dmapKspace), dmapSequence, pn.pane.Markdown(author))
     return dashboard
