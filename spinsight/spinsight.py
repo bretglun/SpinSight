@@ -303,7 +303,9 @@ class MRIsimulator(param.Parameterized):
     FWshift = param.Number(default=pixelBW2shift(500), bounds=(pixelBW2shift(2000), pixelBW2shift(125)), precedence=-7, label='Fat/water shift [pixels]')
     NSA = param.Integer(default=1, bounds=(1, 16), precedence=8, label='NSA')
     showFOV = param.Boolean(default=False, label='Show FOV')
-    
+    SNR = param.Number(label='SNR')
+    referenceSNR = param.Number(default=0, label='Reference SNR')
+    relativeSNR = param.Number(label='Relative SNR [%]')
 
     def __init__(self, **params):
         super().__init__(**params)
@@ -944,8 +946,16 @@ class MRIsimulator(param.Parameterized):
         self.PDandT1w = {component: getPDandT1w(component, self.sequence, self.TR, self.TE, self.TI, self.FA, self.fieldStrength) for component in self.tissues.union(set(FATRESONANCES.keys()))}
 
 
+    def updateSNR(self, signal):
+        self.SNR = signal / self.noiseStd[0]
+        if self.referenceSNR==0: # reference SNR has not been set
+            self.referenceSNR = self.SNR
+        self.relativeSNR = self.SNR / self.referenceSNR * 100
+    
+    
     def compileKspace(self):
         self.kspace = self.noise.copy()
+        self.referenceTissue = 'muscle'
         for component in self.kspaceComps:
             if 'Fat' in component:
                 tissue = component[:component.find('Fat')]
@@ -960,6 +970,8 @@ class MRIsimulator(param.Parameterized):
                 else:
                     tissue = component
                     ratio = 1.0
+                    if tissue == self.referenceTissue:
+                        self.updateSNR(np.max(np.abs(self.kspaceComps[tissue])) * self.PDandT1w[tissue])
                 self.kspace += self.kspaceComps[component] * self.PDandT1w[tissue] * ratio
 
     
