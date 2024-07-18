@@ -315,7 +315,7 @@ class MRIsimulator(param.Parameterized):
             self.sampleKspace, 
             self.updateSamplingTime, 
             self.modulateKspace, 
-            self.addNoise, 
+            self.simulateNoise, 
             self.updatePDandT1w, 
             self.compileKspace, 
             self.zerofill, 
@@ -436,7 +436,7 @@ class MRIsimulator(param.Parameterized):
         self.updateReconVoxelFobjects()
         self.voxelF = min(self.param.voxelF.objects, key=lambda x: abs(x-self.FOVF/self.matrixF))
         self.reconVoxelF = min(self.param.reconVoxelF.objects, key=lambda x: abs(x-self.FOVF/self.reconMatrixF))
-        for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.addNoise, self.compileKspace, self.zerofill, self.reconstruct]:
+        for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.simulateNoise, self.compileKspace, self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
         for f in [self.setupReadout, self.updateBWbounds, self.updateMatrixFbounds]:
             self.sequencePipeline.add(f)
@@ -451,7 +451,7 @@ class MRIsimulator(param.Parameterized):
         self.updateReconVoxelPobjects()
         self.voxelP = min(self.param.voxelP.objects, key=lambda x: abs(x-self.FOVP/self.matrixP))
         self.reconVoxelP = min(self.param.reconVoxelP.objects, key=lambda x: abs(x-self.FOVP/self.reconMatrixP))
-        for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.addNoise, self.compileKspace, self.zerofill, self.reconstruct]:
+        for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.simulateNoise, self.compileKspace, self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
         for f in [self.setupPhaser, self.updateMatrixPbounds]:
             self.sequencePipeline.add(f)
@@ -469,7 +469,7 @@ class MRIsimulator(param.Parameterized):
         else:
             self.FOVbandwidth = pixelBW2FOVBW(self.pixelBandWidth, self.matrixF)
         self.voxelF = min(self.param.voxelF.objects, key=lambda x: abs(x-self.FOVF/self.matrixF))
-        for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.addNoise, self.compileKspace, self.zerofill, self.reconstruct]:
+        for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.simulateNoise, self.compileKspace, self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
         for f in [self.setupReadout, self.updateBWbounds, self.updateFOVFbounds]:
             self.sequencePipeline.add(f)
@@ -481,7 +481,7 @@ class MRIsimulator(param.Parameterized):
     @param.depends('matrixP', watch=True)
     def _watch_matrixP(self):
         self.voxelP = min(self.param.voxelP.objects, key=lambda x: abs(x-self.FOVP/self.matrixP))
-        for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.addNoise, self.compileKspace, self.zerofill, self.reconstruct]:
+        for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.simulateNoise, self.compileKspace, self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
         for f in [self.setupPhaser, self.updateFOVPbounds]:
             self.sequencePipeline.add(f)
@@ -512,7 +512,7 @@ class MRIsimulator(param.Parameterized):
 
     @param.depends('sliceThickness', watch=True)
     def _watch_sliceThickness(self):
-        for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.addNoise, self.compileKspace, self.zerofill, self.reconstruct]:
+        for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.simulateNoise, self.compileKspace, self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
         for f in [self.setupSliceSelection, self.placeFatSat]:
             self.sequencePipeline.add(f)
@@ -520,7 +520,7 @@ class MRIsimulator(param.Parameterized):
     
     @param.depends('frequencyDirection', watch=True)
     def _watch_frequencyDirection(self):
-        for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.addNoise, self.compileKspace, self.zerofill, self.reconstruct]:
+        for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.simulateNoise, self.compileKspace, self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
         for p in [self.param.FOVF, self.param.FOVP, self.param.matrixF, self.param.matrixP, self.param.reconMatrixF, self.param.reconMatrixP]:
             if ' x' in p.label:
@@ -533,7 +533,7 @@ class MRIsimulator(param.Parameterized):
     def _watch_fieldStrength(self):
         self.FWshift = pixelBW2shift(self.pixelBandWidth, self.fieldStrength)
         self.sequencePipeline.add(self.updateBWbounds)
-        for f in [self.updateSamplingTime, self.modulateKspace, self.addNoise, self.updatePDandT1w, self.compileKspace, self.zerofill, self.reconstruct]:
+        for f in [self.updateSamplingTime, self.modulateKspace, self.simulateNoise, self.updatePDandT1w, self.compileKspace, self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
         self._watch_FatSat() # since fatsat pulse duration depends on fieldStrength
     
@@ -542,7 +542,7 @@ class MRIsimulator(param.Parameterized):
     def _watch_pixelBandWidth(self):
         self.FWshift = pixelBW2shift(self.pixelBandWidth, self.fieldStrength)
         self.FOVbandwidth = pixelBW2FOVBW(self.pixelBandWidth, self.matrixF)
-        for f in [self.updateSamplingTime, self.modulateKspace, self.addNoise, self.compileKspace, self.zerofill, self.reconstruct]:
+        for f in [self.updateSamplingTime, self.modulateKspace, self.simulateNoise, self.compileKspace, self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
         for f in [self.setupReadout, self.updateMatrixFbounds, self.updateFOVFbounds, self.updateMatrixPbounds, self.updateFOVPbounds]:
             self.sequencePipeline.add(f)
@@ -559,7 +559,7 @@ class MRIsimulator(param.Parameterized):
 
     @param.depends('NSA', watch=True)
     def _watch_NSA(self):
-        for f in [self.updateSamplingTime, self.modulateKspace, self.addNoise, self.compileKspace, self.zerofill, self.reconstruct]:
+        for f in [self.updateSamplingTime, self.modulateKspace, self.simulateNoise, self.compileKspace, self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
 
 
@@ -936,7 +936,7 @@ class MRIsimulator(param.Parameterized):
                     self.kspaceComps[tissue + component] = self.plainKspaceComps[tissue] * dephasing * T2w
     
     
-    def addNoise(self):
+    def simulateNoise(self):
         self.noise = np.random.normal(0, self.noiseStd, self.oversampledMatrix) + 1j * np.random.normal(0, self.noiseStd, self.oversampledMatrix)
 
 
