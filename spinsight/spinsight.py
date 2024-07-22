@@ -44,8 +44,8 @@ FATRESONANCES = { 'Fat1':  {'shift': 0.9 - 4.7, 'ratio': .087, 'ratioWithFatSat'
 SEQUENCES = ['Spin Echo', 'Spoiled Gradient Echo', 'Inversion Recovery']
 
 PHANTOMS = {
-    'abdomen': {'FOV': (320, 400), 'matrix': (513, 641)}, # odd matrix to ensure kspace center is sampled (not required)
-    'brain': {'FOV': (188, 156), 'matrix': (601, 601)} # odd matrix to ensure kspace center is sampled (not required)
+    'abdomen': {'FOV': (320, 400), 'matrix': (513, 641), 'referenceTissue': 'spleen'}, # odd matrix to ensure kspace center is sampled (not required)
+    'brain': {'FOV': (188, 156), 'matrix': (601, 601), 'referenceTissue': 'gray'} # odd matrix to ensure kspace center is sampled (not required)
 }
 
 DIRECTIONS = {'anterior-posterior': 0, 'left-right': 1}
@@ -240,12 +240,12 @@ def getPDandT1w(component, seqType, TR, TE, TI, FA, B0):
 
 
 def updateBounds(curval, values, minval=None, maxval=None):
-        if minval is not None:
-            values = [val for val in values if not val < minval]
-        if maxval is not None:
-            values = [val for val in values if not val > maxval]
-        value = min(values, key=lambda x: abs(x-curval))
-        return values, value
+    if minval is not None:
+        values = [val for val in values if not val < minval]
+    if maxval is not None:
+        values = [val for val in values if not val > maxval]
+    value = min(values, key=lambda x: abs(x-curval))
+    return values, value
 
 
 def getBounds(minval, maxval, curval):
@@ -305,7 +305,6 @@ class MRIsimulator(param.Parameterized):
     showFOV = param.Boolean(default=False, label='Show FOV')
     noiseGain = param.Number(default=3.)
     SNR = param.Number(label='SNR')
-    referenceTissue = param.Selector(default='muscle')
     referenceSNR = param.Number(default=1, label='Reference SNR')
     relativeSNR = param.Number(label='Relative SNR [%]')
 
@@ -900,7 +899,7 @@ class MRIsimulator(param.Parameterized):
                 file = Path(phantomPath / tissue).with_suffix('.npy')
                 np.save(file, self.phantom['kspace'][tissue])
             print('DONE')
-    
+
 
     def sampleKspace(self):
         self.matrix = [self.matrixP, self.matrixF]
@@ -950,7 +949,8 @@ class MRIsimulator(param.Parameterized):
                     T2w = getT2w(component, decayTime, dephasingTime, self.fieldStrength)
                     dephasing = np.exp(2j*np.pi * GYRO * self.fieldStrength * resonance['shift'] * dephasingTime * 1e-3)
                     self.kspaceComps[tissue + component] = self.plainKspaceComps[tissue] * dephasing * T2w
-        self.decayedSignal = self.signal * np.take(T2w, np.argmin(np.abs(self.kAxes[self.freqDir])), axis=self.freqDir)[0]
+            if tissue==self.phantom['referenceTissue']:
+                self.decayedSignal = self.signal * np.take(T2w, np.argmin(np.abs(self.kAxes[self.freqDir])), axis=self.freqDir)[0]
     
     
     def simulateNoise(self):
@@ -992,7 +992,7 @@ class MRIsimulator(param.Parameterized):
                     tissue = component
                     ratio = 1.0
                 self.kspace += self.kspaceComps[component] * self.PDandT1w[tissue] * ratio
-        self.updateSNR(self.decayedSignal * np.abs(self.PDandT1w[self.referenceTissue]))
+        self.updateSNR(self.decayedSignal * np.abs(self.PDandT1w[self.phantom['referenceTissue']]))
 
     
     def zerofill(self):
