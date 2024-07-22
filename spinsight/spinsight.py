@@ -303,6 +303,7 @@ class MRIsimulator(param.Parameterized):
     FWshift = param.Number(default=pixelBW2shift(500), bounds=(pixelBW2shift(2000), pixelBW2shift(125)), precedence=-7, label='Fat/water shift [pixels]')
     NSA = param.Integer(default=1, bounds=(1, 16), precedence=8, label='NSA')
     showFOV = param.Boolean(default=False, label='Show FOV')
+    noiseGain = param.Number(default=3.)
     SNR = param.Number(label='SNR')
     referenceSNR = param.Number(label='Reference SNR')
     relativeSNR = param.Number(label='Relative SNR [%]')
@@ -918,14 +919,15 @@ class MRIsimulator(param.Parameterized):
         self.plainKspaceComps = resampleKspace(self.phantom, self.kAxes)
         
         # Lorenzian line shape to mimic slice thickness
-        sliceThicknessFilter = np.outer(*[np.exp(-self.sliceThickness * np.abs(ax)/2) for ax in self.kAxes])
-        for comp in self.plainKspaceComps:
-            self.plainKspaceComps[comp] *= sliceThicknessFilter
+        blurFactor = .5
+        sliceThicknessFilter = self.sliceThickness * np.outer(*[np.exp(-blurFactor * self.sliceThickness * np.abs(ax)) for ax in self.kAxes])
+        for tissue in self.plainKspaceComps:
+            self.plainKspaceComps[tissue] *= sliceThicknessFilter
     
 
     def updateSamplingTime(self):
         self.samplingTime = self.kAxes[self.freqDir] * self.FOV[self.freqDir] / self.matrix[self.freqDir] / self.pixelBandWidth * 1e3 # msec
-        self.noiseStd = 1. / np.sqrt(np.diff(self.samplingTime[:2]) * self.NSA * self.sliceThickness) / self.fieldStrength
+        self.noiseStd = self.noiseGain / np.sqrt(np.diff(self.samplingTime[:2]) * self.NSA) / self.fieldStrength
         self.samplingTime = np.expand_dims(self.samplingTime, axis=[dim for dim in range(len(self.matrix)) if dim != self.freqDir])
     
 
