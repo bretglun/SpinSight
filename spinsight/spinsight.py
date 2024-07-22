@@ -305,7 +305,8 @@ class MRIsimulator(param.Parameterized):
     showFOV = param.Boolean(default=False, label='Show FOV')
     noiseGain = param.Number(default=3.)
     SNR = param.Number(label='SNR')
-    referenceSNR = param.Number(label='Reference SNR')
+    referenceTissue = param.Selector(default='muscle')
+    referenceSNR = param.Number(default=1, label='Reference SNR')
     relativeSNR = param.Number(label='Relative SNR [%]')
 
     def __init__(self, **params):
@@ -923,6 +924,9 @@ class MRIsimulator(param.Parameterized):
         sliceThicknessFilter = self.sliceThickness * np.outer(*[np.exp(-blurFactor * self.sliceThickness * np.abs(ax)) for ax in self.kAxes])
         for tissue in self.plainKspaceComps:
             self.plainKspaceComps[tissue] *= sliceThicknessFilter
+        
+        # signal for SNR calculation
+        self.signal = np.sqrt(np.prod(self.oversampledMatrix)) * self.sliceThickness * np.prod(self.FOV)/np.prod(self.matrix)
     
 
     def updateSamplingTime(self):
@@ -946,6 +950,7 @@ class MRIsimulator(param.Parameterized):
                     T2w = getT2w(component, decayTime, dephasingTime, self.fieldStrength)
                     dephasing = np.exp(2j*np.pi * GYRO * self.fieldStrength * resonance['shift'] * dephasingTime * 1e-3)
                     self.kspaceComps[tissue + component] = self.plainKspaceComps[tissue] * dephasing * T2w
+        self.decayedSignal = self.signal * np.take(T2w, np.argmin(np.abs(self.kAxes[self.freqDir])), axis=self.freqDir)[0]
     
     
     def simulateNoise(self):
@@ -972,7 +977,6 @@ class MRIsimulator(param.Parameterized):
 
     def compileKspace(self):
         self.kspace = self.noise.copy()
-        self.referenceTissue = 'muscle'
         for component in self.kspaceComps:
             if 'Fat' in component:
                 tissue = component[:component.find('Fat')]
@@ -987,9 +991,8 @@ class MRIsimulator(param.Parameterized):
                 else:
                     tissue = component
                     ratio = 1.0
-                    if tissue == self.referenceTissue:
-                        self.updateSNR(np.max(np.abs(self.kspaceComps[tissue])) * self.PDandT1w[tissue])
                 self.kspace += self.kspaceComps[component] * self.PDandT1w[tissue] * ratio
+        self.updateSNR(self.decayedSignal * np.abs(self.PDandT1w[self.referenceTissue]))
 
     
     def zerofill(self):
