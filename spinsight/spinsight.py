@@ -409,7 +409,7 @@ class MRIsimulator(param.Parameterized):
             self.reconPipeline.add(f)
         minFOV = PHANTOMS[self.object]['FOV']
         if self.frequencyDirection=='left-right':
-            minFOV = minFOV[::-1]
+            minFOV = minFOV.reverse()
         self.FOVF = max(self.FOVF, minFOV[0])
         self.FOVP = max(self.FOVP, minFOV[1])
         self.reconPipeline.add(self.setReferenceSNR)
@@ -1241,7 +1241,7 @@ class MRIsimulator(param.Parameterized):
         FOV = (self.FOVP, self.FOVF)
         acqFOV = (self.FOVP * (1 + self.phaseOversampling/100), self.FOVF)
         if self.frequencyDirection == 'left-right':
-            FOV, acqFOV = FOV[::-1], acqFOV[::-1]
+            FOV, acqFOV = FOV.reverse(), acqFOV.reverse()
         return hv.Box(0, 0, acqFOV).opts(color='lightblue') * hv.Box(0, 0, FOV).opts(color='yellow')
 
 
