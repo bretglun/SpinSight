@@ -5,6 +5,7 @@
 *.jpeg
 *.jpg
 *.npy
+testSampling.py
 notes.md
 TODO.md
 deploy.sh
