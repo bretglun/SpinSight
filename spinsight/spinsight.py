@@ -299,7 +299,7 @@ class MRIsimulator(param.Parameterized):
     sliceThickness = param.Number(default=3, bounds=(0.5, 10), precedence=5, label='Slice thickness [mm]')
     frequencyDirection = param.ObjectSelector(default=list(DIRECTIONS.keys())[0], objects=DIRECTIONS.keys(), precedence=6, label='Frequency encoding direction')
     pixelBandWidth = param.Number(default=500, bounds=(125, 2000), precedence=7, label='Pixel bandwidth [Hz]')
-    FOVbandwidth = param.Number(default=45, bounds=(1, 600), precedence=-7, label='FOV bandwidth [±kHz]')
+    FOVbandwidth = param.Number(default=pixelBW2FOVBW(500, 180), bounds=(pixelBW2FOVBW(125, 180), pixelBW2FOVBW(2000, 180)), precedence=-7, label='FOV bandwidth [±kHz]')
     FWshift = param.Number(default=pixelBW2shift(500), bounds=(pixelBW2shift(2000), pixelBW2shift(125)), precedence=-7, label='Fat/water shift [pixels]')
     NSA = param.Integer(default=1, bounds=(1, 16), precedence=8, label='NSA')
     showFOV = param.Boolean(default=False, label='Show FOV')
@@ -436,6 +436,7 @@ class MRIsimulator(param.Parameterized):
                 self.param.pixelBandWidth.precedence = 7
             elif self.parameterStyle == 'GE':
                 self.param.FOVbandwidth.precedence = 7
+                self.updateMatrixFbounds()
 
 
     @param.depends('FOVF', watch=True)
@@ -475,6 +476,7 @@ class MRIsimulator(param.Parameterized):
 
     @param.depends('matrixF', watch=True)
     def _watch_matrixF(self):
+        self.param.FOVbandwidth.bounds = getBounds(pixelBW2FOVBW(self.param.pixelBandWidth.bounds[0], self.matrixF), pixelBW2FOVBW(self.param.pixelBandWidth.bounds[1], self.matrixF), self.FOVbandwidth)
         if self.parameterStyle == 'GE':
             self.pixelBandWidth = FOVBW2pixelBW(self.FOVbandwidth, self.matrixF)
         else:
@@ -482,7 +484,7 @@ class MRIsimulator(param.Parameterized):
         self.voxelF = min(self.param.voxelF.objects, key=lambda x: abs(x-self.FOVF/self.matrixF))
         for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.simulateNoise, self.compileKspace, self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
-        for f in [self.setupReadout, self.updateBWbounds, self.updateFOVFbounds]:
+        for f in [self.setupReadout, self.updateBWbounds, self.updateMatrixFbounds, self.updateFOVFbounds]:
             self.sequencePipeline.add(f)
         self.param.reconMatrixF.bounds = (self.matrixF, self.param.reconMatrixF.bounds[1])
         self.reconMatrixF = min(max(int(self.matrixF * self.recAcqRatioF), self.matrixF), self.param.reconMatrixF.bounds[1])
