@@ -307,6 +307,7 @@ class MRIsimulator(param.Parameterized):
     SNR = param.Number(label='SNR')
     referenceSNR = param.Number(default=1, label='Reference SNR')
     relativeSNR = param.Number(label='Relative SNR [%]')
+    scantime = param.Number(label='Scan time [sec]')
 
     def __init__(self, **params):
         super().__init__(**params)
@@ -975,6 +976,11 @@ class MRIsimulator(param.Parameterized):
     def updateSNR(self, signal):
         self.SNR = signal / self.noiseStd[0]
         self.setRelativeSNR()
+    
+
+    def updateScantime(self):
+        nLines = np.prod([self.oversampledMatrix[dim] for dim in range(len(self.oversampledMatrix)) if dim!=self.freqDir])
+        self.scantime = nLines * self.NSA * self.TR * 1e-3 # scantime in seconds
 
 
     def compileKspace(self):
@@ -995,6 +1001,7 @@ class MRIsimulator(param.Parameterized):
                     ratio = 1.0
                 self.kspace += self.kspaceComps[component] * self.PDandT1w[tissue] * ratio
         self.updateSNR(self.decayedSignal * np.abs(self.PDandT1w[self.phantom['referenceTissue']]))
+        self.updateScantime()
 
     
     def zerofill(self):
@@ -1300,6 +1307,7 @@ def getApp():
     geometryParams = pn.panel(explorer.param, parameters=['FOVF', 'FOVP', 'phaseOversampling', 'voxelF', 'voxelP', 'matrixF', 'matrixP', 'reconVoxelF', 'reconVoxelP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness',  'frequencyDirection', 'pixelBandWidth', 'FOVbandwidth', 'FWshift', 'NSA'], widgets={'voxelF': pn.widgets.DiscreteSlider, 'voxelP': pn.widgets.DiscreteSlider, 'reconVoxelF': pn.widgets.DiscreteSlider, 'reconVoxelP': pn.widgets.DiscreteSlider}, name='Geometry')
     
     infoPane = pn.Row(infoNumber(name='Relative SNR', format='{value:.0f}%', value=explorer.param.relativeSNR),
+                      infoNumber(name='Scan time', format=('{value:.1f} sec'), value=explorer.param.scantime),
                       infoNumber(name='Fat/water shift', format='{value:.2f} pixels', value=explorer.param.FWshift),
                       infoNumber(name='Bandwidth', format='{value:.0f} Hz/pixel', value=explorer.param.pixelBandWidth))
 
