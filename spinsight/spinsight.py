@@ -542,8 +542,8 @@ class MRIsimulator(param.Parameterized):
 
     @param.depends('fieldStrength', watch=True)
     def _watch_fieldStrength(self):
+        self.updateBWbounds()
         self.FWshift = pixelBW2shift(self.pixelBandWidth, self.fieldStrength)
-        self.sequencePipeline.add(self.updateBWbounds)
         for f in [self.updateSamplingTime, self.modulateKspace, self.simulateNoise, self.updatePDandT1w, self.compileKspace, self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
         self._watch_FatSat() # since fatsat pulse duration depends on fieldStrength
