@@ -487,8 +487,8 @@ class MRIsimulator(param.Parameterized):
         for f in [self.setupReadout, self.updateBWbounds, self.updateMatrixFbounds, self.updateFOVFbounds]:
             self.sequencePipeline.add(f)
         self.param.reconMatrixF.bounds = (self.matrixF, self.param.reconMatrixF.bounds[1])
-        self.reconMatrixF = min(max(int(self.matrixF * self.recAcqRatioF), self.matrixF), self.param.reconMatrixF.bounds[1])
         self.updateReconVoxelFobjects()
+        self.reconMatrixF = min(max(int(np.round(self.matrixF * self.recAcqRatioF)), self.matrixF), self.param.reconMatrixF.bounds[1])
     
     
     @param.depends('matrixP', watch=True)
@@ -499,8 +499,8 @@ class MRIsimulator(param.Parameterized):
         for f in [self.setupPhaser, self.updateFOVPbounds]:
             self.sequencePipeline.add(f)
         self.param.reconMatrixP.bounds = (self.matrixP, self.param.reconMatrixP.bounds[1])
-        self.reconMatrixP = min(max(int(self.matrixP * self.recAcqRatioP), self.matrixP), self.param.reconMatrixP.bounds[1])
         self.updateReconVoxelPobjects()
+        self.reconMatrixP = min(max(int(np.round(self.matrixP * self.recAcqRatioP)), self.matrixP), self.param.reconMatrixP.bounds[1])
 
 
     @param.depends('voxelF', watch=True)
@@ -832,11 +832,11 @@ class MRIsimulator(param.Parameterized):
 
 
     def updateReconVoxelFobjects(self):
-        self.param.reconVoxelF.objects = [float('{:.4g}'.format(self.FOVF/matrix)) for matrix in range(*self.param.reconMatrixF.bounds[::-1], -1)]
+        self.param.reconVoxelF.objects = [float('{:.4g}'.format(self.FOVF/matrix)) for matrix in range(self.param.reconMatrixF.bounds[1], self.param.reconMatrixF.bounds[0]-1, -1)]
 
 
     def updateReconVoxelPobjects(self):
-        self.param.reconVoxelP.objects = [float('{:.4g}'.format(self.FOVP/matrix)) for matrix in range(*self.param.reconMatrixP.bounds[::-1], -1)]
+        self.param.reconVoxelP.objects = [float('{:.4g}'.format(self.FOVP/matrix)) for matrix in range(self.param.reconMatrixP.bounds[1], self.param.reconMatrixP.bounds[0]-1, -1)]
 
 
     def updateSliceThicknessBounds(self):
