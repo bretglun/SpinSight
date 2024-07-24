@@ -273,6 +273,7 @@ def hideframe_hook(plot, elem):
 TRvalues = [float('{:.2g}'.format(tr)) for tr in 10.**np.linspace(0, 4, 500)]
 TEvalues = [float('{:.2g}'.format(te)) for te in 10.**np.linspace(0, 3, 500)]
 TIvalues = [float('{:.2g}'.format(ti)) for ti in 10.**np.linspace(0, 4, 500)]
+matrixValues = list(range(16, 601))
 
 
 class MRIsimulator(param.Parameterized):
@@ -290,8 +291,8 @@ class MRIsimulator(param.Parameterized):
     phaseOversampling = param.Number(default=0, bounds=(0, 100), precedence=2, label='Phase oversampling [%]')
     voxelP = param.Selector(default=1.333, precedence=-3, label='Voxel size x [mm]')
     voxelF = param.Selector(default=1.333, precedence=-3, label='Voxel size y [mm]')
-    matrixP = param.Integer(default=180, bounds=(16, 600), precedence=3, label='Acquisition matrix x')
-    matrixF = param.Integer(default=180, bounds=(16, 600), precedence=3, label='Acquisition matrix y')
+    matrixP = param.Selector(default=180, objects=matrixValues, precedence=3, label='Acquisition matrix x')
+    matrixF = param.Selector(default=180, objects=matrixValues, precedence=3, label='Acquisition matrix y')
     reconVoxelP = param.Selector(default=0.666, precedence=-4, label='Reconstructed voxel size x [mm]')
     reconVoxelF = param.Selector(default=0.666, precedence=-4, label='Reconstructed voxel size y [mm]')
     reconMatrixP = param.Integer(default=360, bounds=(matrixP.default, 1024), precedence=4, label='Reconstruction matrix x')
@@ -802,14 +803,14 @@ class MRIsimulator(param.Parameterized):
         if self.parameterStyle == 'GE':
             minMatrixF = max(minMatrixF, int(np.ceil(self.FOVbandwidth * 2e3 / self.param.pixelBandWidth.bounds[1])))
             maxMatrixF = min(maxMatrixF, int(np.floor(self.FOVbandwidth * 2e3 / self.param.pixelBandWidth.bounds[0])))
-        self.param.matrixF.bounds = getBounds(minMatrixF, maxMatrixF, self.matrixF)
+        self.param.matrixF.objects, _ = updateBounds(self.matrixF, matrixValues, minval=minMatrixF, maxval=maxMatrixF)
         self.updateVoxelFobjects()
         self.updateReconVoxelFobjects()
     
 
     def updateMatrixPbounds(self):
         maxMatrixP = int(self.getMaxPhaserArea() * 2e-3 * self.FOVP * GYRO)
-        self.param.matrixP.bounds = getBounds(16, min(maxMatrixP, 600), self.matrixP)
+        self.param.matrixP.objects, _ = updateBounds(self.matrixP, matrixValues, maxval=maxMatrixP)
         self.updateVoxelPobjects()
         self.updateReconVoxelPobjects()
 
@@ -825,11 +826,11 @@ class MRIsimulator(param.Parameterized):
 
 
     def updateVoxelFobjects(self):
-        self.param.voxelF.objects = [float('{:.4g}'.format(self.FOVF/matrix)) for matrix in range(*self.param.matrixF.bounds[::-1], -1)]
+        self.param.voxelF.objects = [float('{:.4g}'.format(self.FOVF/matrix)) for matrix in self.param.matrixF.objects[::-1]]
 
 
     def updateVoxelPobjects(self):
-        self.param.voxelP.objects = [float('{:.4g}'.format(self.FOVP/matrix)) for matrix in range(*self.param.matrixP.bounds[::-1], -1)]
+        self.param.voxelP.objects = [float('{:.4g}'.format(self.FOVP/matrix)) for matrix in self.param.matrixP.objects[::-1]]
 
 
     def updateReconVoxelFobjects(self):
@@ -1304,7 +1305,7 @@ def getApp():
     author = '*Written by [Johan Berglund](mailto:johan.berglund@akademiska.se), Ph.D.*'
     settingsParams = pn.panel(explorer.param, parameters=['object', 'fieldStrength', 'parameterStyle'], name='Settings')
     contrastParams = pn.panel(explorer.param, parameters=['sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI'], widgets={'TR': pn.widgets.DiscreteSlider, 'TE': pn.widgets.DiscreteSlider, 'TI': pn.widgets.DiscreteSlider}, name='Contrast')
-    geometryParams = pn.panel(explorer.param, parameters=['FOVF', 'FOVP', 'phaseOversampling', 'voxelF', 'voxelP', 'matrixF', 'matrixP', 'reconVoxelF', 'reconVoxelP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness',  'frequencyDirection', 'pixelBandWidth', 'FOVbandwidth', 'FWshift', 'NSA'], widgets={'voxelF': pn.widgets.DiscreteSlider, 'voxelP': pn.widgets.DiscreteSlider, 'reconVoxelF': pn.widgets.DiscreteSlider, 'reconVoxelP': pn.widgets.DiscreteSlider}, name='Geometry')
+    geometryParams = pn.panel(explorer.param, parameters=['FOVF', 'FOVP', 'phaseOversampling', 'voxelF', 'voxelP', 'matrixF', 'matrixP', 'reconVoxelF', 'reconVoxelP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness',  'frequencyDirection', 'pixelBandWidth', 'FOVbandwidth', 'FWshift', 'NSA'], widgets={'matrixF': pn.widgets.DiscreteSlider, 'matrixP': pn.widgets.DiscreteSlider, 'voxelF': pn.widgets.DiscreteSlider, 'voxelP': pn.widgets.DiscreteSlider, 'reconVoxelF': pn.widgets.DiscreteSlider, 'reconVoxelP': pn.widgets.DiscreteSlider}, name='Geometry')
     
     infoPane = pn.Row(infoNumber(name='Relative SNR', format='{value:.0f}%', value=explorer.param.relativeSNR),
                       infoNumber(name='Scan time', format=('{value:.1f} sec'), value=explorer.param.scantime),
