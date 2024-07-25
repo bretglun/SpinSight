@@ -288,7 +288,7 @@ class MRIsimulator(param.Parameterized):
     TI = param.Selector(default=40, objects=TIvalues, precedence=-1, label='TI [msec]')
     FOVP = param.Number(default=240, bounds=(100, 600), precedence=1, label='FOV x [mm]')
     FOVF = param.Number(default=240, bounds=(100, 600), precedence=1, label='FOV y [mm]')
-    phaseOversampling = param.Number(default=0, bounds=(0, 100), precedence=2, label='Phase oversampling [%]')
+    phaseOversampling = param.Number(default=0, bounds=(0, 100), step=1., precedence=2, label='Phase oversampling [%]')
     voxelP = param.Selector(default=1.333, precedence=-3, label='Voxel size x [mm]')
     voxelF = param.Selector(default=1.333, precedence=-3, label='Voxel size y [mm]')
     matrixP = param.Selector(default=180, objects=matrixValues, precedence=3, label='Acquisition matrix x')
@@ -940,10 +940,15 @@ class MRIsimulator(param.Parameterized):
         if self.freqDir==0:
             self.matrix.reverse()
             self.FOV.reverse()
+
+        self.num_shots = int(np.ceil(self.matrix[self.phaseDir] * (1 + self.phaseOversampling / 100) * self.partialFourier / self.turboFactor / self.EPIfactor))
+        self.num_measured_lines = self.num_shots * self.turboFactor * self.EPIfactor
         
-        self.oversampledMatrix = self.matrix.copy() # account for oversampling in frequency encoding direction
-        self.oversampledMatrix[self.phaseDir] = int(np.ceil((1 + self.phaseOversampling / 100) * self.matrix[self.phaseDir]))
-        if self.FOV[self.freqDir] < self.phantom['FOV'][self.freqDir]: # At least Nyquist sampling in frequency encoding direction
+        self.oversampledMatrix = self.matrix.copy() # account for oversampling
+        # phase encoding direction: oversampling may be higher than prescribed since num_shots must be integer
+        self.oversampledMatrix[self.phaseDir] = int(np.ceil(self.num_measured_lines / self.partialFourier))
+        # frequency encoding direction: at least Nyquist sampling wrt phantom
+        if self.FOV[self.freqDir] < self.phantom['FOV'][self.freqDir]:
             self.oversampledMatrix[self.freqDir] = int(np.ceil(self.phantom['FOV'][self.freqDir] * self.matrix[self.freqDir] / self.FOV[self.freqDir]))
         
         self.kAxes = [getKaxis(self.oversampledMatrix[dim], self.FOV[dim]/self.matrix[dim]) for dim in range(len(self.matrix))]
@@ -956,8 +961,8 @@ class MRIsimulator(param.Parameterized):
             self.plainKspaceComps[tissue] *= sliceThicknessFilter
         
         # signal for SNR calculation
-        self.signal = np.sqrt(np.prod(self.oversampledMatrix)) * self.sliceThickness * np.prod(self.FOV)/np.prod(self.matrix)
-    
+        self.signal = np.sqrt(self.oversampledMatrix[self.freqDir] * self.num_measured_lines) * self.sliceThickness * np.prod(self.FOV)/np.prod(self.matrix)
+
 
     def updateSamplingTime(self):
         self.samplingTime = self.kAxes[self.freqDir] * self.FOV[self.freqDir] / self.matrix[self.freqDir] / self.pixelBandWidth * 1e3 # msec
@@ -1007,8 +1012,7 @@ class MRIsimulator(param.Parameterized):
     
 
     def updateScantime(self):
-        nLines = np.prod([self.oversampledMatrix[dim] for dim in range(len(self.oversampledMatrix)) if dim!=self.freqDir])
-        self.scantime = nLines * self.NSA * self.TR * 1e-3 # scantime in seconds
+        self.scantime = self.num_shots * self.NSA * self.TR * 1e-3 # scantime in seconds
 
 
     def compileKspace(self):
@@ -1037,9 +1041,8 @@ class MRIsimulator(param.Parameterized):
         if self.freqDir==0:
             self.reconMatrix.reverse()
         self.oversampledReconMatrix = self.reconMatrix.copy()
-        self.oversampledReconMatrix[self.phaseDir] = int(np.ceil((1 + self.phaseOversampling / 100) * self.reconMatrix[self.phaseDir]))
-        if self.FOV[self.freqDir] < self.phantom['FOV'][self.freqDir]: # At least Nyquist sampling in frequency encoding direction
-            self.oversampledReconMatrix[self.freqDir] = int(self.reconMatrix[self.freqDir] * self.oversampledMatrix[self.freqDir] / self.matrix[self.freqDir])
+        for dim in range(len(self.oversampledReconMatrix)):
+            self.oversampledReconMatrix[dim] = int(np.round(self.reconMatrix[dim] * self.oversampledMatrix[dim] / self.matrix[dim]))
         self.zerofilledkspace = zerofill(np.fft.ifftshift(self.kspace), self.oversampledReconMatrix)
     
     
@@ -1281,7 +1284,7 @@ class MRIsimulator(param.Parameterized):
 
     def getFOVbox(self):
         FOV = (self.FOVP, self.FOVF)
-        acqFOV = (self.FOVP * (1 + self.phaseOversampling/100), self.FOVF)
+        acqFOV = (self.FOVP * self.oversampledMatrix[self.phaseDir] / self.matrix[self.phaseDir], self.FOVF)
         if self.frequencyDirection == 'left-right':
             FOV, acqFOV = FOV.reverse(), acqFOV.reverse()
         return hv.Box(0, 0, acqFOV).opts(color='lightblue') * hv.Box(0, 0, FOV).opts(color='yellow')
