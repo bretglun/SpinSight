@@ -299,10 +299,13 @@ class MRIsimulator(param.Parameterized):
     reconMatrixF = param.Integer(default=360, bounds=(matrixF.default, 1024), precedence=4, label='Reconstruction matrix y')
     sliceThickness = param.Number(default=3, bounds=(0.5, 10), precedence=5, label='Slice thickness [mm]')
     frequencyDirection = param.ObjectSelector(default=list(DIRECTIONS.keys())[0], objects=DIRECTIONS.keys(), precedence=6, label='Frequency encoding direction')
-    pixelBandWidth = param.Number(default=500, bounds=(125, 2000), precedence=7, label='Pixel bandwidth [Hz]')
-    FOVbandwidth = param.Number(default=pixelBW2FOVBW(500, 180), bounds=(pixelBW2FOVBW(125, 180), pixelBW2FOVBW(2000, 180)), precedence=-7, label='FOV bandwidth [±kHz]')
-    FWshift = param.Number(default=pixelBW2shift(500), bounds=(pixelBW2shift(2000), pixelBW2shift(125)), precedence=-7, label='Fat/water shift [pixels]')
-    NSA = param.Integer(default=1, bounds=(1, 16), precedence=8, label='NSA')
+    pixelBandWidth = param.Number(default=500, bounds=(125, 2000), precedence=1, label='Pixel bandwidth [Hz]')
+    FOVbandwidth = param.Number(default=pixelBW2FOVBW(500, 180), bounds=(pixelBW2FOVBW(125, 180), pixelBW2FOVBW(2000, 180)), precedence=-1, label='FOV bandwidth [±kHz]')
+    FWshift = param.Number(default=pixelBW2shift(500), bounds=(pixelBW2shift(2000), pixelBW2shift(125)), precedence=-1, label='Fat/water shift [pixels]')
+    NSA = param.Integer(default=1, bounds=(1, 16), precedence=2, label='NSA')
+    partialFourier = param.Number(default=1, bounds=(.6, 1), step=0.01, precedence=3, label='Partial Fourier factor')
+    turboFactor = param.Integer(default=1, bounds=(1, 64), precedence=4, label='Turbo factor')
+    EPIfactor = param.Integer(default=1, bounds=(1, 64), precedence=5, label='EPI factor')
     showFOV = param.Boolean(default=False, label='Show FOV')
     noiseGain = param.Number(default=3.)
     SNR = param.Number(label='SNR')
@@ -576,6 +579,30 @@ class MRIsimulator(param.Parameterized):
     def _watch_NSA(self):
         for f in [self.updateSamplingTime, self.modulateKspace, self.simulateNoise, self.compileKspace, self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
+
+
+    @param.depends('partialFourier', watch=True)
+    def _watch_partialFourier(self):
+        for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.simulateNoise, self.compileKspace, self.zerofill, self.reconstruct]:
+            self.reconPipeline.add(f)
+        for f in []:
+            self.sequencePipeline.add(f)
+
+
+    @param.depends('turboFactor', watch=True)
+    def _watch_turboFactor(self):
+        for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.simulateNoise, self.compileKspace, self.zerofill, self.reconstruct]:
+            self.reconPipeline.add(f)
+        for f in []:
+            self.sequencePipeline.add(f)
+
+
+    @param.depends('EPIfactor', watch=True)
+    def _watch_EPIfactor(self):
+        for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.simulateNoise, self.compileKspace, self.zerofill, self.reconstruct]:
+            self.reconPipeline.add(f)
+        for f in []:
+            self.sequencePipeline.add(f)
 
 
     @param.depends('sequence', watch=True)
@@ -1231,7 +1258,7 @@ class MRIsimulator(param.Parameterized):
         self.renderTRspan('RF')
     
     
-    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'NSA')
+    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor')
     def getKspace(self):
         if self.render:
             self.runReconPipeline()
@@ -1260,7 +1287,7 @@ class MRIsimulator(param.Parameterized):
         return hv.Box(0, 0, acqFOV).opts(color='lightblue') * hv.Box(0, 0, FOV).opts(color='yellow')
 
 
-    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'showFOV')
+    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor', 'showFOV')
     def getImage(self):
         if self.render:
             self.runReconPipeline()
@@ -1305,7 +1332,8 @@ def getApp():
     author = '*Written by [Johan Berglund](mailto:johan.berglund@akademiska.se), Ph.D.*'
     settingsParams = pn.panel(explorer.param, parameters=['object', 'fieldStrength', 'parameterStyle'], name='Settings')
     contrastParams = pn.panel(explorer.param, parameters=['sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI'], widgets={'TR': pn.widgets.DiscreteSlider, 'TE': pn.widgets.DiscreteSlider, 'TI': pn.widgets.DiscreteSlider}, name='Contrast')
-    geometryParams = pn.panel(explorer.param, parameters=['FOVF', 'FOVP', 'phaseOversampling', 'voxelF', 'voxelP', 'matrixF', 'matrixP', 'reconVoxelF', 'reconVoxelP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness',  'frequencyDirection', 'pixelBandWidth', 'FOVbandwidth', 'FWshift', 'NSA'], widgets={'matrixF': pn.widgets.DiscreteSlider, 'matrixP': pn.widgets.DiscreteSlider, 'voxelF': pn.widgets.DiscreteSlider, 'voxelP': pn.widgets.DiscreteSlider, 'reconVoxelF': pn.widgets.DiscreteSlider, 'reconVoxelP': pn.widgets.DiscreteSlider}, name='Geometry')
+    geometryParams = pn.panel(explorer.param, parameters=['FOVF', 'FOVP', 'phaseOversampling', 'voxelF', 'voxelP', 'matrixF', 'matrixP', 'reconVoxelF', 'reconVoxelP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness',  'frequencyDirection'], widgets={'matrixF': pn.widgets.DiscreteSlider, 'matrixP': pn.widgets.DiscreteSlider, 'voxelF': pn.widgets.DiscreteSlider, 'voxelP': pn.widgets.DiscreteSlider, 'reconVoxelF': pn.widgets.DiscreteSlider, 'reconVoxelP': pn.widgets.DiscreteSlider}, name='Geometry')
+    sequenceParams = pn.panel(explorer.param, parameters=['pixelBandWidth', 'FOVbandwidth', 'FWshift', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor'], name='Sequence')
     
     infoPane = pn.Row(infoNumber(name='Relative SNR', format='{value:.0f}%', value=explorer.param.relativeSNR),
                       infoNumber(name='Scan time', format=('{value:.1f} sec'), value=explorer.param.scantime),
@@ -1321,5 +1349,5 @@ def getApp():
     kSpaceButton.on_click(partial(hideShowButtonCallback, dmapKspace))
     resetSNRbutton = pn.widgets.Button(name='Set reference SNR')
     resetSNRbutton.on_click(explorer.setReferenceSNR)
-    dashboard = pn.Column(pn.Row(pn.Column(pn.pane.Markdown(title), pn.Row(pn.Column(settingsParams, pn.Row(sequenceButton, kSpaceButton), contrastParams), geometryParams)), pn.Column(dmapMRimage, pn.Column(explorer.param.showFOV, infoPane, resetSNRbutton)), dmapKspace), dmapSequence, pn.pane.Markdown(author))
+    dashboard = pn.Column(pn.Row(pn.Column(pn.pane.Markdown(title), pn.Row(pn.Column(settingsParams, pn.Row(sequenceButton, kSpaceButton), contrastParams), pn.Column(geometryParams, sequenceParams))), pn.Column(dmapMRimage, pn.Column(explorer.param.showFOV, infoPane, resetSNRbutton)), dmapKspace), dmapSequence, pn.pane.Markdown(author))
     return dashboard
