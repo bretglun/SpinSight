@@ -280,32 +280,36 @@ class MRIsimulator(param.Parameterized):
     object = param.ObjectSelector(default='brain', objects=PHANTOMS.keys(), label='Phantom object')
     fieldStrength = param.ObjectSelector(default=1.5, objects=[1.5, 3.0], label='B0 field strength [T]')
     parameterStyle = param.ObjectSelector(default='Siemens', objects=['Siemens', 'Philips', 'GE'], label='Parameter Style')
-    sequence = param.ObjectSelector(default=SEQUENCES[0], objects=SEQUENCES, label='Pulse sequence')
+    
     FatSat = param.Boolean(default=False, label='Fat saturation')
     TR = param.Selector(default=10000, objects=TRvalues, label='TR [msec]')
     TE = param.Selector(default=10, objects=TEvalues, label='TE [msec]')
     FA = param.Number(default=90.0, bounds=(1, 90.0), precedence=-1, label='Flip angle [°]')
     TI = param.Selector(default=40, objects=TIvalues, precedence=-1, label='TI [msec]')
-    FOVP = param.Number(default=240, bounds=(100, 600), precedence=1, label='FOV x [mm]')
-    FOVF = param.Number(default=240, bounds=(100, 600), precedence=1, label='FOV y [mm]')
-    phaseOversampling = param.Number(default=0, bounds=(0, 100), step=1., precedence=2, label='Phase oversampling [%]')
-    voxelP = param.Selector(default=1.333, precedence=-3, label='Voxel size x [mm]')
-    voxelF = param.Selector(default=1.333, precedence=-3, label='Voxel size y [mm]')
-    matrixP = param.Selector(default=180, objects=matrixValues, precedence=3, label='Acquisition matrix x')
-    matrixF = param.Selector(default=180, objects=matrixValues, precedence=3, label='Acquisition matrix y')
-    reconVoxelP = param.Selector(default=0.666, precedence=-4, label='Reconstructed voxel size x [mm]')
-    reconVoxelF = param.Selector(default=0.666, precedence=-4, label='Reconstructed voxel size y [mm]')
-    reconMatrixP = param.Integer(default=360, bounds=(matrixP.default, 1024), precedence=4, label='Reconstruction matrix x')
-    reconMatrixF = param.Integer(default=360, bounds=(matrixF.default, 1024), precedence=4, label='Reconstruction matrix y')
-    sliceThickness = param.Number(default=3, bounds=(0.5, 10), precedence=5, label='Slice thickness [mm]')
-    frequencyDirection = param.ObjectSelector(default=list(DIRECTIONS.keys())[0], objects=DIRECTIONS.keys(), precedence=6, label='Frequency encoding direction')
-    pixelBandWidth = param.Number(default=500, bounds=(125, 2000), precedence=1, label='Pixel bandwidth [Hz]')
-    FOVbandwidth = param.Number(default=pixelBW2FOVBW(500, 180), bounds=(pixelBW2FOVBW(125, 180), pixelBW2FOVBW(2000, 180)), precedence=-1, label='FOV bandwidth [±kHz]')
-    FWshift = param.Number(default=pixelBW2shift(500), bounds=(pixelBW2shift(2000), pixelBW2shift(125)), precedence=-1, label='Fat/water shift [pixels]')
-    NSA = param.Integer(default=1, bounds=(1, 16), precedence=2, label='NSA')
-    partialFourier = param.Number(default=1, bounds=(.6, 1), step=0.01, precedence=3, label='Partial Fourier factor')
-    turboFactor = param.Integer(default=1, bounds=(1, 64), precedence=4, label='Turbo factor')
-    EPIfactor = param.Integer(default=1, bounds=(1, 64), precedence=5, label='EPI factor')
+    
+    frequencyDirection = param.ObjectSelector(default=list(DIRECTIONS.keys())[0], objects=DIRECTIONS.keys(), precedence=1, label='Frequency encoding direction')
+    FOVP = param.Number(default=240, bounds=(100, 600), precedence=2, label='FOV x [mm]')
+    FOVF = param.Number(default=240, bounds=(100, 600), precedence=2, label='FOV y [mm]')
+    phaseOversampling = param.Number(default=0, bounds=(0, 100), step=1., precedence=3, label='Phase oversampling [%]')
+    voxelP = param.Selector(default=1.333, precedence=-4, label='Voxel size x [mm]')
+    voxelF = param.Selector(default=1.333, precedence=-4, label='Voxel size y [mm]')
+    matrixP = param.Selector(default=180, objects=matrixValues, precedence=4, label='Acquisition matrix x')
+    matrixF = param.Selector(default=180, objects=matrixValues, precedence=4, label='Acquisition matrix y')
+    reconVoxelP = param.Selector(default=0.666, precedence=-5, label='Reconstructed voxel size x [mm]')
+    reconVoxelF = param.Selector(default=0.666, precedence=-5, label='Reconstructed voxel size y [mm]')
+    reconMatrixP = param.Integer(default=360, bounds=(matrixP.default, 1024), precedence=5, label='Reconstruction matrix x')
+    reconMatrixF = param.Integer(default=360, bounds=(matrixF.default, 1024), precedence=5, label='Reconstruction matrix y')
+    sliceThickness = param.Number(default=3, bounds=(0.5, 10), precedence=6, label='Slice thickness [mm]')
+    
+    sequence = param.ObjectSelector(default=SEQUENCES[0], objects=SEQUENCES, precedence=1, label='Pulse sequence')
+    pixelBandWidth = param.Number(default=500, bounds=(125, 2000), precedence=2, label='Pixel bandwidth [Hz]')
+    FOVbandwidth = param.Number(default=pixelBW2FOVBW(500, 180), bounds=(pixelBW2FOVBW(125, 180), pixelBW2FOVBW(2000, 180)), precedence=-2, label='FOV bandwidth [±kHz]')
+    FWshift = param.Number(default=pixelBW2shift(500), bounds=(pixelBW2shift(2000), pixelBW2shift(125)), precedence=-2, label='Fat/water shift [pixels]')
+    NSA = param.Integer(default=1, bounds=(1, 16), precedence=3, label='NSA')
+    partialFourier = param.Number(default=1, bounds=(.6, 1), step=0.01, precedence=4, label='Partial Fourier factor')
+    turboFactor = param.Integer(default=1, bounds=(1, 64), precedence=5, label='Turbo factor')
+    EPIfactor = param.Integer(default=1, bounds=(1, 64), precedence=6, label='EPI factor')
+    
     showFOV = param.Boolean(default=False, label='Show FOV')
     noiseGain = param.Number(default=3.)
     SNR = param.Number(label='SNR')
@@ -427,20 +431,20 @@ class MRIsimulator(param.Parameterized):
         for param in [self.param.voxelF, self.param.voxelP, self.param.matrixF, self.param.matrixP, self.param.reconVoxelF, self.param.reconVoxelP, self.param.reconMatrixF, self.param.reconMatrixP, self.param.pixelBandWidth, self.param.FOVbandwidth, self.param.FWshift]:
             param.precedence = -1
         if self.parameterStyle == 'Philips':
-            self.param.voxelF.precedence = 3
-            self.param.voxelP.precedence = 3
-            self.param.reconVoxelF.precedence = 4
-            self.param.reconVoxelP.precedence = 4
-            self.param.FWshift.precedence = 7
+            self.param.voxelF.precedence = 4
+            self.param.voxelP.precedence = 4
+            self.param.reconVoxelF.precedence = 5
+            self.param.reconVoxelP.precedence = 5
+            self.param.FWshift.precedence = 2
         else:
-            self.param.matrixF.precedence = 3
-            self.param.matrixP.precedence = 3
-            self.param.reconMatrixF.precedence = 4
-            self.param.reconMatrixP.precedence = 4
+            self.param.matrixF.precedence = 4
+            self.param.matrixP.precedence = 4
+            self.param.reconMatrixF.precedence = 5
+            self.param.reconMatrixP.precedence = 5
             if self.parameterStyle == 'Siemens':
-                self.param.pixelBandWidth.precedence = 7
+                self.param.pixelBandWidth.precedence = 2
             elif self.parameterStyle == 'GE':
-                self.param.FOVbandwidth.precedence = 7
+                self.param.FOVbandwidth.precedence = 2
                 self.updateMatrixFbounds()
 
 
@@ -1334,9 +1338,9 @@ def getApp():
     title = '# SpinSight MRI simulator'
     author = '*Written by [Johan Berglund](mailto:johan.berglund@akademiska.se), Ph.D.*'
     settingsParams = pn.panel(explorer.param, parameters=['object', 'fieldStrength', 'parameterStyle'], name='Settings')
-    contrastParams = pn.panel(explorer.param, parameters=['sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI'], widgets={'TR': pn.widgets.DiscreteSlider, 'TE': pn.widgets.DiscreteSlider, 'TI': pn.widgets.DiscreteSlider}, name='Contrast')
-    geometryParams = pn.panel(explorer.param, parameters=['FOVF', 'FOVP', 'phaseOversampling', 'voxelF', 'voxelP', 'matrixF', 'matrixP', 'reconVoxelF', 'reconVoxelP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness',  'frequencyDirection'], widgets={'matrixF': pn.widgets.DiscreteSlider, 'matrixP': pn.widgets.DiscreteSlider, 'voxelF': pn.widgets.DiscreteSlider, 'voxelP': pn.widgets.DiscreteSlider, 'reconVoxelF': pn.widgets.DiscreteSlider, 'reconVoxelP': pn.widgets.DiscreteSlider}, name='Geometry')
-    sequenceParams = pn.panel(explorer.param, parameters=['pixelBandWidth', 'FOVbandwidth', 'FWshift', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor'], name='Sequence')
+    contrastParams = pn.panel(explorer.param, parameters=['FatSat', 'TR', 'TE', 'FA', 'TI'], widgets={'TR': pn.widgets.DiscreteSlider, 'TE': pn.widgets.DiscreteSlider, 'TI': pn.widgets.DiscreteSlider}, name='Contrast')
+    geometryParams = pn.panel(explorer.param, parameters=['frequencyDirection', 'FOVF', 'FOVP', 'phaseOversampling', 'voxelF', 'voxelP', 'matrixF', 'matrixP', 'reconVoxelF', 'reconVoxelP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness'], widgets={'matrixF': pn.widgets.DiscreteSlider, 'matrixP': pn.widgets.DiscreteSlider, 'voxelF': pn.widgets.DiscreteSlider, 'voxelP': pn.widgets.DiscreteSlider, 'reconVoxelF': pn.widgets.DiscreteSlider, 'reconVoxelP': pn.widgets.DiscreteSlider}, name='Geometry')
+    sequenceParams = pn.panel(explorer.param, parameters=['sequence', 'pixelBandWidth', 'FOVbandwidth', 'FWshift', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor'], name='Sequence')
     
     infoPane = pn.Row(infoNumber(name='Relative SNR', format='{value:.0f}%', value=explorer.param.relativeSNR),
                       infoNumber(name='Scan time', format=('{value:.1f} sec'), value=explorer.param.scantime),
@@ -1352,5 +1356,32 @@ def getApp():
     kSpaceButton.on_click(partial(hideShowButtonCallback, dmapKspace))
     resetSNRbutton = pn.widgets.Button(name='Set reference SNR')
     resetSNRbutton.on_click(explorer.setReferenceSNR)
-    dashboard = pn.Column(pn.Row(pn.Column(pn.pane.Markdown(title), pn.Row(pn.Column(settingsParams, pn.Row(sequenceButton, kSpaceButton), contrastParams), pn.Column(geometryParams, sequenceParams))), pn.Column(dmapMRimage, pn.Column(explorer.param.showFOV, infoPane, resetSNRbutton)), dmapKspace), dmapSequence, pn.pane.Markdown(author))
+    dashboard = pn.Column(
+        pn.Row(
+            pn.Column(
+                pn.pane.Markdown(title), 
+                pn.Row(
+                    pn.Column(
+                        settingsParams, 
+                        pn.Row(sequenceButton, kSpaceButton), 
+                        sequenceParams
+                    ), 
+                    pn.Column(
+                        contrastParams,
+                        geometryParams
+                    )
+                )
+            ), 
+            pn.Column(
+                dmapMRimage, 
+                pn.Column(
+                    pn.Row(resetSNRbutton, explorer.param.showFOV), 
+                    infoPane
+                )
+            ), 
+            dmapKspace
+        ), 
+        dmapSequence, 
+        pn.pane.Markdown(author)
+    )
     return dashboard
