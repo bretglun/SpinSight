@@ -269,6 +269,13 @@ def hideframe_hook(plot, elem):
     plot.handles['plot'].outline_line_color = None
 
 
+def flatten_dicts(list_of_dicts_and_lists):
+    res = []
+    for v in list_of_dicts_and_lists:
+        res += flatten_dicts(v) if isinstance(v, list) else [v]
+    return res
+
+
 TRvalues = [float('{:.2g}'.format(tr)) for tr in 10.**np.linspace(0, 4, 500)]
 TEvalues = [float('{:.2g}'.format(te)) for te in 10.**np.linspace(0, 3, 500)]
 TIvalues = [float('{:.2g}'.format(ti)) for ti in 10.**np.linspace(0, 4, 500)]
@@ -371,13 +378,13 @@ class MRIsimulator(param.Parameterized):
             self.setupInversion,
             self.setupFatSat,
             self.setupSliceSelection,
-            self.setupReadout,
+            self.setupReadouts,
             self.setupPhaser,
             self.setupSpoiler,
             self.placeRefocusing,
             self.placeInversion,
             self.placeFatSat,
-            self.placeReadout,
+            self.placeReadouts,
             self.placePhaser,
             self.placeSpoiler,
             self.updateMinTE,
@@ -460,7 +467,7 @@ class MRIsimulator(param.Parameterized):
         self.reconVoxelF = min(self.param.reconVoxelF.objects, key=lambda x: abs(x-self.FOVF/self.reconMatrixF))
         for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.simulateNoise, self.compileKspace, self.partialFourierRecon, self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
-        for f in [self.setupReadout, self.updateBWbounds, self.updateMatrixFbounds]:
+        for f in [self.setupReadouts, self.updateBWbounds, self.updateMatrixFbounds]:
             self.sequencePipeline.add(f)
     
 
@@ -494,7 +501,7 @@ class MRIsimulator(param.Parameterized):
         self.voxelF = min(self.param.voxelF.objects, key=lambda x: abs(x-self.FOVF/self.matrixF))
         for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.simulateNoise, self.compileKspace, self.partialFourierRecon, self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
-        for f in [self.setupReadout, self.updateBWbounds, self.updateMatrixFbounds, self.updateFOVFbounds]:
+        for f in [self.setupReadouts, self.updateBWbounds, self.updateMatrixFbounds, self.updateFOVFbounds]:
             self.sequencePipeline.add(f)
         self.param.reconMatrixF.bounds = (self.matrixF, self.param.reconMatrixF.bounds[1])
         self.updateReconVoxelFobjects()
@@ -567,7 +574,7 @@ class MRIsimulator(param.Parameterized):
         self.FOVbandwidth = pixelBW2FOVBW(self.pixelBandWidth, self.matrixF)
         for f in [self.updateSamplingTime, self.modulateKspace, self.simulateNoise, self.compileKspace, self.partialFourierRecon, self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
-        for f in [self.setupReadout, self.updateMatrixFbounds, self.updateFOVFbounds, self.updateMatrixPbounds, self.updateFOVPbounds]:
+        for f in [self.setupReadouts, self.updateMatrixFbounds, self.updateFOVFbounds, self.updateMatrixPbounds, self.updateFOVPbounds]:
             self.sequencePipeline.add(f)
     
     @param.depends('FWshift', watch=True)
@@ -598,7 +605,19 @@ class MRIsimulator(param.Parameterized):
     def _watch_turboFactor(self):
         for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.simulateNoise, self.compileKspace, self.partialFourierRecon, self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
-        for f in []:
+        for f in [  self.setupRefocusing,
+                    self.setupReadouts,
+                    self.setupPhaser,
+                    self.updateMinTE,
+                    self.updateMinTR,
+                    self.updateMaxTE,
+                    self.updateMaxTI,
+                    self.updateBWbounds,
+                    self.updateMatrixFbounds,
+                    self.updateMatrixPbounds,
+                    self.updateFOVFbounds, 
+                    self.updateFOVPbounds,
+                    self.updateSliceThicknessBounds]:
             self.sequencePipeline.add(f)
         self.updateEPIfactorObjects()
 
@@ -607,7 +626,18 @@ class MRIsimulator(param.Parameterized):
     def _watch_EPIfactor(self):
         for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.simulateNoise, self.compileKspace, self.partialFourierRecon, self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
-        for f in []:
+        for f in [  self.setupReadouts,
+                    self.setupPhaser,
+                    self.updateMinTE,
+                    self.updateMinTR,
+                    self.updateMaxTE,
+                    self.updateMaxTI,
+                    self.updateBWbounds,
+                    self.updateMatrixFbounds,
+                    self.updateMatrixPbounds,
+                    self.updateFOVFbounds, 
+                    self.updateFOVPbounds,
+                    self.updateSliceThicknessBounds]:
             self.sequencePipeline.add(f)
         self.updateTurboFactorBounds()
 
@@ -616,7 +646,7 @@ class MRIsimulator(param.Parameterized):
     def _watch_sequence(self):
         for f in [self.modulateKspace, self.updatePDandT1w, self.compileKspace, self.partialFourierRecon, self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
-        for f in [self.setupExcitation, self.setupRefocusing, self.setupInversion, self.placeReadout, self.placePhaser]:
+        for f in [self.setupExcitation, self.setupRefocusing, self.setupInversion, self.placeReadouts, self.placePhaser]:
             self.sequencePipeline.add(f)
         self.param.FA.precedence = 1 if self.sequence=='Spoiled Gradient Echo' else -1
         self.param.TI.precedence = 1 if self.sequence=='Inversion Recovery' else -1
@@ -637,7 +667,7 @@ class MRIsimulator(param.Parameterized):
     def _watch_TE(self):
         for f in [self.modulateKspace, self.updatePDandT1w, self.compileKspace, self.partialFourierRecon, self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
-        for f in [self.placeRefocusing, self.placeReadout, self.placePhaser, self.updateMatrixFbounds, self.updateFOVFbounds, self.updateMatrixPbounds, self.updateFOVPbounds]:
+        for f in [self.placeRefocusing, self.placeReadouts, self.placePhaser, self.updateMatrixFbounds, self.updateFOVFbounds, self.updateMatrixPbounds, self.updateFOVPbounds]:
             self.sequencePipeline.add(f)
     
 
@@ -709,18 +739,18 @@ class MRIsimulator(param.Parameterized):
                 self.boards['slice']['objects']['slice select excitation']['riseTime_f'] + self.boards['slice']['objects']['slice select rephaser']['dur_f'] + (self.boards['slice']['objects']['slice select refocusing']['riseTime_f']))
             leftSide += (self.boards['RF']['objects']['excitation']['dur_f'] + self.boards['RF']['objects']['refocusing']['dur_f']) / 2
             rightSide = max(
-                self.boards['frequency']['objects']['readout']['riseTime_f'],
+                self.boards['frequency']['objects']['readouts'][0][0]['riseTime_f'],
                 self.boards['phase']['objects']['phase encode']['dur_f'],
                 self.boards['slice']['objects']['slice select refocusing']['riseTime_f'])
-            rightSide += (self.boards['RF']['objects']['refocusing']['dur_f'] + self.boards['ADC']['objects']['sampling']['dur_f']) / 2
+            rightSide += (self.boards['RF']['objects']['refocusing']['dur_f'] + self.boards['ADC']['objects']['samplings'][0][0]['dur_f']) / 2
             self.minTE = max(leftSide, rightSide) * 2
         else:
             self.minTE = max(
-                self.boards['frequency']['objects']['read prephaser']['dur_f'] + self.boards['frequency']['objects']['readout']['riseTime_f'],
+                self.boards['frequency']['objects']['read prephaser']['dur_f'] + self.boards['frequency']['objects']['readouts'][0][0]['riseTime_f'],
                 self.boards['phase']['objects']['phase encode']['dur_f'],
                 self.boards['slice']['objects']['slice select excitation']['riseTime_f'] + self.boards['slice']['objects']['slice select rephaser']['dur_f']
             )
-            self.minTE += (self.boards['RF']['objects']['excitation']['dur_f'] + self.boards['ADC']['objects']['sampling']['dur_f']) / 2
+            self.minTE += (self.boards['RF']['objects']['excitation']['dur_f'] + self.boards['ADC']['objects']['samplings'][0][0]['dur_f']) / 2
         self.sequencePipeline.add(self.updateMaxTE)
     
     
@@ -745,7 +775,7 @@ class MRIsimulator(param.Parameterized):
     
     def getMaxPrephaserArea(self, readAmp):
         if isGradientEcho(self.sequence):
-            maxPrephaserDur =  self.TE - self.boards['ADC']['objects']['sampling']['dur_f']/2 - self.boards['RF']['objects']['excitation']['dur_f']/2 - readAmp/self.maxSlew
+            maxPrephaserDur =  self.TE - self.boards['ADC']['objects']['samplings'][0][0]['dur_f']/2 - self.boards['RF']['objects']['excitation']['dur_f']/2 - readAmp/self.maxSlew
         else:
             maxPrephaserDur =  self.TE/2 - self.boards['RF']['objects']['refocusing']['dur_f']/2 - self.boards['RF']['objects']['excitation']['dur_f']/2
         maxPrephaserFlatDur = maxPrephaserDur - (2 * self.maxAmp/self.maxSlew)
@@ -807,7 +837,7 @@ class MRIsimulator(param.Parameterized):
         if isGradientEcho(self.sequence):
             freeSpaceLeft = self.TE - self.boards['RF']['objects']['excitation']['dur_f']/2
             freeSpaceLeft -= max(
-                self.boards['frequency']['objects']['read prephaser']['dur_f'] + self.boards['frequency']['objects']['readout']['riseTime_f'], # TODO: consider maximum dur+risetime, not only current (difficult!)
+                self.boards['frequency']['objects']['read prephaser']['dur_f'] + self.boards['frequency']['objects']['readouts'][0][0]['riseTime_f'], # TODO: consider maximum dur+risetime, not only current (difficult!)
                 self.boards['phase']['objects']['phase encode']['dur_f'],
                 self.boards['slice']['objects']['slice select excitation']['riseTime_f'] + self.boards['slice']['objects']['slice select rephaser']['dur_f'])
             maxReadDurations.append(freeSpaceLeft*2)
@@ -897,7 +927,7 @@ class MRIsimulator(param.Parameterized):
         s = self.maxSlew
         d = self.boards['RF']['objects']['excitation']['dur_f']
         if isGradientEcho(self.sequence): # Constraint due to slice rephaser
-            t = self.boards['ADC']['objects']['sampling']['time'][0]
+            t = self.boards['ADC']['objects']['samplings'][0][0]['time'][0]
             h = s * (t - np.sqrt(t**2/2 + d**2/8))
             h = min(h, self.maxAmp)
             A = d * (np.sqrt((d*s+2*h)**2 - 8*h*(h-s*(t-d/2))) - d*s - 2*h) / 2
@@ -1172,15 +1202,24 @@ class MRIsimulator(param.Parameterized):
             self.sequencePipeline.add(f)
     
 
-    def setupReadout(self):
+    def setupReadouts(self):
         flatArea = self.matrixF / (self.FOVF/1e3 * GYRO) # uTs/m
         amp = self.pixelBandWidth * self.matrixF / (self.FOVF * GYRO) # mT/m
-        readout = sequence.getGradient('frequency', maxAmp=amp, flatArea=flatArea, name='readout')
-        self.boards['ADC']['objects']['sampling'] = sequence.getADC(dur=readout['flatDur_f'], name='sampling')
+        self.boards['frequency']['objects']['readouts'] = []
+        self.boards['ADC']['objects']['samplings'] = []
+        for rf_echo in range(self.turboFactor):
+            gr_echoes = []
+            samplings = []
+            for gr_echo in range(self.EPIfactor):
+                readout = sequence.getGradient('frequency', maxAmp=amp, flatArea=flatArea, name='readout r{} g{}'.format(rf_echo, gr_echo))
+                gr_echoes.append(readout)
+                adc = sequence.getADC(dur=readout['flatDur_f'], name='sampling r{} g{}'.format(rf_echo, gr_echo))
+                samplings.append(adc)
+            self.boards['frequency']['objects']['readouts'].append(gr_echoes)
+            self.boards['ADC']['objects']['samplings'].append(samplings)
         prephaser = sequence.getGradient('frequency', totalArea=readout['area_f']/2, name='read prephaser')        
-        self.boards['frequency']['objects']['readout'] = readout
         self.boards['frequency']['objects']['read prephaser'] = prephaser
-        self.sequencePipeline.add(self.placeReadout)
+        self.sequencePipeline.add(self.placeReadouts)
         self.sequencePipeline.add(self.updateMinTE)
     
     
@@ -1228,13 +1267,15 @@ class MRIsimulator(param.Parameterized):
             self.sequencePipeline.add(f)
     
 
-    def placeReadout(self):
-        sequence.moveWaveform(self.boards['frequency']['objects']['readout'], self.TE)
-        sequence.moveWaveform(self.boards['ADC']['objects']['sampling'], self.TE)
+    def placeReadouts(self):
+        for rf_echo in range(self.turboFactor):
+            for gr_echo in range(self.EPIfactor):
+                sequence.moveWaveform(self.boards['frequency']['objects']['readouts'][rf_echo][gr_echo], self.TE)
+                sequence.moveWaveform(self.boards['ADC']['objects']['samplings'][rf_echo][gr_echo], self.TE)
         if isGradientEcho(self.sequence):
             if self.boards['frequency']['objects']['read prephaser']['area_f'] > 0:
                 sequence.rescaleGradient(self.boards['frequency']['objects']['read prephaser'], -1)
-            prephaseTime = self.TE - sum([self.boards['frequency']['objects'][name]['dur_f'] for name in ['readout', 'read prephaser']])/2
+            prephaseTime = self.TE - sum([grad['dur_f'] for grad in [self.boards['frequency']['objects']['read prephaser'], self.boards['frequency']['objects']['readouts'][0][0]]])/2
         else:
             if self.boards['frequency']['objects']['read prephaser']['area_f'] < 0:
                 sequence.rescaleGradient(self.boards['frequency']['objects']['read prephaser'], -1)
@@ -1250,25 +1291,26 @@ class MRIsimulator(param.Parameterized):
         if isGradientEcho(self.sequence):
             phaserTime = (self.boards['RF']['objects']['excitation']['dur_f'] + phaserDur)/2
         else:
-            phaserTime = self.TE - (self.boards['frequency']['objects']['readout']['flatDur_f'] + phaserDur)/2
+            phaserTime = self.TE - (self.boards['frequency']['objects']['readouts'][0][0]['flatDur_f'] + phaserDur)/2
         sequence.moveWaveform(self.boards['phase']['objects']['phase encode'], phaserTime)
         self.sequencePipeline.add(self.renderPhaseBoard)
     
 
     def placeSpoiler(self):
-        spoilerTime = self.boards['frequency']['objects']['readout']['center_f'] + (self.boards['frequency']['objects']['readout']['flatDur_f'] + self.boards['slice']['objects']['spoiler']['dur_f']) / 2
+        spoilerTime = self.boards['frequency']['objects']['readouts'][0][0]['center_f'] + (self.boards['frequency']['objects']['readouts'][0][0]['flatDur_f'] + self.boards['slice']['objects']['spoiler']['dur_f']) / 2
         sequence.moveWaveform(self.boards['slice']['objects']['spoiler'], spoilerTime)
         for f in [self.renderSliceBoard, self.updateMinTR, self.updateSliceThicknessBounds]:
             self.sequencePipeline.add(f)
 
 
     def renderPolygons(self, board):
-        self.boardPlots[board]['area'] = hv.Area(sequence.accumulateWaveforms(list(self.boards[board]['objects'].values()), board), self.timeDim, self.boards[board]['dim']).opts(color=self.boards[board]['color'])
+        objects = flatten_dicts(self.boards[board]['objects'].values())
+        self.boardPlots[board]['area'] = hv.Area(sequence.accumulateWaveforms(objects, board), self.timeDim, self.boards[board]['dim']).opts(color=self.boards[board]['color'])
         self.boards[board]['attributes'] = []
         if self.boards[board]['objects']:
-            self.boards[board]['attributes'] += [attr for attr in list(self.boards[board]['objects'].values())[0].keys() if attr not in ['time', board] and '_f' not in attr]
+            self.boards[board]['attributes'] += [attr for attr in objects[0].keys() if attr not in ['time', board] and '_f' not in attr]
             hover = HoverTool(tooltips=[(attr, '@{}'.format(attr)) for attr in self.boards[board]['attributes']], attachment='below')
-            self.boardPlots[board]['polygons'] = hv.Polygons(list(self.boards[board]['objects'].values()), kdims=[self.timeDim, self.boards[board]['dim']], vdims=self.boards[board]['attributes']).opts(tools=[hover], cmap=[self.boards[board]['color']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=(-19000, 19000))])
+            self.boardPlots[board]['polygons'] = hv.Polygons(objects, kdims=[self.timeDim, self.boards[board]['dim']], vdims=self.boards[board]['attributes']).opts(tools=[hover], cmap=[self.boards[board]['color']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=(-19000, 19000))])
     
     
     def renderTRspan(self, board):
@@ -1279,7 +1321,8 @@ class MRIsimulator(param.Parameterized):
 
     def renderFrequencyBoard(self):
         self.renderPolygons('frequency')
-        self.boardPlots['frequency']['ADC'] = hv.Overlay([hv.VSpan(obj['time'][0], obj['time'][-1], kdims=[self.timeDim, self.boards['frequency']['dim']]) for obj in self.boards['ADC']['objects'].values()])
+        adc_objects = flatten_dicts(self.boards['ADC']['objects'].values())
+        self.boardPlots['frequency']['ADC'] = hv.Overlay([hv.VSpan(obj['time'][0], obj['time'][-1], kdims=[self.timeDim, self.boards['frequency']['dim']]) for obj in adc_objects])
         self.renderTRspan('frequency')
     
 
@@ -1345,7 +1388,7 @@ class MRIsimulator(param.Parameterized):
         return self.image
 
 
-    @param.depends('sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'matrixF', 'matrixP', 'sliceThickness', 'pixelBandWidth')
+    @param.depends('sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'matrixF', 'matrixP', 'sliceThickness', 'pixelBandWidth', 'partialFourier', 'turboFactor', 'EPIfactor')
     def getSequencePlot(self):
         if self.render:
             self.runSequencePipeline()
