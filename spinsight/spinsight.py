@@ -636,6 +636,11 @@ class MRIsimulator(param.Parameterized):
             self.sequencePipeline.add(f)
         self.param.FA.precedence = 1 if self.sequence=='Spoiled Gradient Echo' else -1
         self.param.TI.precedence = 1 if self.sequence=='Inversion Recovery' else -1
+        if self.sequence=='Spoiled Gradient Echo':
+            self.turboFactor = 1
+            self.param.turboFactor.precedence = -6  
+        else:
+            self.param.turboFactor.precedence = 6
         tr = self.TR
         self.render = False
         self.TR = self.param.TR.objects[-1] # max TR
@@ -1164,15 +1169,14 @@ class MRIsimulator(param.Parameterized):
         self.boards['slice']['objects']['slice select excitation'] = sliceSelectExcitation
         self.boards['slice']['objects']['slice select rephaser'] = sliceSelectRephaser
 
-        if 'refocusing' in self.boards['RF']['objects']:
+        self.boards['slice']['objects']['slice select refocusing'] = []
+        if not isGradientEcho(self.sequence):
             flatDur = self.boards['RF']['objects']['refocusing'][0]['dur_f']
             amp = self.boards['RF']['objects']['refocusing'][0]['FWHM_f'] / (self.sliceThickness * GYRO)
             self.boards['slice']['objects']['slice select refocusing'] = []
             for rf_echo in range(self.turboFactor):
                 self.boards['slice']['objects']['slice select refocusing'].append(sequence.getGradient('slice', maxAmp=amp, flatDur=flatDur, name='slice select refocusing'))
             self.sequencePipeline.add(self.placeRefocusing)
-        elif 'slice select refocusing' in self.boards['slice']['objects']:
-            del self.boards['slice']['objects']['slice select refocusing']
             
         if 'inversion' in self.boards['RF']['objects']:
             flatDur = self.boards['RF']['objects']['inversion']['dur_f']
