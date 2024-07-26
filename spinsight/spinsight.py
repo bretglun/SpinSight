@@ -1213,6 +1213,7 @@ class MRIsimulator(param.Parameterized):
             self.boards['ADC']['objects']['samplings'].append(samplings)
         prephaser = sequence.getGradient('frequency', totalArea=readout['area_f']/2, name='read prephaser')        
         self.boards['frequency']['objects']['read prephaser'] = prephaser
+        self.gr_echo_spacing = readout['dur_f']
         self.sequencePipeline.add(self.placeReadouts)
         self.sequencePipeline.add(self.updateMinTE)
     
@@ -1278,15 +1279,18 @@ class MRIsimulator(param.Parameterized):
 
     def placeReadouts(self):
         for rf_echo in range(self.turboFactor):
+            if self.kspaceOrder=='early echo':
+                hahn_echo_pos = self.TE + rf_echo * self.rf_echo_spacing
+            elif self.kspaceOrder=='center echo':
+                hahn_echo_pos = self.TE + (rf_echo - (self.turboFactor-1) / 2) * self.rf_echo_spacing
+            elif self.kspaceOrder=='late echo':
+                hahn_echo_pos = self.TE - rf_echo * self.rf_echo_spacing
             for gr_echo in range(self.EPIfactor):
-                if self.kspaceOrder=='early echo':
-                    pos = self.TE + rf_echo * self.rf_echo_spacing
-                elif self.kspaceOrder=='center echo':
-                    pos = self.TE + (rf_echo - (self.turboFactor-1) / 2) * self.rf_echo_spacing
-                elif self.kspaceOrder=='late echo':
-                    pos = self.TE - rf_echo * self.rf_echo_spacing
+                pos = hahn_echo_pos +  (gr_echo - (self.EPIfactor-1) / 2) * self.gr_echo_spacing
                 for object in [self.boards['frequency']['objects']['readouts'], self.boards['ADC']['objects']['samplings']]:
                     sequence.moveWaveform(object[rf_echo][gr_echo], pos)
+                if gr_echo%2:
+                    sequence.rescaleGradient(self.boards['frequency']['objects']['readouts'][rf_echo][gr_echo], -1)
         if isGradientEcho(self.sequence):
             if self.boards['frequency']['objects']['read prephaser']['area_f'] > 0:
                 sequence.rescaleGradient(self.boards['frequency']['objects']['read prephaser'], -1)
