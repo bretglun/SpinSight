@@ -638,8 +638,10 @@ class MRIsimulator(param.Parameterized):
         self.param.TI.precedence = 1 if self.sequence=='Inversion Recovery' else -1
         if self.sequence=='Spoiled Gradient Echo':
             self.turboFactor = 1
-            self.param.turboFactor.precedence = -6  
+            self.param.kspaceOrder.precedence = -4
+            self.param.turboFactor.precedence = -6
         else:
+            self.param.kspaceOrder.precedence = 4
             self.param.turboFactor.precedence = 6
         tr = self.TR
         self.render = False
