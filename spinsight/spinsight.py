@@ -1224,6 +1224,12 @@ class MRIsimulator(param.Parameterized):
     
     
     def placeRefocusing(self):
+        if self.kspaceOrder=='early echo':
+            self.rf_echo_spacing = self.TE
+        elif self.kspaceOrder=='center echo':
+            self.rf_echo_spacing = 2 * self.TE / (self.turboFactor + 1)
+        elif self.kspaceOrder=='late echo':
+            self.rf_echo_spacing = self.TE / self.turboFactor
         for board, name, renderer in [('RF', 'refocusing', self.renderRFBoard), ('slice', 'slice select refocusing', self.renderSliceBoard)]:
             if name in self.boards[board]['objects']:
                 sequence.moveWaveform(self.boards[board]['objects'][name], self.TE/2)
@@ -1254,16 +1260,16 @@ class MRIsimulator(param.Parameterized):
     
 
     def placeReadouts(self):
-        if self.kspaceOrder=='early echo':
-            self.rf_echo_spacing = self.TE
-        elif self.kspaceOrder=='center echo':
-            self.rf_echo_spacing = 2 * self.TE / (self.turboFactor + 1)
-        elif self.kspaceOrder=='late echo':
-            self.rf_echo_spacing = self.TE / self.turboFactor
         for rf_echo in range(self.turboFactor):
             for gr_echo in range(self.EPIfactor):
-                sequence.moveWaveform(self.boards['frequency']['objects']['readouts'][rf_echo][gr_echo], self.TE)
-                sequence.moveWaveform(self.boards['ADC']['objects']['samplings'][rf_echo][gr_echo], self.TE)
+                if self.kspaceOrder=='early echo':
+                    pos = self.TE + rf_echo * self.rf_echo_spacing
+                elif self.kspaceOrder=='center echo':
+                    pos = self.TE + (rf_echo - (self.turboFactor-1) / 2) * self.rf_echo_spacing
+                elif self.kspaceOrder=='late echo':
+                    pos = self.TE - rf_echo * self.rf_echo_spacing
+                for object in [self.boards['frequency']['objects']['readouts'], self.boards['ADC']['objects']['samplings']]:
+                    sequence.moveWaveform(object[rf_echo][gr_echo], pos)
         if isGradientEcho(self.sequence):
             if self.boards['frequency']['objects']['read prephaser']['area_f'] > 0:
                 sequence.rescaleGradient(self.boards['frequency']['objects']['read prephaser'], -1)
