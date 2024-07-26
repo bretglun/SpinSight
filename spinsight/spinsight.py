@@ -722,13 +722,13 @@ class MRIsimulator(param.Parameterized):
         if not isGradientEcho(self.sequence):
             leftSide = max(
                 self.boards['frequency']['objects']['read prephaser']['dur_f'], 
-                self.boards['slice']['objects']['slice select excitation']['riseTime_f'] + self.boards['slice']['objects']['slice select rephaser']['dur_f'] + (self.boards['slice']['objects']['slice select refocusing']['riseTime_f']))
-            leftSide += (self.boards['RF']['objects']['excitation']['dur_f'] + self.boards['RF']['objects']['refocusing']['dur_f']) / 2
+                self.boards['slice']['objects']['slice select excitation']['riseTime_f'] + self.boards['slice']['objects']['slice select rephaser']['dur_f'] + (self.boards['slice']['objects']['slice select refocusing'][0]['riseTime_f']))
+            leftSide += (self.boards['RF']['objects']['excitation']['dur_f'] + self.boards['RF']['objects']['refocusing'][0]['dur_f']) / 2
             rightSide = max(
                 self.boards['frequency']['objects']['readouts'][0][0]['riseTime_f'],
                 self.boards['phase']['objects']['phase encode']['dur_f'],
-                self.boards['slice']['objects']['slice select refocusing']['riseTime_f'])
-            rightSide += (self.boards['RF']['objects']['refocusing']['dur_f'] + self.boards['ADC']['objects']['samplings'][0][0]['dur_f']) / 2
+                self.boards['slice']['objects']['slice select refocusing'][0]['riseTime_f'])
+            rightSide += (self.boards['RF']['objects']['refocusing'][0]['dur_f'] + self.boards['ADC']['objects']['samplings'][0][0]['dur_f']) / 2
             self.minTE = max(leftSide, rightSide) * 2
         else:
             self.minTE = max(
@@ -763,7 +763,7 @@ class MRIsimulator(param.Parameterized):
         if isGradientEcho(self.sequence):
             maxPrephaserDur =  self.TE - self.boards['ADC']['objects']['samplings'][0][0]['dur_f']/2 - self.boards['RF']['objects']['excitation']['dur_f']/2 - readAmp/self.maxSlew
         else:
-            maxPrephaserDur =  self.TE/2 - self.boards['RF']['objects']['refocusing']['dur_f']/2 - self.boards['RF']['objects']['excitation']['dur_f']/2
+            maxPrephaserDur =  self.TE/2 - self.boards['RF']['objects']['refocusing'][0]['dur_f']/2 - self.boards['RF']['objects']['excitation']['dur_f']/2
         maxPrephaserFlatDur = maxPrephaserDur - (2 * self.maxAmp/self.maxSlew)
         if maxPrephaserFlatDur < 0: # triangle
             maxPrephaserArea = maxPrephaserDur**2 * self.maxSlew / 4
@@ -785,8 +785,8 @@ class MRIsimulator(param.Parameterized):
             A = d * (np.sqrt((d*s+2*h)**2 - 8*h*(h-s*(t-d/2))) - d*s - 2*h) / 2
             maxReadoutArea1 = A
         else: # spin echo
-            tr = self.TE/2 - self.boards['RF']['objects']['refocusing']['dur_f']/2
-            tp = self.TE/2 - self.boards['RF']['objects']['refocusing']['dur_f']/2 - self.boards['RF']['objects']['excitation']['dur_f']/2
+            tr = self.TE/2 - self.boards['RF']['objects']['refocusing'][0]['dur_f']/2
+            tp = self.TE/2 - self.boards['RF']['objects']['refocusing'][0]['dur_f']/2 - self.boards['RF']['objects']['excitation']['dur_f']/2
             Ar = d*s* tr - d**2*s/2
             h = s * tp / 2
             h = min(h, self.maxAmp)
@@ -801,7 +801,7 @@ class MRIsimulator(param.Parameterized):
         if isGradientEcho(self.sequence):
             maxPhaserDuration = readStart - self.boards['RF']['objects']['excitation']['dur_f']/2
         else:
-            maxPhaserDuration =  readStart - (self.TE/2 + self.boards['RF']['objects']['refocusing']['dur_f']/2)
+            maxPhaserDuration =  readStart - (self.TE/2 + self.boards['RF']['objects']['refocusing'][0]['dur_f']/2)
         maxRiseTime = self.maxAmp / self.maxSlew
         if maxPhaserDuration > 2 * maxRiseTime: # trapezoid maxPhaser
             maxPhaserArea = (maxPhaserDuration - maxRiseTime) * self.maxAmp
@@ -829,17 +829,17 @@ class MRIsimulator(param.Parameterized):
             maxReadDurations.append(freeSpaceLeft*2)
         else: # spin echo
             # min limit imposed by prephaser duration tp:
-            tp = self.TE/2 - self.boards['RF']['objects']['refocusing']['dur_f']/2 - self.boards['RF']['objects']['excitation']['dur_f']/2
+            tp = self.TE/2 - self.boards['RF']['objects']['refocusing'][0]['dur_f']/2 - self.boards['RF']['objects']['excitation']['dur_f']/2
             h = s * tp / 2
             h = min(h, self.maxAmp)
             minReadDurations.append(np.sqrt(A**2/(2*h*s*tp - s*A - 2*h**2)))
             # maxlimit imposed by readout rise time:
-            tr = (self.TE - self.boards['RF']['objects']['refocusing']['dur_f'])/2
+            tr = (self.TE - self.boards['RF']['objects']['refocusing'][0]['dur_f'])/2
             maxReadDurations.append(tr + np.sqrt(tr**2 - 2*A/s))
             # max limit imposed by phaser:
             maxReadDurations.append((tr - self.boards['phase']['objects']['phase encode']['dur_f']) * 2)
             # max limit imposed by slice select refocusing down ramp time:
-            maxReadDurations.append((tr - self.boards['slice']['objects']['slice select refocusing']['riseTime_f']) * 2)
+            maxReadDurations.append((tr - self.boards['slice']['objects']['slice select refocusing'][0]['riseTime_f']) * 2)
         minpBW = 1e3 / min(maxReadDurations)
         maxpBW = 1e3 / max(minReadDurations)
         self.param.pixelBandWidth.bounds = getBounds(minpBW, maxpBW, self.pixelBandWidth)
@@ -895,7 +895,7 @@ class MRIsimulator(param.Parameterized):
         minThks = [.5]
         minThks.append(self.boards['RF']['objects']['excitation']['FWHM_f'] / (self.maxAmp * GYRO))
         if not isGradientEcho(self.sequence):
-            minThks.append(self.boards['RF']['objects']['refocusing']['FWHM_f'] / (self.maxAmp * GYRO))
+            minThks.append(self.boards['RF']['objects']['refocusing'][0]['FWHM_f'] / (self.maxAmp * GYRO))
         if self.sequence=='Inversion Recovery':
             minThks.append(self.boards['RF']['objects']['inversion']['FWHM_f'] / (self.maxAmp * GYRO) * self.inversionThkFactor)
         
@@ -918,7 +918,7 @@ class MRIsimulator(param.Parameterized):
             h = min(h, self.maxAmp)
             A = d * (np.sqrt((d*s+2*h)**2 - 8*h*(h-s*(t-d/2))) - d*s - 2*h) / 2
         else: # Spin echo: Constraint due to slice rephaser and refocusing slice select rampup
-            t = self.boards['RF']['objects']['refocusing']['time'][0]
+            t = self.boards['RF']['objects']['refocusing'][0]['time'][0]
             h = s * (np.sqrt(2*(d + 2*t)**2 - 4*d**2) - d - 2*t) / 4
             h = min(h, self.maxAmp)
             A = (np.sqrt((d*(d*s + 4*h))**2 - 4*d**2*h*(d*s + 2*h - 2*s*t)) - d*(d*s + 4*h)) / 2
@@ -1123,11 +1123,11 @@ class MRIsimulator(param.Parameterized):
 
 
     def setupRefocusing(self):
+        self.boards['RF']['objects']['refocusing'] = []
         if not isGradientEcho(self.sequence):
-            self.boards['RF']['objects']['refocusing'] = sequence.getRF(flipAngle=180., dur=3., shape='hammingSinc',  name='refocusing')
+            for rf_echo in range(self.turboFactor):
+                self.boards['RF']['objects']['refocusing'].append(sequence.getRF(flipAngle=180., dur=3., shape='hammingSinc',  name='refocusing {}'.format(rf_echo)))
             self.sequencePipeline.add(self.placeRefocusing)
-        elif 'refocusing' in self.boards['RF']['objects']:
-            del self.boards['RF']['objects']['refocusing']
         for f in [self.setupSliceSelection, self.renderRFBoard, self.updateMinTE, self.updateMatrixPbounds, self.updateFOVPbounds, self.updateSliceThicknessBounds]:
             self.sequencePipeline.add(f)
 
@@ -1165,9 +1165,11 @@ class MRIsimulator(param.Parameterized):
         self.boards['slice']['objects']['slice select rephaser'] = sliceSelectRephaser
 
         if 'refocusing' in self.boards['RF']['objects']:
-            flatDur = self.boards['RF']['objects']['refocusing']['dur_f']
-            amp = self.boards['RF']['objects']['refocusing']['FWHM_f'] / (self.sliceThickness * GYRO)
-            self.boards['slice']['objects']['slice select refocusing'] = sequence.getGradient('slice', maxAmp=amp, flatDur=flatDur, name='slice select refocusing')
+            flatDur = self.boards['RF']['objects']['refocusing'][0]['dur_f']
+            amp = self.boards['RF']['objects']['refocusing'][0]['FWHM_f'] / (self.sliceThickness * GYRO)
+            self.boards['slice']['objects']['slice select refocusing'] = []
+            for rf_echo in range(self.turboFactor):
+                self.boards['slice']['objects']['slice select refocusing'].append(sequence.getGradient('slice', maxAmp=amp, flatDur=flatDur, name='slice select refocusing'))
             self.sequencePipeline.add(self.placeRefocusing)
         elif 'slice select refocusing' in self.boards['slice']['objects']:
             del self.boards['slice']['objects']['slice select refocusing']
@@ -1224,17 +1226,26 @@ class MRIsimulator(param.Parameterized):
     
     
     def placeRefocusing(self):
-        if self.kspaceOrder=='early echo':
-            self.rf_echo_spacing = self.TE
-        elif self.kspaceOrder=='center echo':
-            self.rf_echo_spacing = 2 * self.TE / (self.turboFactor + 1)
-        elif self.kspaceOrder=='late echo':
-            self.rf_echo_spacing = self.TE / self.turboFactor
-        for board, name, renderer in [('RF', 'refocusing', self.renderRFBoard), ('slice', 'slice select refocusing', self.renderSliceBoard)]:
-            if name in self.boards[board]['objects']:
-                sequence.moveWaveform(self.boards[board]['objects'][name], self.TE/2)
-                self.sequencePipeline.add(renderer)
-        self.sequencePipeline.add(self.updateBWbounds)
+        if not isGradientEcho(self.sequence):
+            if self.kspaceOrder=='early echo':
+                self.rf_echo_spacing = self.TE
+            elif self.kspaceOrder=='center echo':
+                self.rf_echo_spacing = 2 * self.TE / (self.turboFactor + 1)
+            elif self.kspaceOrder=='late echo':
+                self.rf_echo_spacing = self.TE / self.turboFactor
+            
+            for rf_echo in range(self.turboFactor):
+                if self.kspaceOrder=='early echo':
+                    pos = self.TE + (rf_echo - 1/2) * self.rf_echo_spacing
+                elif self.kspaceOrder=='center echo':
+                    pos = self.TE + (rf_echo - self.turboFactor / 2) * self.rf_echo_spacing
+                elif self.kspaceOrder=='late echo':
+                    pos = self.TE - (rf_echo+ 1/2) * self.rf_echo_spacing
+                sequence.moveWaveform(self.boards['RF']['objects']['refocusing'][rf_echo], pos)
+                sequence.moveWaveform(self.boards['slice']['objects']['slice select refocusing'][rf_echo], pos)
+            self.sequencePipeline.add(self.renderRFBoard)
+            self.sequencePipeline.add(self.renderSliceBoard)
+            self.sequencePipeline.add(self.updateBWbounds)
     
 
     def placeInversion(self):
