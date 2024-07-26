@@ -1306,7 +1306,7 @@ class MRIsimulator(param.Parameterized):
     
 
     def placeSpoiler(self):
-        spoilerTime = self.boards['frequency']['objects']['readouts'][0][0]['center_f'] + (self.boards['frequency']['objects']['readouts'][0][0]['flatDur_f'] + self.boards['slice']['objects']['spoiler']['dur_f']) / 2
+        spoilerTime = self.boards['frequency']['objects']['readouts'][-1][-1]['center_f'] + (self.boards['frequency']['objects']['readouts'][-1][-1]['flatDur_f'] + self.boards['slice']['objects']['spoiler']['dur_f']) / 2
         sequence.moveWaveform(self.boards['slice']['objects']['spoiler'], spoilerTime)
         for f in [self.renderSliceBoard, self.updateMinTR, self.updateSliceThicknessBounds]:
             self.sequencePipeline.add(f)
