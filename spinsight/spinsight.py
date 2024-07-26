@@ -272,7 +272,8 @@ def hideframe_hook(plot, elem):
 TRvalues = [float('{:.2g}'.format(tr)) for tr in 10.**np.linspace(0, 4, 500)]
 TEvalues = [float('{:.2g}'.format(te)) for te in 10.**np.linspace(0, 3, 500)]
 TIvalues = [float('{:.2g}'.format(ti)) for ti in 10.**np.linspace(0, 4, 500)]
-matrixValues = list(range(16, 601))
+matrixValues = list(range(16, 600+1))
+EPIfactorValues = list(range(1, 64+1))
 
 
 class MRIsimulator(param.Parameterized):
@@ -307,7 +308,7 @@ class MRIsimulator(param.Parameterized):
     NSA = param.Integer(default=1, bounds=(1, 16), precedence=3, label='NSA')
     partialFourier = param.Number(default=1, bounds=(.6, 1), step=0.01, precedence=4, label='Partial Fourier factor')
     turboFactor = param.Integer(default=1, bounds=(1, 64), precedence=5, label='Turbo factor')
-    EPIfactor = param.Integer(default=1, bounds=(1, 64), precedence=6, label='EPI factor')
+    EPIfactor = param.Selector(default=1, objects=EPIfactorValues, precedence=6, label='EPI factor')
     
     showFOV = param.Boolean(default=False, label='Show FOV')
     noiseGain = param.Number(default=3.)
@@ -599,6 +600,7 @@ class MRIsimulator(param.Parameterized):
             self.reconPipeline.add(f)
         for f in []:
             self.sequencePipeline.add(f)
+        self.updateEPIfactorObjects()
 
 
     @param.depends('EPIfactor', watch=True)
@@ -607,6 +609,7 @@ class MRIsimulator(param.Parameterized):
             self.reconPipeline.add(f)
         for f in []:
             self.sequencePipeline.add(f)
+        self.updateTurboFactorBounds()
 
 
     @param.depends('sequence', watch=True)
@@ -907,6 +910,22 @@ class MRIsimulator(param.Parameterized):
         minThks.append(Be * d / (GYRO * A)) # mm
         
         self.param.sliceThickness.bounds = getBounds(max(minThks), 10., self.sliceThickness)
+
+
+    def updateTurboFactorBounds(self):
+        if not self.EPIfactor%2: # if even EPIfactor
+            self.param.turboFactor.bounds = (1, 1)
+            self.param.turboFactor.constant = True
+        else:
+            self.param.turboFactor.bounds = (1, 64)
+            self.param.turboFactor.constant = False
+
+
+    def updateEPIfactorObjects(self):
+        if self.turboFactor > 1: # only odd EPIfactor for GRASE
+            self.param.EPIfactor.objects = [v for v in EPIfactorValues if v%2]
+        else:
+            self.param.EPIfactor.objects = EPIfactorValues
 
 
     def loadPhantom(self):
@@ -1354,7 +1373,7 @@ def getApp():
     settingsParams = pn.panel(explorer.param, parameters=['object', 'fieldStrength', 'parameterStyle'], name='Settings')
     contrastParams = pn.panel(explorer.param, parameters=['FatSat', 'TR', 'TE', 'FA', 'TI'], widgets={'TR': pn.widgets.DiscreteSlider, 'TE': pn.widgets.DiscreteSlider, 'TI': pn.widgets.DiscreteSlider}, name='Contrast')
     geometryParams = pn.panel(explorer.param, parameters=['frequencyDirection', 'FOVF', 'FOVP', 'phaseOversampling', 'voxelF', 'voxelP', 'matrixF', 'matrixP', 'reconVoxelF', 'reconVoxelP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness'], widgets={'matrixF': pn.widgets.DiscreteSlider, 'matrixP': pn.widgets.DiscreteSlider, 'voxelF': pn.widgets.DiscreteSlider, 'voxelP': pn.widgets.DiscreteSlider, 'reconVoxelF': pn.widgets.DiscreteSlider, 'reconVoxelP': pn.widgets.DiscreteSlider}, name='Geometry')
-    sequenceParams = pn.panel(explorer.param, parameters=['sequence', 'pixelBandWidth', 'FOVbandwidth', 'FWshift', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor'], name='Sequence')
+    sequenceParams = pn.panel(explorer.param, parameters=['sequence', 'pixelBandWidth', 'FOVbandwidth', 'FWshift', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor'], widgets={'EPIfactor': pn.widgets.DiscreteSlider}, name='Sequence')
     
     infoPane = pn.Row(infoNumber(name='Relative SNR', format='{value:.0f}%', value=explorer.param.relativeSNR),
                       infoNumber(name='Scan time', format=('{value:.1f} sec'), value=explorer.param.scantime),
