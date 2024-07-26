@@ -1072,7 +1072,7 @@ class MRIsimulator(param.Parameterized):
             if (self.oversampledReconMatrix[dim] - self.reconMatrix[dim])%2:
                 pixelShifts[dim] += 1/2 # half pixel shift due to cropping an odd number of pixels in image space
         halfPixelShift = getPixelShiftMatrix(self.oversampledReconMatrix, pixelShifts)
-        sampleShifts = [0. if self.matrix[dim]%2 else .5 for dim in range(len(self.matrix))]
+        sampleShifts = [0. if self.oversampledMatrix[dim]%2 else .5 for dim in range(len(self.oversampledMatrix))]
         halfSampleShift = getPixelShiftMatrix(self.oversampledReconMatrix, sampleShifts)
         
         kspace = self.zerofilledkspace * halfPixelShift
@@ -1289,7 +1289,7 @@ class MRIsimulator(param.Parameterized):
                 # half-sample shift axis when odd number of zeroes:
                 if (self.oversampledReconMatrix[dim]-self.oversampledMatrix[dim])%2:
                     shift = self.reconMatrix[dim] / (2 * self.oversampledReconMatrix[dim] * self.FOV[dim])
-                    kAxes[-1] += shift * (-1)**(self.matrix[dim]%2)
+                    kAxes[-1] += shift * (-1)**(self.oversampledMatrix[dim]%2)
             ksp = xr.DataArray(
                 np.abs(np.fft.fftshift(self.zerofilledkspace))**.2, 
                 dims=('ky', 'kx'),
