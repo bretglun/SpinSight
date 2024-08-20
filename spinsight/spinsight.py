@@ -1287,14 +1287,16 @@ class MRIsimulator(param.Parameterized):
                 hahn_echo_pos = self.TE - rf_echo * self.rf_echo_spacing
             for gr_echo in range(self.EPIfactor):
                 pos = hahn_echo_pos +  (gr_echo - (self.EPIfactor-1) / 2) * self.gr_echo_spacing
+                # TODO: pointers to readout and ADC
                 for object in [self.boards['frequency']['objects']['readouts'], self.boards['ADC']['objects']['samplings']]:
                     sequence.moveWaveform(object[rf_echo][gr_echo], pos)
-                if gr_echo%2:
+                if gr_echo%2 and self.boards['frequency']['objects']['readouts'][rf_echo][gr_echo]['area_f'] > 0:
                     sequence.rescaleGradient(self.boards['frequency']['objects']['readouts'][rf_echo][gr_echo], -1)
         if isGradientEcho(self.sequence):
             if self.boards['frequency']['objects']['read prephaser']['area_f'] > 0:
                 sequence.rescaleGradient(self.boards['frequency']['objects']['read prephaser'], -1)
-            prephaseTime = self.TE - sum([grad['dur_f'] for grad in [self.boards['frequency']['objects']['read prephaser'], self.boards['frequency']['objects']['readouts'][0][0]]])/2
+            firstReadout = self.boards['frequency']['objects']['readouts'][0][0]
+            prephaseTime = firstReadout['center_f'] - sum([grad['dur_f'] for grad in [self.boards['frequency']['objects']['read prephaser'], firstReadout]])/2
         else:
             if self.boards['frequency']['objects']['read prephaser']['area_f'] < 0:
                 sequence.rescaleGradient(self.boards['frequency']['objects']['read prephaser'], -1)
