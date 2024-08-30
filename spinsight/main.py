@@ -6,6 +6,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 import re
 import xarray as xr
+from spinsight import constants
 from spinsight import sequence
 from bokeh.models import HoverTool
 from functools import partial
@@ -13,8 +14,6 @@ from functools import partial
 hv.extension('bokeh')
 pn.config.theme = 'dark' # 'default' / 'dark'
 
-
-GYRO = 42.577 # 1H gyromagnetic ratio [MHz/T]
 
 TISSUES = {
     'gray':       {'PD': 1.0, 'FF': .00, 'T1': {1.5: 1100, 3.0: 1330}, 'T2': {1.5:   95, 3.0:   99}, 'hexcolor': '00ff00'},
@@ -53,12 +52,12 @@ DIRECTIONS = {'anterior-posterior': 0, 'left-right': 1}
 
 def pixelBW2shift(pixelBW, B0=1.5):
     ''' Get fat/water chemical shift [pixels] from pixel bandwidth [Hz/pixel] and B0 [T]'''
-    return np.abs(FATRESONANCES['Fat2']['shift'] * GYRO * B0 / pixelBW)
+    return np.abs(FATRESONANCES['Fat2']['shift'] * constants.GYRO * B0 / pixelBW)
 
 
 def shift2pixelBW(shift, B0=1.5):
     ''' Get pixel bandwidth [Hz/pixel] from fat/water chemical shift [pixels] and B0 [T]'''
-    return np.abs(FATRESONANCES['Fat2']['shift'] * GYRO * B0 / shift)
+    return np.abs(FATRESONANCES['Fat2']['shift'] * constants.GYRO * B0 / shift)
 
 
 def pixelBW2FOVBW(pixelBW, matrixF):
@@ -823,7 +822,7 @@ class MRIsimulator(param.Parameterized):
         # TODO: update wrt GRASE
         # See readouts.tex for formulae relating to the readout board
         s = self.maxSlew
-        A = 1e3 * self.matrixF / (self.FOVF * GYRO) # readout area
+        A = 1e3 * self.matrixF / (self.FOVF * constants.GYRO) # readout area
         minReadDurations = [.5] # msec (corresponds to a pixel BW of 2000 Hz)
         # min limit imposed by maximum gradient amplitude:
         minReadDurations.append(A / self.maxAmp)
@@ -859,7 +858,7 @@ class MRIsimulator(param.Parameterized):
 
     def updateMatrixFbounds(self):
         minMatrixF, maxMatrixF = 16, 600
-        maxMatrixF = min(maxMatrixF, int(self.getMaxReadoutArea() * 1e-3 * self.FOVF * GYRO))
+        maxMatrixF = min(maxMatrixF, int(self.getMaxReadoutArea() * 1e-3 * self.FOVF * constants.GYRO))
         if self.parameterStyle == 'GE':
             minMatrixF = max(minMatrixF, int(np.ceil(self.FOVbandwidth * 2e3 / self.param.pixelBandWidth.bounds[1])))
             maxMatrixF = min(maxMatrixF, int(np.floor(self.FOVbandwidth * 2e3 / self.param.pixelBandWidth.bounds[0])))
@@ -869,19 +868,19 @@ class MRIsimulator(param.Parameterized):
     
 
     def updateMatrixPbounds(self):
-        maxMatrixP = int(self.getMaxPhaserArea() * 2e-3 * self.FOVP * GYRO)
+        maxMatrixP = int(self.getMaxPhaserArea() * 2e-3 * self.FOVP * constants.GYRO)
         self.param.matrixP.objects, _ = updateBounds(self.matrixP, matrixValues, maxval=maxMatrixP)
         self.updateVoxelPobjects()
         self.updateReconVoxelPobjects()
 
 
     def updateFOVFbounds(self):
-        minFOVF = 1e3 * self.matrixF / (self.getMaxReadoutArea() * GYRO)
+        minFOVF = 1e3 * self.matrixF / (self.getMaxReadoutArea() * constants.GYRO)
         self.param.FOVF.bounds = getBounds(max(minFOVF, 100), 600, self.FOVF)
 
 
     def updateFOVPbounds(self):
-        minFOVP = 1e3 * self.matrixP / (self.getMaxPhaserArea() * GYRO * 2)
+        minFOVP = 1e3 * self.matrixP / (self.getMaxPhaserArea() * constants.GYRO * 2)
         self.param.FOVP.bounds = getBounds(max(minFOVP, 100), 600, self.FOVP)
 
 
@@ -903,21 +902,21 @@ class MRIsimulator(param.Parameterized):
 
     def updateSliceThicknessBounds(self):
         minThks = [.5]
-        minThks.append(self.boards['RF']['objects']['excitation']['FWHM_f'] / (self.maxAmp * GYRO))
+        minThks.append(self.boards['RF']['objects']['excitation']['FWHM_f'] / (self.maxAmp * constants.GYRO))
         if not isGradientEcho(self.sequence):
-            minThks.append(self.boards['RF']['objects']['refocusing'][0]['FWHM_f'] / (self.maxAmp * GYRO))
+            minThks.append(self.boards['RF']['objects']['refocusing'][0]['FWHM_f'] / (self.maxAmp * constants.GYRO))
         if self.sequence=='Inversion Recovery':
-            minThks.append(self.boards['RF']['objects']['inversion']['FWHM_f'] / (self.maxAmp * GYRO) * self.inversionThkFactor)
+            minThks.append(self.boards['RF']['objects']['inversion']['FWHM_f'] / (self.maxAmp * constants.GYRO) * self.inversionThkFactor)
         
         # Constraint due to TR: 
         if self.sequence=='Inversion Recovery':
             maxRiseTime = self.TR - (self.boards['slice']['objects']['spoiler']['time'][-1] - self.boards['RF']['objects']['inversion']['time'][0])
             maxAmp = self.maxSlew * maxRiseTime
-            minThks.append(self.boards['RF']['objects']['inversion']['FWHM_f'] / (maxAmp * GYRO))
+            minThks.append(self.boards['RF']['objects']['inversion']['FWHM_f'] / (maxAmp * constants.GYRO))
         else:
             maxRiseTime = self.TR - (self.boards['slice']['objects']['spoiler']['time'][-1] - self.boards['RF']['objects']['excitation']['time'][0])
             maxAmp = self.maxSlew * maxRiseTime
-            minThks.append(self.boards['RF']['objects']['excitation']['FWHM_f'] / (maxAmp * GYRO))
+            minThks.append(self.boards['RF']['objects']['excitation']['FWHM_f'] / (maxAmp * constants.GYRO))
         
         # See readouts.tex for formulae
         s = self.maxSlew
@@ -933,7 +932,7 @@ class MRIsimulator(param.Parameterized):
             h = min(h, self.maxAmp)
             A = (np.sqrt((d*(d*s + 4*h))**2 - 4*d**2*h*(d*s + 2*h - 2*s*t)) - d*(d*s + 4*h)) / 2
         Be = self.boards['RF']['objects']['excitation']['FWHM_f']
-        minThks.append(Be * d / (GYRO * A)) # mm
+        minThks.append(Be * d / (constants.GYRO * A)) # mm
         
         self.param.sliceThickness.bounds = getBounds(max(minThks), 10., self.sliceThickness)
 
@@ -1045,7 +1044,7 @@ class MRIsimulator(param.Parameterized):
                 self.kspaceComps[tissue + 'Water'] = self.plainKspaceComps[tissue] * T2w
                 for component, resonance in FATRESONANCES.items():
                     T2w = getT2w(component, decayTime, dephasingTime, self.fieldStrength)
-                    dephasing = np.exp(2j*np.pi * GYRO * self.fieldStrength * resonance['shift'] * dephasingTime * 1e-3)
+                    dephasing = np.exp(2j*np.pi * constants.GYRO * self.fieldStrength * resonance['shift'] * dephasingTime * 1e-3)
                     self.kspaceComps[tissue + component] = self.plainKspaceComps[tissue] * dephasing * T2w
             if tissue==self.phantom['referenceTissue']:
                 self.decayedSignal = self.signal * np.take(T2w, np.argmin(np.abs(self.kAxes[self.freqDir])), axis=self.freqDir)[0]
@@ -1172,7 +1171,7 @@ class MRIsimulator(param.Parameterized):
     
     def setupSliceSelection(self):
         flatDur = self.boards['RF']['objects']['excitation']['dur_f']
-        amp = self.boards['RF']['objects']['excitation']['FWHM_f'] / (self.sliceThickness * GYRO)
+        amp = self.boards['RF']['objects']['excitation']['FWHM_f'] / (self.sliceThickness * constants.GYRO)
         sliceSelectExcitation = sequence.getGradient('slice', 0., maxAmp=amp, flatDur=flatDur, name='slice select excitation')
         sliceRephaserArea = -sliceSelectExcitation['area_f']/2
         sliceSelectRephaser = sequence.getGradient('slice', totalArea=sliceRephaserArea, name='slice select rephaser')
@@ -1184,7 +1183,7 @@ class MRIsimulator(param.Parameterized):
         self.boards['slice']['objects']['slice select refocusing'] = []
         if not isGradientEcho(self.sequence):
             flatDur = self.boards['RF']['objects']['refocusing'][0]['dur_f']
-            amp = self.boards['RF']['objects']['refocusing'][0]['FWHM_f'] / (self.sliceThickness * GYRO)
+            amp = self.boards['RF']['objects']['refocusing'][0]['FWHM_f'] / (self.sliceThickness * constants.GYRO)
             self.boards['slice']['objects']['slice select refocusing'] = []
             for rf_echo in range(self.turboFactor):
                 self.boards['slice']['objects']['slice select refocusing'].append(sequence.getGradient('slice', maxAmp=amp, flatDur=flatDur, name='slice select refocusing'))
@@ -1192,7 +1191,7 @@ class MRIsimulator(param.Parameterized):
             
         if 'inversion' in self.boards['RF']['objects']:
             flatDur = self.boards['RF']['objects']['inversion']['dur_f']
-            amp = self.boards['RF']['objects']['inversion']['FWHM_f'] / (self.inversionThkFactor * self.sliceThickness * GYRO)
+            amp = self.boards['RF']['objects']['inversion']['FWHM_f'] / (self.inversionThkFactor * self.sliceThickness * constants.GYRO)
             self.boards['slice']['objects']['slice select inversion'] = sequence.getGradient('slice', maxAmp=amp, flatDur=flatDur, name='slice select inversion')
 
             spoilerArea = 30. # uTs/m
@@ -1207,8 +1206,8 @@ class MRIsimulator(param.Parameterized):
     
 
     def setupReadouts(self):
-        flatArea = self.matrixF / (self.FOVF/1e3 * GYRO) # uTs/m
-        amp = self.pixelBandWidth * self.matrixF / (self.FOVF * GYRO) # mT/m
+        flatArea = self.matrixF / (self.FOVF/1e3 * constants.GYRO) # uTs/m
+        amp = self.pixelBandWidth * self.matrixF / (self.FOVF * constants.GYRO) # mT/m
         self.boards['frequency']['objects']['readouts'] = []
         self.boards['ADC']['objects']['samplings'] = []
         for rf_echo in range(self.turboFactor):
@@ -1229,15 +1228,7 @@ class MRIsimulator(param.Parameterized):
     
     
     def get_phase_encoding_table(self):
-        return [[list(range(rf_echo * self.num_shots + shot, self.num_measured_lines, self.num_shots * self.turboFactor)) for rf_echo in range(self.turboFactor)] for shot in range(self.num_shots)]
-        if self.kspaceOrder=='center echo':
             pe_table = [[list(range(rf_echo * self.num_shots + shot, self.num_measured_lines, self.num_shots * self.turboFactor)) for rf_echo in range(self.turboFactor)] for shot in range(self.num_shots)]
-        elif self.kspaceOrder=='early echo':
-            # TODO: fix it for different sampling orders etc (own function)
-            True
-        elif self.kspaceOrder=='late echo':
-            # TODO: fix it for different sampling orders etc (own function)
-            True
         return pe_table
     
     
@@ -1245,8 +1236,8 @@ class MRIsimulator(param.Parameterized):
         self.getEncoding()
 
         acq_FOVP = self.FOV[self.phaseDir]/self.matrix[self.phaseDir] * self.oversampledMatrix[self.phaseDir]
-        phase_step_area = 1e3 / (acq_FOVP * GYRO) # uTs/m
-        maxPhaserArea = np.min(self.kAxes[self.phaseDir]) * 1e3 / GYRO   # uTs/m
+        phase_step_area = 1e3 / (acq_FOVP * constants.GYRO) # uTs/m
+        maxPhaserArea = np.min(self.kAxes[self.phaseDir]) * 1e3 / constants.GYRO   # uTs/m
 
         pe_table = self.get_phase_encoding_table()
         shot = 0
@@ -1278,24 +1269,6 @@ class MRIsimulator(param.Parameterized):
         spoilerArea = 30. # uTs/m
         self.boards['slice']['objects']['spoiler'] = sequence.getGradient('slice', totalArea=spoilerArea, name='spoiler')
         self.sequencePipeline.add(self.placeSpoiler)
-    
-    
-    def placeRefocusing(self):
-        if not isGradientEcho(self.sequence):
-            if self.kspaceOrder=='early echo':
-                self.rf_echo_spacing = self.TE
-            elif self.kspaceOrder=='center echo':
-                self.rf_echo_spacing = 2 * self.TE / (self.turboFactor + 1)
-            elif self.kspaceOrder=='late echo':
-                self.rf_echo_spacing = self.TE / self.turboFactor
-            
-            for rf_echo in range(self.turboFactor):
-                if self.kspaceOrder=='early echo':
-                    pos = self.TE + (rf_echo - 1/2) * self.rf_echo_spacing
-                elif self.kspaceOrder=='center echo':
-                    pos = self.TE + (rf_echo - self.turboFactor / 2) * self.rf_echo_spacing
-                elif self.kspaceOrder=='late echo':
-                    pos = self.TE - (rf_echo+ 1/2) * self.rf_echo_spacing
                 sequence.moveWaveform(self.boards['RF']['objects']['refocusing'][rf_echo], pos)
                 sequence.moveWaveform(self.boards['slice']['objects']['slice select refocusing'][rf_echo], pos)
             self.sequencePipeline.add(self.renderRFBoard)
@@ -1323,16 +1296,6 @@ class MRIsimulator(param.Parameterized):
             sequence.moveWaveform(self.boards['RF']['objects']['fatsat'], t)
         for f in [self.updateMinTR, self.renderRFBoard, self.renderFrequencyBoard, self.renderPhaseBoard, self.renderSliceBoard]:
             self.sequencePipeline.add(f)
-    
-
-    def get_hahn_echo_pos(self, rf_echo_num):
-        if self.kspaceOrder=='early echo':
-            return self.TE + rf_echo_num * self.rf_echo_spacing
-        elif self.kspaceOrder=='center echo':
-            return self.TE + (rf_echo_num - (self.turboFactor-1) / 2) * self.rf_echo_spacing
-        elif self.kspaceOrder=='late echo':
-            return self.TE - rf_echo_num * self.rf_echo_spacing
-
     
     def placeReadouts(self):
         for rf_echo in range(self.turboFactor):
