@@ -237,6 +237,40 @@ def getPDandT1w(component, seqType, TR, TE, TI, FA, B0):
         raise Exception('Unknown sequence type: {}'.format(seqType))
 
 
+def get_segment_order(N, Nsym, c):
+    '''Returns the temporal order in which to read k-space segments for a spin-echo train
+
+    Args:
+        N: number of segments, i.e. echo train length
+        Nsym: number of segments symmetric about the center of k-space
+        c: index of spin echo where (the first) centermost k-space segment is read
+
+    Returns:
+        Segment indices as a temporally ordered list
+    '''
+
+    split_center = not(Nsym % 2) # k-space center is between two segments
+
+    if c >= N-split_center:
+            raise ValueError('The spin echo index of (the first) centermost k-space segment is too high')
+    elif c > N//2 - split_center:
+        return get_segment_order(N, Nsym, N-1-c-split_center)[::-1]
+    
+    Ncon = min(2 * c + 1 + split_center, Nsym) # number of symmetric segments to be read consecutively
+    Npivot = Nsym - Ncon # number of symmetric segments to be read in a pivoting fashion
+    Nasym = N - Nsym # number of asymmetric segments
+    linear_start = Nasym + Nsym//2 - split_center - c # start of consecutively read segments
+    linear_end = N - Npivot//2 # end of consecutively read segments (+1)
+    linear = list(range(linear_start, linear_end)) # consecutively read segments
+    if linear_start==Nasym:
+        linear.reverse()
+    # segments read in a pivoting fashion:
+    pivot = [val for pair in zip(range(linear_end, N), reversed(range(Nasym, linear_start))) for val in pair]
+    tail = list(range(min(linear_start, Nasym)))[::-1] # remaining asymmetric segments
+    segment_order = linear + pivot + tail
+    return segment_order
+
+
 def updateBounds(curval, values, minval=None, maxval=None):
     if minval is not None:
         values = [val for val in values if not val < minval]
@@ -600,6 +634,7 @@ class MRIsimulator(param.Parameterized):
             self.reconPipeline.add(f)
         for f in [self.placeRefocusing, self.placeReadouts, self.placePhasers, self.updateMinTE, self.updateMinTR, self.updateMaxTE, self.updateMaxTI, self.updateBWbounds, self.updateMatrixFbounds, self.updateMatrixPbounds, self.updateFOVFbounds,  self.updateFOVPbounds, self.updateSliceThicknessBounds]:
             self.sequencePipeline.add(f)
+        self.updateEPIfactorObjects()
 
 
     @param.depends('partialFourier', watch=True)
@@ -626,6 +661,10 @@ class MRIsimulator(param.Parameterized):
         for f in [self.setupReadouts, self.setupPhasers, self.updateMinTE, self.updateMinTR, self.updateMaxTE, self.updateMaxTI, self.updateBWbounds, self.updateMatrixFbounds, self.updateMatrixPbounds, self.updateFOVFbounds,  self.updateFOVPbounds, self.updateSliceThicknessBounds]:
             self.sequencePipeline.add(f)
         self.updateTurboFactorBounds()
+        if self.EPIfactor>1:
+            self.param.kspaceOrder.constant = True
+        else:
+            self.param.kspaceOrder.constant = False
 
 
     @param.depends('sequence', watch=True)
@@ -660,7 +699,7 @@ class MRIsimulator(param.Parameterized):
     def _watch_TE(self):
         for f in [self.modulateKspace, self.updatePDandT1w, self.compileKspace, self.partialFourierRecon, self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
-        for f in [self.placeRefocusing, self.placeReadouts, self.placePhasers, self.updateMatrixFbounds, self.updateFOVFbounds, self.updateMatrixPbounds, self.updateFOVPbounds]:
+        for f in [self.setupPhasers, self.placeRefocusing, self.placeReadouts, self.updateMatrixFbounds, self.updateFOVFbounds, self.updateMatrixPbounds, self.updateFOVPbounds]:
             self.sequencePipeline.add(f)
     
 
@@ -726,25 +765,13 @@ class MRIsimulator(param.Parameterized):
     
     
     def updateMinTE(self):
-        # TODO: correct wrt GRASE
-        if not isGradientEcho(self.sequence):
-            leftSide = max(
-                self.boards['frequency']['objects']['read prephaser']['dur_f'], 
-                self.boards['slice']['objects']['slice select excitation']['riseTime_f'] + self.boards['slice']['objects']['slice select rephaser']['dur_f'] + (self.boards['slice']['objects']['slice select refocusing'][0]['riseTime_f']))
-            leftSide += (self.boards['RF']['objects']['excitation']['dur_f'] + self.boards['RF']['objects']['refocusing'][0]['dur_f']) / 2
-            rightSide = max(
-                self.boards['frequency']['objects']['readouts'][0][0]['riseTime_f'],
-                self.boards['phase']['objects']['phasers'][0]['dur_f'],
-                self.boards['slice']['objects']['slice select refocusing'][0]['riseTime_f'])
-            rightSide += (self.boards['RF']['objects']['refocusing'][0]['dur_f'] + self.boards['ADC']['objects']['samplings'][0][0]['dur_f']) / 2
-            self.minTE = max(leftSide, rightSide) * 2
+        min_rf_echo_spacing = self.get_min_rf_echo_spacing()
+        if self.EPIfactor == 1:
+            min_centermost_rf_echo = 0
         else:
-            self.minTE = max(
-                self.boards['frequency']['objects']['read prephaser']['dur_f'] + self.boards['frequency']['objects']['readouts'][0][0]['riseTime_f'],
-                self.boards['phase']['objects']['phasers'][0]['dur_f'],
-                self.boards['slice']['objects']['slice select excitation']['riseTime_f'] + self.boards['slice']['objects']['slice select rephaser']['dur_f']
-            )
-            self.minTE += (self.boards['RF']['objects']['excitation']['dur_f'] + self.boards['ADC']['objects']['samplings'][0][0]['dur_f']) / 2
+            min_centermost_rf_echo = 0 # TODO: handle GRASE with partial Fourier
+        self.minTE = min_rf_echo_spacing * (min_centermost_rf_echo + 1 + .5 * self.split_center)
+        # TODO: adjust for GRE train including possibly partial Fourier
         self.sequencePipeline.add(self.updateMaxTE)
     
     
@@ -947,6 +974,11 @@ class MRIsimulator(param.Parameterized):
 
 
     def updateEPIfactorObjects(self):
+        if self.kspaceOrder != 'center echo':
+            assert self.param.EPIfactor==1, 'EPI is only compatible with k-space order "center echo"'
+            self.param.EPIfactor.constant = True
+        else:
+            self.param.EPIfactor.constant = False
         if self.turboFactor > 1: # only odd EPIfactor for GRASE
             self.param.EPIfactor.objects = [v for v in EPIfactorValues if v%2]
         else:
@@ -981,7 +1013,58 @@ class MRIsimulator(param.Parameterized):
         self.updateFreqEncoding() # frequency oversampling is adapted to phantom FOV for efficiency
 
 
-    def getEncoding(self):
+    def get_min_rf_echo_spacing(self):
+        # rf_echo_spacing corresponds to center of gradient echo train for gradient echo sequences
+        gre_echo_train_dur = sum([self.boards['frequency']['objects']['readouts'][0][gr_echo]['dur_f'] for gr_echo in range(self.EPIfactor)])
+        readout_risetime = self.boards['frequency']['objects']['readouts'][0][0]['riseTime_f']
+        max_phaser_area = np.min(self.kAxes[self.phaseDir]) * 1e3 / constants.GYRO   # uTs/m
+        max_phaser_dur = sequence.getGradient('_', totalArea=max_phaser_area)['dur_f']
+        if isGradientEcho(self.sequence):
+            spacing = (self.boards['RF']['objects']['excitation']['dur_f'] + gre_echo_train_dur) / 2 - readout_risetime
+            spacing += max(
+                self.boards['frequency']['objects']['read prephaser']['dur_f'] + readout_risetime,
+                max_phaser_dur,
+                self.boards['slice']['objects']['slice select excitation']['riseTime_f'] + self.boards['slice']['objects']['slice select rephaser']['dur_f']
+            )
+        else: # spin echo
+            leftSide = (self.boards['RF']['objects']['excitation']['dur_f'] + self.boards['RF']['objects']['refocusing'][0]['dur_f']) / 2
+            leftSide += max(
+                self.boards['frequency']['objects']['read prephaser']['dur_f'], 
+                self.boards['slice']['objects']['slice select excitation']['riseTime_f'] + self.boards['slice']['objects']['slice select rephaser']['dur_f'] + (self.boards['slice']['objects']['slice select refocusing'][0]['riseTime_f'])
+            )
+            rightSide = (self.boards['RF']['objects']['refocusing'][0]['dur_f'] + gre_echo_train_dur) / 2 - readout_risetime
+            rightSide += max(
+                readout_risetime,
+                max_phaser_dur,
+                self.boards['slice']['objects']['slice select refocusing'][0]['riseTime_f']
+            )
+            spacing = max(leftSide, rightSide) * 2
+        return spacing
+    
+    
+    def set_rf_echo_spacing(self):
+        # rf_echo_spacing corresponds to center of gradient echo train for gradient echo sequences
+        if self.EPIfactor > 1: # linear k-space order for EPI / GRASE
+            self.rf_echo_spacing = 2 * self.TE / (self.turboFactor + 1) # TODO: fix for partial Fourier GRE-EPI
+        else:
+            min_rf_echo_spacing = self.get_min_rf_echo_spacing()
+            self.centermost_rf_echo = int(np.floor(self.TE / min_rf_echo_spacing - (1 + .5 * self.split_center)))
+            self.centermost_rf_echo = min(self.centermost_rf_echo, self.turboFactor - 1 - self.split_center)
+            self.rf_echo_spacing = self.TE / (self.centermost_rf_echo + (1 + .5 * self.split_center))
+        self.sequencePipeline.add(self.placeRefocusing)
+        self.sequencePipeline.add(self.placeReadouts)
+        self.sequencePipeline.add(self.placePhasers)
+    
+    
+    def setup_phase_encoding_table(self, num_sym_segm):
+        if self.EPIfactor > 1: # gradient echo and GRASE
+            self.pe_table = [[list(range(rf_echo * self.num_shots + shot, self.num_measured_lines, self.num_shots * self.turboFactor)) for rf_echo in range(self.turboFactor)] for shot in range(self.num_shots)]
+        else: # turbo spin echo
+            segment_order = get_segment_order(self.turboFactor, num_sym_segm, self.centermost_rf_echo)
+            self.pe_table = [[[segment * self.num_shots + shot] for segment in segment_order] for shot in range(self.num_shots)]
+    
+    
+    def setup_encoding(self):
         self.matrix = [self.matrixP, self.matrixF]
         self.FOV = [self.FOVP, self.FOVF]
         self.freqDir = DIRECTIONS[self.frequencyDirection]
@@ -1003,6 +1086,17 @@ class MRIsimulator(param.Parameterized):
         # Undersample by partial Fourier:
         self.kAxes[self.phaseDir] = self.kAxes[self.phaseDir][:self.oversampledPartialMatrix]
         assert(len(self.kAxes[self.phaseDir]) == self.num_measured_lines)
+
+        num_sym_lines = 2 * self.num_measured_lines - self.oversampledMatrix[self.phaseDir]
+        self.split_center = (num_sym_lines % self.num_shots == 0) and ((num_sym_lines / self.num_shots) % 2 == 0)
+        # number of k-space segments symmetric about center:
+        if self.split_center:
+            num_sym_segm = int(num_sym_lines / self.num_shots)
+        else:
+            num_sym_segm = int(np.round((num_sym_lines / self.num_shots - 1) / 2)) * 2 + 1
+
+        self.set_rf_echo_spacing()
+        self.setup_phase_encoding_table(num_sym_segm)
     
 
     def updateFreqEncoding(self):
@@ -1227,33 +1321,27 @@ class MRIsimulator(param.Parameterized):
         self.sequencePipeline.add(self.updateMinTE)
     
     
-    def get_phase_encoding_table(self):
-            pe_table = [[list(range(rf_echo * self.num_shots + shot, self.num_measured_lines, self.num_shots * self.turboFactor)) for rf_echo in range(self.turboFactor)] for shot in range(self.num_shots)]
-        return pe_table
-    
-    
     def setupPhasers(self):
-        self.getEncoding()
+        self.setup_encoding()
 
         acq_FOVP = self.FOV[self.phaseDir]/self.matrix[self.phaseDir] * self.oversampledMatrix[self.phaseDir]
         phase_step_area = 1e3 / (acq_FOVP * constants.GYRO) # uTs/m
         maxPhaserArea = np.min(self.kAxes[self.phaseDir]) * 1e3 / constants.GYRO   # uTs/m
 
-        pe_table = self.get_phase_encoding_table()
-        shot = 0
+        shot = 0 # TODO: enable selection of shot to show
 
         self.boards['phase']['objects']['phasers'] = []
         self.boards['phase']['objects']['rephasers'] = []
         self.boards['phase']['objects']['blips'] = []
 
         for rf_echo in range(self.turboFactor):
-            phaserArea = maxPhaserArea + pe_table[shot][rf_echo][0] * phase_step_area
+            phaserArea = maxPhaserArea + self.pe_table[shot][rf_echo][0] * phase_step_area
             phaser = sequence.getGradient('phase', totalArea=phaserArea, name='phase encode r{}'.format(rf_echo))
             self.boards['phase']['objects']['phasers'].append(phaser)
             rephaserArea = -phaserArea
             blips = []
             for gr_echo in range(1, self.EPIfactor):
-                blipArea = phase_step_area * (pe_table[shot][rf_echo][gr_echo]-pe_table[shot][rf_echo][gr_echo-1])
+                blipArea = phase_step_area * (self.pe_table[shot][rf_echo][gr_echo]-self.pe_table[shot][rf_echo][gr_echo-1])
                 blip = sequence.getGradient('phase', totalArea=blipArea, name='blip r{} g{}'.format(rf_echo, gr_echo))
                 blips.append(blip)
                 rephaserArea -= blipArea
@@ -1269,6 +1357,16 @@ class MRIsimulator(param.Parameterized):
         spoilerArea = 30. # uTs/m
         self.boards['slice']['objects']['spoiler'] = sequence.getGradient('slice', totalArea=spoilerArea, name='spoiler')
         self.sequencePipeline.add(self.placeSpoiler)
+
+
+    def get_hahn_echo_pos(self, rf_echo_num):
+        return self.rf_echo_spacing * (rf_echo_num + 1)
+    
+    
+    def placeRefocusing(self):
+        if not isGradientEcho(self.sequence):
+            for rf_echo in range(self.turboFactor):
+                pos = self.get_hahn_echo_pos(rf_echo) - self.rf_echo_spacing/2
                 sequence.moveWaveform(self.boards['RF']['objects']['refocusing'][rf_echo], pos)
                 sequence.moveWaveform(self.boards['slice']['objects']['slice select refocusing'][rf_echo], pos)
             self.sequencePipeline.add(self.renderRFBoard)
@@ -1296,6 +1394,7 @@ class MRIsimulator(param.Parameterized):
             sequence.moveWaveform(self.boards['RF']['objects']['fatsat'], t)
         for f in [self.updateMinTR, self.renderRFBoard, self.renderFrequencyBoard, self.renderPhaseBoard, self.renderSliceBoard]:
             self.sequencePipeline.add(f)
+    
     
     def placeReadouts(self):
         for rf_echo in range(self.turboFactor):
