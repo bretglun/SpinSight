@@ -6,7 +6,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 import re
 import xarray as xr
-import sequence
+from spinsight import sequence
 from bokeh.models import HoverTool
 from functools import partial
 
@@ -130,13 +130,13 @@ def getSubpaths(pathString, scale):
 
 
 def parseTransform(transformString):
-    match = re.search("translate\((-?\d+.\d+)(px|%), (-?\d+.\d+)(px|%)\)", transformString)
+    match = re.search(r'translate\((-?\d+.\d+)(px|%), (-?\d+.\d+)(px|%)\)', transformString)
     translation = (float(match.group(1)), float(match.group(3))) if match else (0, 0)
 
-    match = re.search("rotate\((-?\d+.\d+)deg\)", transformString)
+    match = re.search(r'rotate\((-?\d+.\d+)deg\)', transformString)
     rotation = float(match.group(1)) if match else 0
     
-    match = re.search("scale\((-?\d+.\d+)\)", transformString)
+    match = re.search(r'scale\((-?\d+.\d+)\)', transformString)
     scale = float(match.group(1)) if match else 1
 
     return translation, rotation, scale
