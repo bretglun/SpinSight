@@ -765,13 +765,23 @@ class MRIsimulator(param.Parameterized):
     
     
     def updateMinTE(self):
-        min_rf_echo_spacing = self.get_min_rf_echo_spacing()
-        if self.EPIfactor == 1:
-            min_centermost_rf_echo = 0
-        else:
-            min_centermost_rf_echo = 0 # TODO: handle GRASE with partial Fourier
-        self.minTE = min_rf_echo_spacing * (min_centermost_rf_echo + 1 + .5 * self.split_center)
-        # TODO: adjust for GRE train including possibly partial Fourier
+        min_readtrain_spacing = self.get_min_readtrain_spacing()
+        if self.EPIfactor == 1: # flexible segment order for (turbo) spin echo
+            min_centermost_gr_echoes = [0]
+            min_centermost_rf_echoes = [0]
+            if (self.split_center and self.turboFactor > 1):
+                min_centermost_rf_echoes += [1]
+        else: # linear segment order for EPI and GRASE
+            min_centermost_gr_echoes = []
+            min_centermost_rf_echoes = []
+            for segm in self.central_segments:
+                rev_segm = self.num_segm - 1 - segm # reverse order achieves minimum TE for asymmetric k-space
+                min_centermost_gr_echoes.append(rev_segm // self.turboFactor)
+                min_centermost_rf_echoes.append(rev_segm % self.turboFactor)
+        
+        self.minTE = min_readtrain_spacing * (1 + np.mean(min_centermost_rf_echoes))
+        readtrain_shift = self.gr_echo_spacing * (np.mean(self.central_segments) - (self.EPIfactor-1)/2) # TODO: adjust for GRASE
+        self.minTE -= readtrain_shift
         self.sequencePipeline.add(self.updateMaxTE)
     
     
@@ -1013,8 +1023,10 @@ class MRIsimulator(param.Parameterized):
         self.updateFreqEncoding() # frequency oversampling is adapted to phantom FOV for efficiency
 
 
-    def get_min_rf_echo_spacing(self):
-        # rf_echo_spacing corresponds to center of gradient echo train for gradient echo sequences
+    def get_min_readtrain_spacing(self):
+        # Get shortest spacing for (center of) gradient echo trains
+        # Equals center position of gradient echo (train) for gradient echo sequences
+        # Equals rf echo spacing for spin echo sequences
         gre_echo_train_dur = sum([self.boards['frequency']['objects']['readouts'][0][gr_echo]['dur_f'] for gr_echo in range(self.EPIfactor)])
         readout_risetime = self.boards['frequency']['objects']['readouts'][0][0]['riseTime_f']
         max_phaser_area = np.min(self.kAxes[self.phaseDir]) * 1e3 / constants.GYRO   # uTs/m
@@ -1027,11 +1039,13 @@ class MRIsimulator(param.Parameterized):
                 self.boards['slice']['objects']['slice select excitation']['riseTime_f'] + self.boards['slice']['objects']['slice select rephaser']['dur_f']
             )
         else: # spin echo
+            # before refocusing pulse:
             leftSide = (self.boards['RF']['objects']['excitation']['dur_f'] + self.boards['RF']['objects']['refocusing'][0]['dur_f']) / 2
             leftSide += max(
                 self.boards['frequency']['objects']['read prephaser']['dur_f'], 
                 self.boards['slice']['objects']['slice select excitation']['riseTime_f'] + self.boards['slice']['objects']['slice select rephaser']['dur_f'] + (self.boards['slice']['objects']['slice select refocusing'][0]['riseTime_f'])
             )
+            # after refocusing pulse:
             rightSide = (self.boards['RF']['objects']['refocusing'][0]['dur_f'] + gre_echo_train_dur) / 2 - readout_risetime
             rightSide += max(
                 readout_risetime,
@@ -1042,26 +1056,37 @@ class MRIsimulator(param.Parameterized):
         return spacing
     
     
-    def set_rf_echo_spacing(self):
-        # rf_echo_spacing corresponds to center of gradient echo train for gradient echo sequences
-        if self.EPIfactor > 1: # linear k-space order for EPI / GRASE
-            self.rf_echo_spacing = 2 * self.TE / (self.turboFactor + 1) # TODO: fix for partial Fourier GRE-EPI
-        else:
-            min_rf_echo_spacing = self.get_min_rf_echo_spacing()
-            self.centermost_rf_echo = int(np.floor(self.TE / min_rf_echo_spacing - (1 + .5 * self.split_center)))
+    def set_readtrain_spacing(self):
+        # Equals center position of gradient echo (train) for gradient echo sequences
+        # Equals rf echo spacing for spin echo sequences
+        min_readtrain_spacing = self.get_min_readtrain_spacing()
+        if self.EPIfactor == 1: # (turbo) spin echo
+            self.centermost_rf_echo = int(np.floor(self.TE / min_readtrain_spacing - (1 + .5 * self.split_center)))
             self.centermost_rf_echo = min(self.centermost_rf_echo, self.turboFactor - 1 - self.split_center)
-            self.rf_echo_spacing = self.TE / (self.centermost_rf_echo + (1 + .5 * self.split_center))
+            self.readtrain_spacing = self.TE / (self.centermost_rf_echo + (1 + .5 * self.split_center))
+        else: # linear k-space order for EPI / GRASE
+            # EPI including asymmetric k-space
+            self.readtrain_spacing = self.TE
+            readtrain_shift = self.gr_echo_spacing * (np.mean(self.central_segments) - (self.EPIfactor-1)/2) # TODO: adjust for GRASE
+            if self.readtrain_spacing < (min_readtrain_spacing + readtrain_shift):
+                self.readtrain_spacing += readtrain_shift 
+            else:
+                self.readtrain_spacing -= readtrain_shift
+            # TODO: fix for GRASE
         self.sequencePipeline.add(self.placeRefocusing)
         self.sequencePipeline.add(self.placeReadouts)
         self.sequencePipeline.add(self.placePhasers)
     
     
     def setup_phase_encoding_table(self, num_sym_segm):
-        if self.EPIfactor > 1: # gradient echo and GRASE
-            self.pe_table = [[list(range(rf_echo * self.num_shots + shot, self.num_measured_lines, self.num_shots * self.turboFactor)) for rf_echo in range(self.turboFactor)] for shot in range(self.num_shots)]
-        else: # turbo spin echo
+        if self.EPIfactor == 1: # (turbo) spin echo
             segment_order = get_segment_order(self.turboFactor, num_sym_segm, self.centermost_rf_echo)
             self.pe_table = [[[segment * self.num_shots + shot] for segment in segment_order] for shot in range(self.num_shots)]
+        else: # EPI and GRASE
+            order = 1 if self.readtrain_spacing < self.TE else -1 # early or late echo?
+            # TODO: fix order for GRASE (see set_readtrain_spacing)
+            self.pe_table = [[list(range(rf_echo * self.num_shots + shot, self.num_measured_lines, self.num_shots * self.turboFactor))[::order] for rf_echo in range(self.turboFactor)][::order] for shot in range(self.num_shots)]
+
     
     
     def setup_encoding(self):
@@ -1087,15 +1112,19 @@ class MRIsimulator(param.Parameterized):
         self.kAxes[self.phaseDir] = self.kAxes[self.phaseDir][:self.oversampledPartialMatrix]
         assert(len(self.kAxes[self.phaseDir]) == self.num_measured_lines)
 
+        self.num_segm = int(self.num_measured_lines / self.num_shots)
         num_sym_lines = 2 * self.num_measured_lines - self.oversampledMatrix[self.phaseDir]
+        # check if center of k-space lies between two segments:
         self.split_center = (num_sym_lines % self.num_shots == 0) and ((num_sym_lines / self.num_shots) % 2 == 0)
         # number of k-space segments symmetric about center:
         if self.split_center:
             num_sym_segm = int(num_sym_lines / self.num_shots)
+            self.central_segments = [self.num_segm - num_sym_segm//2 - 1, self.num_segm - num_sym_segm//2]
         else:
             num_sym_segm = int(np.round((num_sym_lines / self.num_shots - 1) / 2)) * 2 + 1
+            self.central_segments = [self.num_segm - num_sym_segm//2 - 1]
 
-        self.set_rf_echo_spacing()
+        self.set_readtrain_spacing()
         self.setup_phase_encoding_table(num_sym_segm)
     
 
@@ -1359,14 +1388,15 @@ class MRIsimulator(param.Parameterized):
         self.sequencePipeline.add(self.placeSpoiler)
 
 
-    def get_hahn_echo_pos(self, rf_echo_num):
-        return self.rf_echo_spacing * (rf_echo_num + 1)
+    def get_readtrain_pos(self, rf_echo_num):
+        # center position of gradient echo readout (train)
+        return self.readtrain_spacing * (rf_echo_num + 1)
     
     
     def placeRefocusing(self):
         if not isGradientEcho(self.sequence):
             for rf_echo in range(self.turboFactor):
-                pos = self.get_hahn_echo_pos(rf_echo) - self.rf_echo_spacing/2
+                pos = self.get_readtrain_pos(rf_echo) - self.readtrain_spacing/2
                 sequence.moveWaveform(self.boards['RF']['objects']['refocusing'][rf_echo], pos)
                 sequence.moveWaveform(self.boards['slice']['objects']['slice select refocusing'][rf_echo], pos)
             self.sequencePipeline.add(self.renderRFBoard)
@@ -1398,9 +1428,9 @@ class MRIsimulator(param.Parameterized):
     
     def placeReadouts(self):
         for rf_echo in range(self.turboFactor):
-            hahn_echo_pos = self.get_hahn_echo_pos(rf_echo)
+            readtrain_pos = self.get_readtrain_pos(rf_echo)
             for gr_echo in range(self.EPIfactor):
-                pos = hahn_echo_pos + (gr_echo - (self.EPIfactor-1) / 2) * self.gr_echo_spacing
+                pos = readtrain_pos + (gr_echo - (self.EPIfactor-1) / 2) * self.gr_echo_spacing
                 for object in [self.boards['frequency']['objects']['readouts'], self.boards['ADC']['objects']['samplings']]:
                     sequence.moveWaveform(object[rf_echo][gr_echo], pos)
                 if gr_echo%2 and self.boards['frequency']['objects']['readouts'][rf_echo][gr_echo]['area_f'] > 0:
@@ -1422,18 +1452,18 @@ class MRIsimulator(param.Parameterized):
     
     def placePhasers(self):
         for rf_echo in range(self.turboFactor):
-            hahn_echo_pos = self.get_hahn_echo_pos(rf_echo)
+            readtrain_pos = self.get_readtrain_pos(rf_echo)
             
             phaserDur = self.boards['phase']['objects']['phasers'][rf_echo]['dur_f']
-            phaserTime = hahn_echo_pos - (np.sum([readout['dur_f'] for readout in self.boards['frequency']['objects']['readouts'][rf_echo]]) + phaserDur)/2 + self.boards['frequency']['objects']['readouts'][rf_echo][0]['riseTime_f']
+            phaserTime = readtrain_pos - (np.sum([readout['dur_f'] for readout in self.boards['frequency']['objects']['readouts'][rf_echo]]) + phaserDur)/2 + self.boards['frequency']['objects']['readouts'][rf_echo][0]['riseTime_f']
             sequence.moveWaveform(self.boards['phase']['objects']['phasers'][rf_echo], phaserTime)
 
             for gr_echo in range(self.EPIfactor-1):
-                blipTime = hahn_echo_pos + self.gr_echo_spacing * (gr_echo - self.EPIfactor/2 + 1)
+                blipTime = readtrain_pos + self.gr_echo_spacing * (gr_echo - self.EPIfactor/2 + 1)
                 sequence.moveWaveform(self.boards['phase']['objects']['blips'][rf_echo][gr_echo], blipTime)
 
             rephaserDur = self.boards['phase']['objects']['rephasers'][rf_echo]['dur_f']
-            rephaserTime = hahn_echo_pos + (np.sum([readout['dur_f'] for readout in self.boards['frequency']['objects']['readouts'][rf_echo]]) + rephaserDur)/2 - self.boards['frequency']['objects']['readouts'][rf_echo][-1]['riseTime_f']
+            rephaserTime = readtrain_pos + (np.sum([readout['dur_f'] for readout in self.boards['frequency']['objects']['readouts'][rf_echo]]) + rephaserDur)/2 - self.boards['frequency']['objects']['readouts'][rf_echo][-1]['riseTime_f']
             sequence.moveWaveform(self.boards['phase']['objects']['rephasers'][rf_echo], rephaserTime)
         
         self.sequencePipeline.add(self.renderPhaseBoard)
