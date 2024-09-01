@@ -764,6 +764,13 @@ class MRIsimulator(param.Parameterized):
             return self.boards['slice']['objects']['slice select excitation']['time'][0]
     
     
+    def get_TE_from_centermost_echoes(self, readtrain_spacing, centermost_gr_echoes, centermost_rf_echoes):
+        TE = readtrain_spacing * (1 + np.mean(centermost_rf_echoes))
+        readtrain_shift = self.gr_echo_spacing * (np.mean(centermost_gr_echoes) - (self.EPIfactor-1)/2)
+        TE -= readtrain_shift
+        return TE
+    
+    
     def updateMinTE(self):
         min_readtrain_spacing = self.get_min_readtrain_spacing()
         if self.EPIfactor == 1: # flexible segment order for (turbo) spin echo
@@ -771,17 +778,11 @@ class MRIsimulator(param.Parameterized):
             min_centermost_rf_echoes = [0]
             if (self.split_center and self.turboFactor > 1):
                 min_centermost_rf_echoes += [1]
+            self.minTE = self.get_TE_from_centermost_echoes(min_readtrain_spacing, min_centermost_gr_echoes, min_centermost_rf_echoes)
         else: # linear segment order for EPI and GRASE
-            min_centermost_gr_echoes = []
-            min_centermost_rf_echoes = []
-            for segm in self.central_segments:
-                rev_segm = self.num_segm - 1 - segm # reverse order achieves minimum TE for asymmetric k-space
-                min_centermost_gr_echoes.append(rev_segm // self.turboFactor)
-                min_centermost_rf_echoes.append(rev_segm % self.turboFactor)
-        
-        self.minTE = min_readtrain_spacing * (1 + np.mean(min_centermost_rf_echoes))
-        readtrain_shift = self.gr_echo_spacing * (np.mean(self.central_segments) - (self.EPIfactor-1)/2) # TODO: adjust for GRASE
-        self.minTE -= readtrain_shift
+            # # pick forward or reverse order that minimizes TE (may be forward for GRASE)
+            TEcands = [self.get_TE_from_centermost_echoes(min_readtrain_spacing, *self.get_centermost_echoes_linear_order(reverse)) for reverse in [True, False]]
+            self.minTE = min(TEcands)
         self.sequencePipeline.add(self.updateMaxTE)
     
     
@@ -1056,6 +1057,28 @@ class MRIsimulator(param.Parameterized):
         return spacing
     
     
+    def get_centermost_echoes_linear_order(self, reverse=False):
+        # get index lists of rf echo(es) and gradient echo(es) closest to k-space center for linear k-space ordering
+        centermost_gr_echoes = []
+        centermost_rf_echoes = []
+        central_segments = self.central_segments
+        if reverse:
+            central_segments = [self.num_segm - 1 - segm for segm in central_segments]
+        for segm in central_segments:
+            centermost_gr_echoes.append(segm // self.turboFactor)
+            centermost_rf_echoes.append(segm % self.turboFactor)
+        return centermost_gr_echoes, centermost_rf_echoes
+    
+    
+    def get_readtrain_spacing_linear_order(self, reverse):
+        centermost_gr_echoes, centermost_rf_echoes = self.get_centermost_echoes_linear_order(reverse)
+        readtrain_shift = self.gr_echo_spacing * (np.mean(centermost_gr_echoes) - (self.EPIfactor-1)/2)
+        if reverse: readtrain_shift *= -1
+        central_rf_echo_time = self.TE + readtrain_shift
+        readtrain_spacing = central_rf_echo_time / (1 + np.mean(centermost_rf_echoes))
+        return readtrain_spacing
+    
+    
     def set_readtrain_spacing(self):
         # Equals center position of gradient echo (train) for gradient echo sequences
         # Equals rf echo spacing for spin echo sequences
@@ -1065,14 +1088,10 @@ class MRIsimulator(param.Parameterized):
             self.centermost_rf_echo = min(self.centermost_rf_echo, self.turboFactor - 1 - self.split_center)
             self.readtrain_spacing = self.TE / (self.centermost_rf_echo + (1 + .5 * self.split_center))
         else: # linear k-space order for EPI / GRASE
-            # EPI including asymmetric k-space
-            self.readtrain_spacing = self.TE
-            readtrain_shift = self.gr_echo_spacing * (np.mean(self.central_segments) - (self.EPIfactor-1)/2) # TODO: adjust for GRASE
-            if self.readtrain_spacing < (min_readtrain_spacing + readtrain_shift):
-                self.readtrain_spacing += readtrain_shift 
-            else:
-                self.readtrain_spacing -= readtrain_shift
-            # TODO: fix for GRASE
+            # pick forward or reverse order that minimizes spacing while respecting minimum
+            cands = [(self.get_readtrain_spacing_linear_order(reverse), reverse) for reverse in [True, False]]
+            cands = [cand for cand in cands if cand[0] >= min_readtrain_spacing]
+            (self.readtrain_spacing, self.reverse_linear_order) = min(cands, key=lambda c: c[0])
         self.sequencePipeline.add(self.placeRefocusing)
         self.sequencePipeline.add(self.placeReadouts)
         self.sequencePipeline.add(self.placePhasers)
@@ -1083,10 +1102,8 @@ class MRIsimulator(param.Parameterized):
             segment_order = get_segment_order(self.turboFactor, num_sym_segm, self.centermost_rf_echo)
             self.pe_table = [[[segment * self.num_shots + shot] for segment in segment_order] for shot in range(self.num_shots)]
         else: # EPI and GRASE
-            order = 1 if self.readtrain_spacing < self.TE else -1 # early or late echo?
-            # TODO: fix order for GRASE (see set_readtrain_spacing)
+            order = -1 if self.reverse_linear_order else 1
             self.pe_table = [[list(range(rf_echo * self.num_shots + shot, self.num_measured_lines, self.num_shots * self.turboFactor))[::order] for rf_echo in range(self.turboFactor)][::order] for shot in range(self.num_shots)]
-
     
     
     def setup_encoding(self):
