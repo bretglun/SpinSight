@@ -636,6 +636,7 @@ class MRIsimulator(param.Parameterized):
             self.reconPipeline.add(f)
         for f in [self.setupRefocusing, self.setupReadouts, self.setupPhasers, self.updateMinTE, self.updateMinTR, self.updateMaxTE, self.updateMaxTI, self.updateBWbounds, self.updateMatrixFbounds, self.updateMatrixPbounds, self.updateFOVFbounds,  self.updateFOVPbounds, self.updateSliceThicknessBounds]:
             self.sequencePipeline.add(f)
+        self.adjust_timing_params()
 
 
     @param.depends('turboFactor', watch=True)
@@ -645,6 +646,7 @@ class MRIsimulator(param.Parameterized):
         for f in [self.setupRefocusing, self.setupReadouts, self.setupPhasers, self.updateMinTE, self.updateMinTR, self.updateMaxTE, self.updateMaxTI, self.updateBWbounds, self.updateMatrixFbounds, self.updateMatrixPbounds, self.updateFOVFbounds,  self.updateFOVPbounds, self.updateSliceThicknessBounds]:
             self.sequencePipeline.add(f)
         self.updateEPIfactorObjects()
+        self.adjust_timing_params()
 
 
     @param.depends('EPIfactor', watch=True)
@@ -654,6 +656,7 @@ class MRIsimulator(param.Parameterized):
         for f in [self.setupReadouts, self.setupPhasers, self.updateMinTE, self.updateMinTR, self.updateMaxTE, self.updateMaxTI, self.updateBWbounds, self.updateMatrixFbounds, self.updateMatrixPbounds, self.updateFOVFbounds,  self.updateFOVPbounds, self.updateSliceThicknessBounds]:
             self.sequencePipeline.add(f)
         self.updateTurboFactorBounds()
+        self.adjust_timing_params()
     
 
     @param.depends('sequence', watch=True)
@@ -708,12 +711,7 @@ class MRIsimulator(param.Parameterized):
             self.reconPipeline.add(f)
         for f in [self.setupFatSat, self.updateMaxTE, self.updateBWbounds]:
             self.sequencePipeline.add(f)
-        tr = self.TR
-        self.render = False
-        self.TR = self.param.TR.objects[-1] # max TR
-        self.runSequencePipeline()
-        self.render = True
-        self.TR = min(self.param.TR.objects, key=lambda x: abs(x-tr)) # Set back TR within bounds
+        self.adjust_timing_params()
 
 
     @param.depends('reconMatrixF', watch=True)
@@ -974,7 +972,8 @@ class MRIsimulator(param.Parameterized):
 
 
     def updateTurboFactorBounds(self):
-        if not self.EPIfactor%2: # if even EPIfactor
+        # turboFactor must equal 1 when the EPIfactor is even
+        if not self.EPIfactor%2:
             self.param.turboFactor.bounds = (1, 1)
             self.param.turboFactor.constant = True
         else:
@@ -983,7 +982,8 @@ class MRIsimulator(param.Parameterized):
 
 
     def updateEPIfactorObjects(self):
-        if self.turboFactor > 1: # only odd EPIfactor for GRASE
+        # EPIfactor must be odd for turbo spin echo (GRASE)
+        if self.turboFactor > 1:
             self.param.EPIfactor.objects = [v for v in EPIfactorValues if v%2]
         else:
             self.param.EPIfactor.objects = EPIfactorValues
