@@ -624,12 +624,14 @@ class MRIsimulator(param.Parameterized):
     
     @param.depends('FWshift', watch=True)
     def _watch_FWshift(self):
-        self.pixelBandWidth = shift2pixelBW(self.FWshift, self.fieldStrength)
+        if self.param.FWshift.precedence > 0:
+            self.pixelBandWidth = shift2pixelBW(self.FWshift, self.fieldStrength)
     
 
     @param.depends('FOVbandwidth', watch=True)
     def _watch_FOVbandwidth(self):
-        self.pixelBandWidth = FOVBW2pixelBW(self.FOVbandwidth, self.matrixF)
+        if self.param.FOVbandwidth.precedence > 0:
+            self.pixelBandWidth = FOVBW2pixelBW(self.FOVbandwidth, self.matrixF)
 
 
     @param.depends('NSA', watch=True)
@@ -861,7 +863,6 @@ class MRIsimulator(param.Parameterized):
     
 
     def updateBWbounds(self):
-        # TODO: update wrt GRASE
         # See paramBounds.tex for formulae relating to the readout board
         s = self.maxSlew
         A = 1e3 * self.matrixF / (self.FOVF * constants.GYRO) # readout area
@@ -869,16 +870,37 @@ class MRIsimulator(param.Parameterized):
         # min limit imposed by maximum gradient amplitude:
         minReadDurations.append(A / self.maxAmp)
         maxReadDurations = [8.] # msec (corresponds to a pixel BW of 125 Hz)
-        # max limit imposed by TR:
-        maxReadDurations.append((self.TR - (self.TE - self.getSeqStart()) - self.boards['slice']['objects']['spoiler']['dur_f']) * 2)
+        TEtoSpoiler = (self.TR - (-self.getSeqStart()) - self.boards['slice']['objects']['spoiler']['dur_f']) - self.TE
         if isGradientEcho(self.sequence):
-            freeSpaceLeft = self.TE - self.boards['RF']['objects']['excitation']['dur_f']/2
-            freeSpaceLeft -= max(
-                self.boards['frequency']['objects']['read prephaser']['dur_f'] + self.boards['frequency']['objects']['readouts'][0][0]['riseTime_f'], # TODO: consider maximum dur+risetime, not only current (difficult!)
-                self.boards['phase']['objects']['phasers'][0]['dur_f'],
+            readoutRiseTime = self.boards['frequency']['objects']['readouts'][0][0]['riseTime_f']
+            minPhaserTime = min([self.boards['phase']['objects'][typ][0]['dur_f'] for typ in ['phasers', 'rephasers']])
+            readStartToTE = self.TE - self.boards['RF']['objects']['excitation']['dur_f']/2
+            readStartToTE -= max(
+                self.boards['frequency']['objects']['read prephaser']['dur_f'] + readoutRiseTime, # TODO: consider maximum dur+risetime, not only current (difficult!)
+                minPhaserTime,
                 self.boards['slice']['objects']['slice select excitation']['riseTime_f'] + self.boards['slice']['objects']['slice select rephaser']['dur_f'])
-            maxReadDurations.append(freeSpaceLeft*2)
+            # pick forward or reverse order that maximizes read duration limit
+            maxReadDurs = []
+            for reverse in [True, False]:
+                centermost_gr_echoes, centermost_rf_echoes = self.get_centermost_echoes_linear_order(reverse=reverse)
+                if len(centermost_gr_echoes)==1:
+                    nEarlyReadouts = centermost_gr_echoes[0] + 1/2
+                    nEarlyRamps = centermost_gr_echoes[0] * 2
+                else:
+                    nEarlyReadouts = max(centermost_gr_echoes)
+                    nEarlyRamps = nEarlyReadouts * 2 - 1
+                # max limit imposed by TE:
+                maxReadDurEarly = ((readStartToTE - nEarlyRamps * readoutRiseTime) / nEarlyReadouts)
+                nLateReadouts = self.EPIfactor - nEarlyReadouts
+                nLateRamps = (self.EPIfactor - 1) * 2 - nEarlyRamps
+                # max limit imposed by TR:
+                maxReadDurLate = ((TEtoSpoiler - nLateRamps * readoutRiseTime) / nLateReadouts)
+                maxReadDurs.append(min(maxReadDurEarly, maxReadDurLate))
+            maxReadDurations.append(max(maxReadDurs))
         else: # spin echo
+            # TODO: update wrt GRASE
+            # max limit imposed by TR:
+            maxReadDurations.append(TEtoSpoiler * 2)
             # min limit imposed by prephaser duration tp:
             tp = self.TE/2 - self.boards['RF']['objects']['refocusing'][0]['dur_f']/2 - self.boards['RF']['objects']['excitation']['dur_f']/2
             h = s * tp / 2
@@ -1362,6 +1384,7 @@ class MRIsimulator(param.Parameterized):
         self.boards['frequency']['objects']['read prephaser'] = prephaser
         self.gr_echo_spacing = readout['dur_f']
         self.sequencePipeline.add(self.placeReadouts)
+        self.sequencePipeline.add(self.setupPhasers)
         self.sequencePipeline.add(self.updateMinTE)
     
     
