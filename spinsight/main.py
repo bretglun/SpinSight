@@ -764,7 +764,7 @@ class MRIsimulator(param.Parameterized):
         self.param.TE.objects = TEvalues
         self.TE = self.param.TE.objects[-1] # max TE
         if self.sequence=='Inversion Recovery':
-            self.TI = TIvalues[0] # min TI
+            self.TI = self.param.TI.objects[0] # min TI
             self.runSequencePipeline()
             self.TI = min(self.param.TI.objects, key=lambda x: abs(x-ti)) # Set back TI within (new) bounds
         self.runSequencePipeline()    
