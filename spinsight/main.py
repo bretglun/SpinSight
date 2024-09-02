@@ -388,7 +388,12 @@ class MRIsimulator(param.Parameterized):
                         'slice': {'dim': hv.Dimension('slice', label='G slice', unit='mT/m', range=(-30, 30)), 'color': 'cadetblue'}, 
                         'RF': {'dim': hv.Dimension('RF', label='RF', unit='μT', range=(-5, 25)), 'color': 'red'},
                         'ADC': {'dim': hv.Dimension('ADC', label='ADC', unit=''), 'color': 'orange'} }
-
+        
+        self.FOV = [None]*2
+        self.matrix = [None]*2
+        self.oversampledMatrix = [None]*2
+        self.kAxes = [None]*2
+        
         self._watch_reconMatrixF()
         self._watch_reconMatrixP()
 
@@ -1014,7 +1019,7 @@ class MRIsimulator(param.Parameterized):
                 file = Path(phantomPath / tissue).with_suffix('.npy')
                 np.save(file, self.phantom['kspace'][tissue])
             print('DONE')
-        self.updateFreqEncoding() # frequency oversampling is adapted to phantom FOV for efficiency
+        self.setup_frequency_encoding() # frequency oversampling is adapted to phantom FOV for efficiency
 
 
     def get_min_readtrain_spacing(self):
@@ -1097,27 +1102,30 @@ class MRIsimulator(param.Parameterized):
             order = -1 if self.reverse_linear_order else 1
             self.pe_table = [[list(range(rf_echo * self.num_shots + shot, self.num_measured_lines, self.num_shots * self.turboFactor))[::order] for rf_echo in range(self.turboFactor)][::order] for shot in range(self.num_shots)]
     
-    
-    def setup_encoding(self):
-        self.matrix = [self.matrixP, self.matrixF]
-        self.FOV = [self.FOVP, self.FOVF]
-        self.freqDir = DIRECTIONS[self.frequencyDirection]
-        self.phaseDir = 1 - self.freqDir
-        if self.freqDir==0:
-            self.matrix.reverse()
-            self.FOV.reverse()
 
+    def setup_frequency_encoding(self):
+        self.freqDir = DIRECTIONS[self.frequencyDirection]
+        self.FOV[self.freqDir] = self.FOVF
+        self.matrix[self.freqDir] = self.matrixF
+        self.oversampledMatrix[self.freqDir] = self.matrixF
+        # at least Nyquist sampling wrt phantom if loaded
+        if hasattr(self, 'phantom') and self.FOV[self.freqDir] < self.phantom['FOV'][self.freqDir]:
+            self.oversampledMatrix[self.freqDir] = int(np.ceil(self.phantom['FOV'][self.freqDir] * self.matrix[self.freqDir] / self.FOV[self.freqDir]))
+        self.kAxes[self.freqDir] = getKaxis(self.oversampledMatrix[self.freqDir], self.FOV[self.freqDir]/self.matrix[self.freqDir])
+    
+
+    def setup_phase_encoding(self):
+        self.phaseDir = 1 - DIRECTIONS[self.frequencyDirection]
+        self.FOV[self.phaseDir] = self.FOVP
+        self.matrix[self.phaseDir] = self.matrixP
+        
         self.num_shots = int(np.ceil(self.matrix[self.phaseDir] * (1 + self.phaseOversampling / 100) * self.partialFourier / self.turboFactor / self.EPIfactor))
         self.num_measured_lines = self.num_shots * self.turboFactor * self.EPIfactor
         self.oversampledPartialMatrix = self.num_measured_lines # Needs to be modified for parallel imaging
-        
-        self.oversampledMatrix = self.matrix.copy() # account for oversampling
-        # phase encoding direction: oversampling may be higher than prescribed since num_shots must be integer
+        # oversampling may be higher than prescribed since num_shots must be integer:
         self.oversampledMatrix[self.phaseDir] = int(np.ceil(self.oversampledPartialMatrix / self.partialFourier))
-        
-        # Full k-space:
         self.kAxes = [getKaxis(self.oversampledMatrix[dim], self.FOV[dim]/self.matrix[dim]) for dim in range(len(self.matrix))]
-        # Undersample by partial Fourier:
+        # undersample by partial Fourier:
         self.kAxes[self.phaseDir] = self.kAxes[self.phaseDir][:self.oversampledPartialMatrix]
         assert(len(self.kAxes[self.phaseDir]) == self.num_measured_lines)
 
@@ -1135,13 +1143,6 @@ class MRIsimulator(param.Parameterized):
 
         self.set_readtrain_spacing()
         self.setup_phase_encoding_table(num_sym_segm)
-    
-
-    def updateFreqEncoding(self):
-        # frequency encoding direction: at least Nyquist sampling wrt phantom
-        if self.FOV[self.freqDir] < self.phantom['FOV'][self.freqDir]:
-            self.oversampledMatrix[self.freqDir] = int(np.ceil(self.phantom['FOV'][self.freqDir] * self.matrix[self.freqDir] / self.FOV[self.freqDir]))
-        self.kAxes[self.freqDir] = getKaxis(self.oversampledMatrix[self.freqDir], self.FOV[self.freqDir]/self.matrix[self.freqDir])
     
 
     def sampleKspace(self):
@@ -1338,6 +1339,8 @@ class MRIsimulator(param.Parameterized):
     
 
     def setupReadouts(self):
+        self.setup_frequency_encoding()
+        
         flatArea = self.matrixF / (self.FOVF/1e3 * constants.GYRO) # uTs/m
         amp = self.pixelBandWidth * self.matrixF / (self.FOVF * constants.GYRO) # mT/m
         self.boards['frequency']['objects']['readouts'] = []
@@ -1360,7 +1363,7 @@ class MRIsimulator(param.Parameterized):
     
     
     def setupPhasers(self):
-        self.setup_encoding()
+        self.setup_phase_encoding()
 
         acq_FOVP = self.FOV[self.phaseDir]/self.matrix[self.phaseDir] * self.oversampledMatrix[self.phaseDir]
         phase_step_area = 1e3 / (acq_FOVP * constants.GYRO) # uTs/m
