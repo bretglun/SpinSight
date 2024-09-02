@@ -346,7 +346,6 @@ class MRIsimulator(param.Parameterized):
     FOVbandwidth = param.Number(default=pixelBW2FOVBW(500, 180), bounds=(pixelBW2FOVBW(125, 180), pixelBW2FOVBW(2000, 180)), precedence=-2, label='FOV bandwidth [±kHz]')
     FWshift = param.Number(default=pixelBW2shift(500), bounds=(pixelBW2shift(2000), pixelBW2shift(125)), precedence=-2, label='Fat/water shift [pixels]')
     NSA = param.Integer(default=1, bounds=(1, 16), precedence=3, label='NSA')
-    kspaceOrder = param.ObjectSelector(default='center echo', objects=['early echo', 'center echo', 'late echo'], precedence=4, label='k-space order')
     partialFourier = param.Number(default=1, bounds=(.6, 1), step=0.01, precedence=5, label='Partial Fourier factor')
     turboFactor = param.Integer(default=1, bounds=(1, 64), precedence=6, label='Turbo factor')
     EPIfactor = param.Selector(default=1, objects=EPIfactorValues, precedence=7, label='EPI factor')
@@ -628,15 +627,6 @@ class MRIsimulator(param.Parameterized):
             self.reconPipeline.add(f)
 
 
-    @param.depends('kspaceOrder', watch=True)
-    def _watch_kspaceOrder(self):
-        for f in [self.modulateKspace, self.simulateNoise, self.compileKspace, self.partialFourierRecon, self.zerofill, self.reconstruct]:
-            self.reconPipeline.add(f)
-        for f in [self.placeRefocusing, self.placeReadouts, self.placePhasers, self.updateMinTE, self.updateMinTR, self.updateMaxTE, self.updateMaxTI, self.updateBWbounds, self.updateMatrixFbounds, self.updateMatrixPbounds, self.updateFOVFbounds,  self.updateFOVPbounds, self.updateSliceThicknessBounds]:
-            self.sequencePipeline.add(f)
-        self.updateEPIfactorObjects()
-
-
     @param.depends('partialFourier', watch=True)
     def _watch_partialFourier(self):
         for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.simulateNoise, self.compileKspace, self.partialFourierRecon, self.zerofill, self.reconstruct]:
@@ -661,10 +651,6 @@ class MRIsimulator(param.Parameterized):
         for f in [self.setupReadouts, self.setupPhasers, self.updateMinTE, self.updateMinTR, self.updateMaxTE, self.updateMaxTI, self.updateBWbounds, self.updateMatrixFbounds, self.updateMatrixPbounds, self.updateFOVFbounds,  self.updateFOVPbounds, self.updateSliceThicknessBounds]:
             self.sequencePipeline.add(f)
         self.updateTurboFactorBounds()
-        if self.EPIfactor>1:
-            self.param.kspaceOrder.constant = True
-        else:
-            self.param.kspaceOrder.constant = False
 
 
     @param.depends('sequence', watch=True)
@@ -677,10 +663,8 @@ class MRIsimulator(param.Parameterized):
         self.param.TI.precedence = 1 if self.sequence=='Inversion Recovery' else -1
         if self.sequence=='Spoiled Gradient Echo':
             self.turboFactor = 1
-            self.param.kspaceOrder.precedence = -4
             self.param.turboFactor.precedence = -6
         else:
-            self.param.kspaceOrder.precedence = 4
             self.param.turboFactor.precedence = 6
         tr = self.TR
         self.render = False
@@ -985,11 +969,6 @@ class MRIsimulator(param.Parameterized):
 
 
     def updateEPIfactorObjects(self):
-        if self.kspaceOrder != 'center echo':
-            assert self.param.EPIfactor==1, 'EPI is only compatible with k-space order "center echo"'
-            self.param.EPIfactor.constant = True
-        else:
-            self.param.EPIfactor.constant = False
         if self.turboFactor > 1: # only odd EPIfactor for GRASE
             self.param.EPIfactor.objects = [v for v in EPIfactorValues if v%2]
         else:
@@ -1531,7 +1510,7 @@ class MRIsimulator(param.Parameterized):
         self.renderTRspan('RF')
     
     
-    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'kspaceOrder', 'partialFourier', 'turboFactor', 'EPIfactor')
+    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor')
     def getKspace(self):
         if self.render:
             self.runReconPipeline()
@@ -1560,7 +1539,7 @@ class MRIsimulator(param.Parameterized):
         return hv.Box(0, 0, acqFOV).opts(color='lightblue') * hv.Box(0, 0, FOV).opts(color='yellow')
 
 
-    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'kspaceOrder', 'partialFourier', 'turboFactor', 'EPIfactor', 'showFOV')
+    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor', 'showFOV')
     def getImage(self):
         if self.render:
             self.runReconPipeline()
@@ -1578,7 +1557,7 @@ class MRIsimulator(param.Parameterized):
         return self.image
 
 
-    @param.depends('sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'matrixF', 'matrixP', 'sliceThickness', 'pixelBandWidth', 'kspaceOrder', 'partialFourier', 'turboFactor', 'EPIfactor')
+    @param.depends('sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'matrixF', 'matrixP', 'sliceThickness', 'pixelBandWidth', 'partialFourier', 'turboFactor', 'EPIfactor')
     def getSequencePlot(self):
         if self.render:
             self.runSequencePipeline()
@@ -1606,7 +1585,7 @@ def getApp():
     settingsParams = pn.panel(explorer.param, parameters=['object', 'fieldStrength', 'parameterStyle'], name='Settings')
     contrastParams = pn.panel(explorer.param, parameters=['FatSat', 'TR', 'TE', 'FA', 'TI'], widgets={'TR': pn.widgets.DiscreteSlider, 'TE': pn.widgets.DiscreteSlider, 'TI': pn.widgets.DiscreteSlider}, name='Contrast')
     geometryParams = pn.panel(explorer.param, parameters=['frequencyDirection', 'FOVF', 'FOVP', 'phaseOversampling', 'voxelF', 'voxelP', 'matrixF', 'matrixP', 'reconVoxelF', 'reconVoxelP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness'], widgets={'matrixF': pn.widgets.DiscreteSlider, 'matrixP': pn.widgets.DiscreteSlider, 'voxelF': pn.widgets.DiscreteSlider, 'voxelP': pn.widgets.DiscreteSlider, 'reconVoxelF': pn.widgets.DiscreteSlider, 'reconVoxelP': pn.widgets.DiscreteSlider}, name='Geometry')
-    sequenceParams = pn.panel(explorer.param, parameters=['sequence', 'pixelBandWidth', 'FOVbandwidth', 'FWshift', 'NSA', 'kspaceOrder', 'partialFourier', 'turboFactor', 'EPIfactor'], widgets={'EPIfactor': pn.widgets.DiscreteSlider}, name='Sequence')
+    sequenceParams = pn.panel(explorer.param, parameters=['sequence', 'pixelBandWidth', 'FOVbandwidth', 'FWshift', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor'], widgets={'EPIfactor': pn.widgets.DiscreteSlider}, name='Sequence')
     
     infoPane = pn.Row(infoNumber(name='Relative SNR', format='{value:.0f}%', value=explorer.param.relativeSNR),
                       infoNumber(name='Scan time', format=('{value:.1f} sec'), value=explorer.param.scantime),
