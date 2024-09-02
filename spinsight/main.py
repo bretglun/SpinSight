@@ -1559,11 +1559,9 @@ class MRIsimulator(param.Parameterized):
 
 
     def getFOVbox(self):
-        FOV = (self.FOVP, self.FOVF)
-        acqFOV = (self.FOVP * self.oversampledMatrix[self.phaseDir] / self.matrix[self.phaseDir], self.FOVF)
-        if self.frequencyDirection == 'left-right':
-            FOV, acqFOV = FOV.reverse(), acqFOV.reverse()
-        return hv.Box(0, 0, acqFOV).opts(color='lightblue') * hv.Box(0, 0, FOV).opts(color='yellow')
+        acqFOV = self.FOV.copy()
+        acqFOV[self.phaseDir] *= self.oversampledMatrix[self.phaseDir] / self.matrix[self.phaseDir]
+        return hv.Box(0, 0, tuple(acqFOV[::-1])).opts(color='lightblue') * hv.Box(0, 0, tuple(self.FOV[::-1])).opts(color='yellow')
 
 
     @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor', 'showFOV')
