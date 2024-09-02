@@ -600,6 +600,8 @@ class MRIsimulator(param.Parameterized):
                 p.label = p.label.replace(' x', ' y')
             elif ' y' in p.label:
                 p.label = p.label.replace(' y', ' x')
+        self.setup_frequency_encoding() # frequency oversampling is adapted to phantom FOV for efficiency
+        self.setup_phase_encoding() # frequency oversampling is adapted to phantom FOV for efficiency
 
 
     @param.depends('fieldStrength', watch=True)
