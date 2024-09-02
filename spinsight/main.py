@@ -450,6 +450,7 @@ class MRIsimulator(param.Parameterized):
 
 
     def runReconPipeline(self):
+        self.runSequencePipeline()
         for f in self.fullReconPipeline:
             if f in self.reconPipeline:
                 f()
