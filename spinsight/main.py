@@ -1066,8 +1066,7 @@ class MRIsimulator(param.Parameterized):
     def get_readtrain_spacing_linear_order(self, reverse):
         centermost_gr_echoes, centermost_rf_echoes = self.get_centermost_echoes_linear_order(reverse)
         readtrain_shift = self.gr_echo_spacing * (np.mean(centermost_gr_echoes) - (self.EPIfactor-1)/2)
-        if reverse: readtrain_shift *= -1
-        central_rf_echo_time = self.TE + readtrain_shift
+        central_rf_echo_time = self.TE - readtrain_shift
         readtrain_spacing = central_rf_echo_time / (1 + np.mean(centermost_rf_echoes))
         return readtrain_spacing
     
