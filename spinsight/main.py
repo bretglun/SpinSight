@@ -825,7 +825,7 @@ class MRIsimulator(param.Parameterized):
     
 
     def getMaxReadoutArea(self):
-        # See readouts.tex for formulae
+        # See paramBounds.tex for formulae
         d = 1e3 / self.pixelBandWidth # readout duration
         s = self.maxSlew
         if isGradientEcho(self.sequence):
@@ -862,7 +862,7 @@ class MRIsimulator(param.Parameterized):
 
     def updateBWbounds(self):
         # TODO: update wrt GRASE
-        # See readouts.tex for formulae relating to the readout board
+        # See paramBounds.tex for formulae relating to the readout board
         s = self.maxSlew
         A = 1e3 * self.matrixF / (self.FOVF * constants.GYRO) # readout area
         minReadDurations = [.5] # msec (corresponds to a pixel BW of 2000 Hz)
@@ -960,7 +960,7 @@ class MRIsimulator(param.Parameterized):
             maxAmp = self.maxSlew * maxRiseTime
             minThks.append(self.boards['RF']['objects']['excitation']['FWHM_f'] / (maxAmp * constants.GYRO))
         
-        # See readouts.tex for formulae
+        # See paramBounds.tex for formulae
         s = self.maxSlew
         d = self.boards['RF']['objects']['excitation']['dur_f']
         if isGradientEcho(self.sequence): # Constraint due to slice rephaser
