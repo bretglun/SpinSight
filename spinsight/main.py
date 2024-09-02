@@ -276,7 +276,10 @@ def updateBounds(curval, values, minval=None, maxval=None):
         values = [val for val in values if not val < minval]
     if maxval is not None:
         values = [val for val in values if not val > maxval]
-    value = min(values, key=lambda x: abs(x-curval))
+    if not values:
+        print('Warning: trying to set bounds [{}, {}] outside current value ({})'.format(minval, maxval, curval))
+        values = [curval]
+    value = min(values, key=lambda x: abs(x-curval))    
     return values, value
 
 
@@ -651,7 +654,7 @@ class MRIsimulator(param.Parameterized):
         for f in [self.setupReadouts, self.setupPhasers, self.updateMinTE, self.updateMinTR, self.updateMaxTE, self.updateMaxTI, self.updateBWbounds, self.updateMatrixFbounds, self.updateMatrixPbounds, self.updateFOVFbounds,  self.updateFOVPbounds, self.updateSliceThicknessBounds]:
             self.sequencePipeline.add(f)
         self.updateTurboFactorBounds()
-
+    
 
     @param.depends('sequence', watch=True)
     def _watch_sequence(self):
@@ -666,17 +669,7 @@ class MRIsimulator(param.Parameterized):
             self.param.turboFactor.precedence = -6
         else:
             self.param.turboFactor.precedence = 6
-        tr = self.TR
-        self.render = False
-        self.TR = self.param.TR.objects[-1] # max TR
-        self.runSequencePipeline()
-        self.TE = min(self.param.TE.objects, key=lambda x: abs(x-self.TE)) # TE within bounds
-        self.runSequencePipeline()
-        if self.sequence=='Inversion Recovery':
-            self.TI = min(self.param.TI.objects, key=lambda x: abs(x-self.TI)) # TI within bounds
-            self.runSequencePipeline()
-        self.render = True
-        self.TR = min(self.param.TR.objects, key=lambda x: abs(x-tr)) # Set back TR within bounds
+        self.adjust_timing_params()
     
 
     @param.depends('TE', watch=True)
@@ -737,6 +730,27 @@ class MRIsimulator(param.Parameterized):
         self.reconVoxelP = min(self.param.reconVoxelP.objects, key=lambda x: abs(x-self.FOVP/self.reconMatrixP))
         for f in [self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
+    
+    
+    def adjust_timing_params(self):
+        # runs the sequence pipeline adjusting TR, TE and TI to stay within bounds
+        self.render = False # to avoid repeated plot updates
+        tr = self.TR
+        te = self.TE
+        ti = self.TI
+        self.TR = self.param.TR.objects[-1] # max TR
+        self.param.TE.objects = TEvalues
+        self.TE = self.param.TE.objects[-1] # max TE
+        if self.sequence=='Inversion Recovery':
+            self.TI = TIvalues[0] # min TI
+            self.runSequencePipeline()
+            self.TI = min(self.param.TI.objects, key=lambda x: abs(x-ti)) # Set back TI within (new) bounds
+        self.runSequencePipeline()    
+        self.TE = min(self.param.TE.objects, key=lambda x: abs(x-te)) # Set back TE within (new) bounds
+        self.runSequencePipeline()
+        self.TR = min(self.param.TR.objects, key=lambda x: abs(x-tr)) # Set back TR within (new) bounds
+        self.render = True
+        self.param.trigger('TR') # to trigger pipelines to run and plots to update
 
 
     def getSeqStart(self):
@@ -880,7 +894,7 @@ class MRIsimulator(param.Parameterized):
 
     def updateMatrixFbounds(self):
         minMatrixF, maxMatrixF = 16, 600
-        maxMatrixF = min(maxMatrixF, int(self.getMaxReadoutArea() * 1e-3 * self.FOVF * constants.GYRO))
+        maxMatrixF = min(maxMatrixF, int(np.floor(self.getMaxReadoutArea() * 1e-3 * self.FOVF * constants.GYRO)))
         if self.parameterStyle == 'GE':
             minMatrixF = max(minMatrixF, int(np.ceil(self.FOVbandwidth * 2e3 / self.param.pixelBandWidth.bounds[1])))
             maxMatrixF = min(maxMatrixF, int(np.floor(self.FOVbandwidth * 2e3 / self.param.pixelBandWidth.bounds[0])))
@@ -1509,6 +1523,14 @@ class MRIsimulator(param.Parameterized):
         self.renderPolygons('RF')
         self.renderTRspan('RF')
     
+
+    @param.depends('sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'matrixF', 'matrixP', 'sliceThickness', 'pixelBandWidth', 'partialFourier', 'turboFactor', 'EPIfactor')
+    def getSequencePlot(self):
+        if self.render:
+            self.runSequencePipeline()
+            self.seqPlot = hv.Layout(list([hv.Overlay(list(boardPlot.values())).opts(width=1700, height=120, border=0, xaxis='bottom' if n==len(self.boardPlots)-1 else None) for n, boardPlot in enumerate(self.boardPlots.values())])).cols(1).options(toolbar='below')
+        return self.seqPlot
+    
     
     @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor')
     def getKspace(self):
@@ -1555,14 +1577,6 @@ class MRIsimulator(param.Parameterized):
         if self.showFOV:
             self.image *= self.getFOVbox()
         return self.image
-
-
-    @param.depends('sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'matrixF', 'matrixP', 'sliceThickness', 'pixelBandWidth', 'partialFourier', 'turboFactor', 'EPIfactor')
-    def getSequencePlot(self):
-        if self.render:
-            self.runSequencePipeline()
-            self.seqPlot = hv.Layout(list([hv.Overlay(list(boardPlot.values())).opts(width=1700, height=120, border=0, xaxis='bottom' if n==len(self.boardPlots)-1 else None) for n, boardPlot in enumerate(self.boardPlots.values())])).cols(1).options(toolbar='below')
-        return self.seqPlot
 
 
 def hideShowButtonCallback(pane, event):
