@@ -5,6 +5,15 @@
 *.jpeg
 *.jpg
 *.npy
+
+# latex aux files
+*.aux
+*.fdb_latexmk
+*.fls
+*.log
+*.gz
+*.pdf
+
 testSampling.py
 notes.md
 TODO.md

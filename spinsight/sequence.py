@@ -1,5 +1,5 @@
 import numpy as np
-import spinsight
+from spinsight import constants
 import scipy.signal as signal
 import scipy.interpolate as interpolate
 
@@ -61,7 +61,7 @@ def getRF(flipAngle, dur, name, time=0., shape='hammingSinc'):
 
     t0, t1 = time - dur/2, time + dur/2
 
-    scale = flipAngle / (np.mean(waveform) * dur / 1e3 * spinsight.GYRO * 360)
+    scale = flipAngle / (np.mean(waveform) * dur / 1e3 * constants.GYRO * 360)
 
     am, t = prepareWaveform(waveform, t0, t1, scale)
     rf = { 'RF': am,
