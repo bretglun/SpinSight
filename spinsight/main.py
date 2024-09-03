@@ -863,11 +863,10 @@ class MRIsimulator(param.Parameterized):
     
 
     def getMaxPhaserArea(self):
-        readStart = self.TE - 1e3 / self.pixelBandWidth / 2
         if isGradientEcho(self.sequence):
-            maxPhaserDuration = readStart - self.boards['RF']['objects']['excitation']['dur_f']/2
+            maxPhaserDuration = self.readtrain_spacing - self.boards['RF']['objects']['excitation']['dur_f']/2 - self.gr_echo_spacing * self.EPIfactor/2 + self.readout_risetime
         else:
-            maxPhaserDuration =  readStart - (self.TE/2 + self.boards['RF']['objects']['refocusing'][0]['dur_f']/2)
+            maxPhaserDuration = (self.readtrain_spacing - self.boards['RF']['objects']['refocusing'][0]['dur_f'] - self.gr_echo_spacing * self.EPIfactor)/2 + self.readout_risetime
         maxRiseTime = self.maxAmp / self.maxSlew
         if maxPhaserDuration > 2 * maxRiseTime: # trapezoid maxPhaser
             maxPhaserArea = (maxPhaserDuration - maxRiseTime) * self.maxAmp
@@ -877,8 +876,7 @@ class MRIsimulator(param.Parameterized):
     
 
     def get_max_read_duration(self, read_start_to_kcenter, kcenter_to_read_end, reverse=False):
-        # simplification: use current risetime
-        readoutRiseTime = self.boards['frequency']['objects']['readouts'][0][0]['riseTime_f']
+        # simplification: use current risetime (self.readout_risetime)
         centermost_gr_echoes, centermost_rf_echoes = self.get_centermost_echoes_linear_order(reverse=reverse)
         if len(centermost_gr_echoes)==1:
             nEarlyReadouts = centermost_gr_echoes[0] + 1/2
@@ -887,11 +885,11 @@ class MRIsimulator(param.Parameterized):
             nEarlyReadouts = max(centermost_gr_echoes)
             nEarlyRamps = nEarlyReadouts * 2 - 1
         # max limit imposed by TE:
-        maxReadDurEarly = ((read_start_to_kcenter - nEarlyRamps * readoutRiseTime) / nEarlyReadouts)
+        maxReadDurEarly = ((read_start_to_kcenter - nEarlyRamps * self.readout_risetime) / nEarlyReadouts)
         nLateReadouts = self.EPIfactor - nEarlyReadouts
         nLateRamps = (self.EPIfactor - 1) * 2 - nEarlyRamps
         # max limit imposed by TR:
-        maxReadDurLate = ((kcenter_to_read_end - nLateRamps * readoutRiseTime) / nLateReadouts)
+        maxReadDurLate = ((kcenter_to_read_end - nLateRamps * self.readout_risetime) / nLateReadouts)
         return min(maxReadDurEarly, maxReadDurLate)
     
 
@@ -903,12 +901,11 @@ class MRIsimulator(param.Parameterized):
         # min limit imposed by maximum gradient amplitude:
         minReadDurations.append(A / self.maxAmp)
         maxReadDurations = [8.] # msec (corresponds to a pixel BW of 125 Hz)
-        readoutRiseTime = self.boards['frequency']['objects']['readouts'][0][0]['riseTime_f']
         if isGradientEcho(self.sequence):
             minPhaserTime = min([self.boards['phase']['objects'][typ][0]['dur_f'] for typ in ['phasers', 'rephasers']])
             readStartToTE = self.TE - self.boards['RF']['objects']['excitation']['dur_f']/2
             readStartToTE -= max(
-                self.boards['frequency']['objects']['read prephaser']['dur_f'] + readoutRiseTime, # TODO: consider maximum dur+risetime, not only current (difficult!)
+                self.boards['frequency']['objects']['read prephaser']['dur_f'] + self.readout_risetime, # TODO: consider maximum dur+risetime, not only current (difficult!)
                 minPhaserTime,
                 self.boards['slice']['objects']['slice select excitation']['riseTime_f'] + self.boards['slice']['objects']['slice select rephaser']['dur_f'])
             TEtoSpoiler = (self.TR - (-self.getSeqStart()) - self.boards['slice']['objects']['spoiler']['dur_f']) - self.TE
@@ -1083,13 +1080,12 @@ class MRIsimulator(param.Parameterized):
         # Equals center position of gradient echo (train) for gradient echo sequences
         # Equals rf echo spacing for spin echo sequences
         gre_echo_train_dur = sum([self.boards['frequency']['objects']['readouts'][0][gr_echo]['dur_f'] for gr_echo in range(self.EPIfactor)])
-        readout_risetime = self.boards['frequency']['objects']['readouts'][0][0]['riseTime_f']
         max_phaser_area = np.min(self.kAxes[self.phaseDir]) * 1e3 / constants.GYRO   # uTs/m
         max_phaser_dur = sequence.getGradient('_', totalArea=max_phaser_area)['dur_f']
         if isGradientEcho(self.sequence):
-            spacing = (self.boards['RF']['objects']['excitation']['dur_f'] + gre_echo_train_dur) / 2 - readout_risetime
+            spacing = (self.boards['RF']['objects']['excitation']['dur_f'] + gre_echo_train_dur) / 2 - self.readout_risetime
             spacing += max(
-                self.boards['frequency']['objects']['read prephaser']['dur_f'] + readout_risetime,
+                self.boards['frequency']['objects']['read prephaser']['dur_f'] + self.readout_risetime,
                 max_phaser_dur,
                 self.boards['slice']['objects']['slice select excitation']['riseTime_f'] + self.boards['slice']['objects']['slice select rephaser']['dur_f']
             )
@@ -1101,9 +1097,9 @@ class MRIsimulator(param.Parameterized):
                 self.boards['slice']['objects']['slice select excitation']['riseTime_f'] + self.boards['slice']['objects']['slice select rephaser']['dur_f'] + (self.boards['slice']['objects']['slice select refocusing'][0]['riseTime_f'])
             )
             # after refocusing pulse:
-            rightSide = (self.boards['RF']['objects']['refocusing'][0]['dur_f'] + gre_echo_train_dur) / 2 - readout_risetime
+            rightSide = (self.boards['RF']['objects']['refocusing'][0]['dur_f'] + gre_echo_train_dur) / 2 - self.readout_risetime
             rightSide += max(
-                readout_risetime,
+                self.readout_risetime,
                 max_phaser_dur,
                 self.boards['slice']['objects']['slice select refocusing'][0]['riseTime_f']
             )
@@ -1414,6 +1410,7 @@ class MRIsimulator(param.Parameterized):
                 samplings.append(adc)
             self.boards['frequency']['objects']['readouts'].append(gr_echoes)
             self.boards['ADC']['objects']['samplings'].append(samplings)
+        self.readout_risetime = self.boards['frequency']['objects']['readouts'][0][0]['riseTime_f']
         prephaser = sequence.getGradient('frequency', totalArea=readout['area_f']/2, name='read prephaser')        
         self.boards['frequency']['objects']['read prephaser'] = prephaser
         self.gr_echo_spacing = readout['dur_f']
@@ -1531,7 +1528,7 @@ class MRIsimulator(param.Parameterized):
             readtrain_pos = self.get_readtrain_pos(rf_echo)
             
             phaserDur = self.boards['phase']['objects']['phasers'][rf_echo]['dur_f']
-            phaserTime = readtrain_pos - (np.sum([readout['dur_f'] for readout in self.boards['frequency']['objects']['readouts'][rf_echo]]) + phaserDur)/2 + self.boards['frequency']['objects']['readouts'][rf_echo][0]['riseTime_f']
+            phaserTime = readtrain_pos - (np.sum([readout['dur_f'] for readout in self.boards['frequency']['objects']['readouts'][rf_echo]]) + phaserDur)/2 + self.readout_risetime
             sequence.moveWaveform(self.boards['phase']['objects']['phasers'][rf_echo], phaserTime)
 
             for gr_echo in range(self.EPIfactor-1):
@@ -1539,7 +1536,7 @@ class MRIsimulator(param.Parameterized):
                 sequence.moveWaveform(self.boards['phase']['objects']['blips'][rf_echo][gr_echo], blipTime)
 
             rephaserDur = self.boards['phase']['objects']['rephasers'][rf_echo]['dur_f']
-            rephaserTime = readtrain_pos + (np.sum([readout['dur_f'] for readout in self.boards['frequency']['objects']['readouts'][rf_echo]]) + rephaserDur)/2 - self.boards['frequency']['objects']['readouts'][rf_echo][-1]['riseTime_f']
+            rephaserTime = readtrain_pos + (np.sum([readout['dur_f'] for readout in self.boards['frequency']['objects']['readouts'][rf_echo]]) + rephaserDur)/2 - self.readout_risetime
             sequence.moveWaveform(self.boards['phase']['objects']['rephasers'][rf_echo], rephaserTime)
         
         self.sequencePlotPipeline.add(self.renderPhaseBoard)
