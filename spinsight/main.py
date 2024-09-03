@@ -1216,14 +1216,34 @@ class MRIsimulator(param.Parameterized):
 
 
     def updateSamplingTime(self):
+        # time of sample along (positive) readout relative to (k-space) center
         self.samplingTime = self.kAxes[self.freqDir] * self.FOV[self.freqDir] / self.matrix[self.freqDir] / self.pixelBandWidth * 1e3 # msec
         self.noiseStd = self.noiseGain / np.sqrt(np.diff(self.samplingTime[:2]) * self.NSA) / self.fieldStrength
-        self.samplingTime = np.expand_dims(self.samplingTime, axis=[dim for dim in range(len(self.matrix)) if dim != self.freqDir])
     
 
     def modulateKspace(self):
-        decayTime = self.samplingTime + self.TE
-        dephasingTime = decayTime if isGradientEcho(self.sequence) else self.samplingTime
+        pe_table = np.array(self.pe_table)
+        TEs = np.zeros((pe_table.size))
+        spin_echoes = np.zeros((pe_table.size))
+        reverse = np.zeros((pe_table.size), dtype=bool)
+        for ky in range(pe_table.size):
+            shot, rf_echo, gr_echo = np.argwhere(pe_table==ky)[0]
+            TEs[ky] = self.boards['frequency']['objects']['readouts'][rf_echo][gr_echo]['center_f']
+            spin_echoes[ky] = (rf_echo + 1) * self.readtrain_spacing
+            reverse[ky] = self.boards['frequency']['objects']['readouts'][rf_echo][gr_echo]['area_f'] < 0
+        samplingTime = np.expand_dims(self.samplingTime, axis=[dim for dim in range(len(self.matrix)) if dim != self.freqDir])
+        TEs = np.expand_dims(TEs, axis=[dim for dim in range(len(self.matrix)) if dim != self.phaseDir])
+        
+        decayTime = samplingTime + TEs
+        dephasingTime = decayTime.copy()
+        if not isGradientEcho(self.sequence):
+            spin_echoes = np.expand_dims(spin_echoes, axis=[dim for dim in range(len(self.matrix)) if dim != self.phaseDir])
+            dephasingTime -= spin_echoes # for spinecho, subtract Hahn echo position from decaytime
+        # EPI rowflip:
+        reverseDephasingTime = np.flip(dephasingTime, axis=self.freqDir)
+        reverse = np.expand_dims(reverse, axis=[dim for dim in range(len(self.matrix)) if dim != self.phaseDir])
+        reverse = reverse.repeat(len(self.samplingTime), axis=self.freqDir)
+        dephasingTime[reverse] = reverseDephasingTime[reverse]
 
         self.kspaceComps = {}
         for tissue in self.tissues:
@@ -1237,7 +1257,7 @@ class MRIsimulator(param.Parameterized):
                     dephasing = np.exp(2j*np.pi * constants.GYRO * self.fieldStrength * resonance['shift'] * dephasingTime * 1e-3)
                     self.kspaceComps[tissue + component] = self.plainKspaceComps[tissue] * dephasing * T2w
             if tissue==self.phantom['referenceTissue']:
-                self.decayedSignal = self.signal * np.take(T2w, np.argmin(np.abs(self.kAxes[self.freqDir])), axis=self.freqDir)[0]
+                self.decayedSignal = self.signal * np.take(np.take(T2w, np.argmin(np.abs(self.kAxes[self.freqDir])), axis=self.freqDir), np.argmin(np.abs(self.kAxes[self.phaseDir])))
     
     
     def simulateNoise(self):
