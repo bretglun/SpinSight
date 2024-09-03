@@ -363,7 +363,7 @@ class MRIsimulator(param.Parameterized):
     def __init__(self, **params):
         super().__init__(**params)
 
-        self.render = True # semaphore to avoid unneccesary rendering
+        self.publish = 1  # counting semaphore to avoid repeated plot updates
 
         self.timeDim = hv.Dimension('time', label='time', unit='ms')
 
@@ -756,7 +756,7 @@ class MRIsimulator(param.Parameterized):
     
     def adjust_timing_params(self):
         # runs the sequence pipeline adjusting TR, TE and TI to stay within bounds
-        self.render = False # to avoid repeated plot updates
+        self.publish -= 1
         tr = self.TR
         te = self.TE
         ti = self.TI
@@ -771,7 +771,7 @@ class MRIsimulator(param.Parameterized):
         self.TE = min(self.param.TE.objects, key=lambda x: abs(x-te)) # Set back TE within (new) bounds
         self.runSequencePipeline()
         self.TR = min(self.param.TR.objects, key=lambda x: abs(x-tr)) # Set back TR within (new) bounds
-        self.render = True
+        self.publish += 1
         self.param.trigger('TR') # to trigger pipelines to run and plots to update
 
 
@@ -1141,7 +1141,8 @@ class MRIsimulator(param.Parameterized):
             self.centermost_rf_echo = min(self.centermost_rf_echo, self.turboFactor - 1 - self.split_center)
             self.readtrain_spacing = self.TE / (self.centermost_rf_echo + (1 + .5 * self.split_center))
         else: # linear k-space order for EPI / GRASE
-            # pick forward or reverse order that minimizes spacing while respecting minimum
+            # pick forward or reverse order that minimizes spacing while respecting minimum spacing
+            # TODO: respect TR as well
             cands = [(self.get_readtrain_spacing_linear_order(reverse), reverse) for reverse in [True, False]]
             cands = [cand for cand in cands if cand[0] >= min_readtrain_spacing]
             (self.readtrain_spacing, self.reverse_linear_order) = min(cands, key=lambda c: c[0])
@@ -1591,7 +1592,7 @@ class MRIsimulator(param.Parameterized):
 
     @param.depends('sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'sliceThickness', 'pixelBandWidth', 'partialFourier', 'turboFactor', 'EPIfactor')
     def getSequencePlot(self):
-        if self.render:
+        if self.publish==1:
             self.runSequencePlotPipeline()
             self.seqPlot = hv.Layout(list([hv.Overlay(list(boardPlot.values())).opts(width=1700, height=120, border=0, xaxis='bottom' if n==len(self.boardPlots)-1 else None) for n, boardPlot in enumerate(self.boardPlots.values())])).cols(1).options(toolbar='below')
         return self.seqPlot
@@ -1599,7 +1600,7 @@ class MRIsimulator(param.Parameterized):
     
     @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor')
     def getKspace(self):
-        if self.render:
+        if self.publish==1:
             self.runReconPipeline()
             kAxes = []
             for dim in range(2):
@@ -1626,7 +1627,7 @@ class MRIsimulator(param.Parameterized):
 
     @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor', 'showFOV')
     def getImage(self):
-        if self.render:
+        if self.publish==1:
             self.runReconPipeline()
             iAxes = [(np.arange(self.reconMatrix[dim]) - (self.reconMatrix[dim]-1)/2) / self.reconMatrix[dim] * self.FOV[dim] for dim in range(2)]
             img = xr.DataArray(
