@@ -841,6 +841,7 @@ class MRIsimulator(param.Parameterized):
     
 
     def getMaxReadoutArea(self):
+        maxReadoutAreas = []
         # See paramBounds.tex for formulae
         d = 1e3 / self.pixelBandWidth # readout duration
         s = self.maxSlew
@@ -849,17 +850,20 @@ class MRIsimulator(param.Parameterized):
             h = s * (t - np.sqrt(t**2/2 + d**2/8)) # negative sqrt seems to be the reasonable solution
             h = min(h, self.maxAmp)
             A = d * (np.sqrt((d*s+2*h)**2 - 8*h*(h-s*(t-d/2))) - d*s - 2*h) / 2
-            maxReadoutArea1 = A
-        else: # spin echo
-            tr = self.TE/2 - self.boards['RF']['objects']['refocusing'][0]['dur_f']/2
-            tp = self.TE/2 - self.boards['RF']['objects']['refocusing'][0]['dur_f']/2 - self.boards['RF']['objects']['excitation']['dur_f']/2
+            maxReadoutAreas.append(A)
+        else: # (turbo) spin echo / GRASE
+            # limit by half readout duration tr:
+            tr = (self.readtrain_spacing - self.boards['RF']['objects']['refocusing'][0]['dur_f']) / self.EPIfactor / 2
             Ar = d*s* tr - d**2*s/2
+            maxReadoutAreas.append(Ar)
+            # limit by prephaser duration tp:
+            tp = (self.readtrain_spacing - self.boards['RF']['objects']['refocusing'][0]['dur_f'] - self.boards['RF']['objects']['excitation']['dur_f'])/2
             h = s * tp / 2
             h = min(h, self.maxAmp)
             Ap = d * (np.sqrt((d*s)**2 - 8*h*(h-s*tp)) - d*s) / 2
-            maxReadoutArea1 = min(Ar, Ap)
-        maxReadoutArea2 = self.maxAmp * 1e3 / self.pixelBandWidth # max wrt maxAmp
-        return min(maxReadoutArea1, maxReadoutArea2)
+            maxReadoutAreas.append(Ap)
+        maxReadoutAreas.append(self.maxAmp * 1e3 / self.pixelBandWidth) # max wrt maxAmp
+        return min(maxReadoutAreas)
     
 
     def getMaxPhaserArea(self):
