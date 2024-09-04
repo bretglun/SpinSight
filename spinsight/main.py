@@ -216,8 +216,8 @@ def crop(arr, shape):
 
 def getT2w(component, decayTime, dephasingTime, B0):
     T2 = TISSUES[component]['T2'][B0] if 'Fat' not in component else FATRESONANCES[component]['T2'][B0]
-    T2prim = 100. # ad hoc value [msec]
-    E2 = np.exp(-decayTime/T2)
+    T2prim = 35. # ad hoc value [msec]
+    E2 = np.exp(-np.abs(decayTime)/T2)
     E2prim = np.exp(-np.abs(dephasingTime)/T2prim)
     return E2 * E2prim
 
