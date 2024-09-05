@@ -1,4 +1,5 @@
 import holoviews as hv
+from holoviews import streams
 import panel as pn
 import param
 import numpy as np
@@ -8,7 +9,7 @@ import re
 import xarray as xr
 from spinsight import constants
 from spinsight import sequence
-from bokeh.models import HoverTool
+from bokeh.models import HoverTool, CustomJS, ColumnDataSource
 from functools import partial
 
 hv.extension('bokeh')
@@ -363,6 +364,10 @@ class MRIsimulator(param.Parameterized):
     def __init__(self, **params):
         super().__init__(**params)
 
+        self.k_line_coords = streams.Pipe()
+        self.hoverIndex = ColumnDataSource({'index': [], 'board': []})
+        self.hoverIndex.on_change('data', self.update_k_line_coords)
+        
         self.publish = 1  # counting semaphore to avoid repeated plot updates
 
         self.timeDim = hv.Dimension('time', label='time', unit='ms')
@@ -422,7 +427,8 @@ class MRIsimulator(param.Parameterized):
             self.renderPhaseBoard, 
             self.renderSliceBoard, 
             self.renderRFBoard,
-            self.renderTRspan
+            self.renderTRspan,
+            self.calculate_k_trajectory
         ]
         
         self.fullReconPipeline = [
@@ -615,6 +621,7 @@ class MRIsimulator(param.Parameterized):
                 p.label = p.label.replace(' y', ' x')
         self.setup_frequency_encoding() # frequency oversampling is adapted to phantom FOV for efficiency
         self.setup_phase_encoding() # frequency oversampling is adapted to phantom FOV for efficiency
+        self.sequencePlotPipeline.add(self.calculate_k_trajectory)
 
 
     @param.depends('fieldStrength', watch=True)
@@ -1497,6 +1504,7 @@ class MRIsimulator(param.Parameterized):
             self.sequencePipeline.add(self.updateBWbounds)
             self.sequencePlotPipeline.add(self.renderRFBoard)
             self.sequencePlotPipeline.add(self.renderSliceBoard)
+            self.sequencePlotPipeline.add(self.calculate_k_trajectory)
     
 
     def placeInversion(self):
@@ -1573,16 +1581,29 @@ class MRIsimulator(param.Parameterized):
         for f in [self.updateMinTR, self.updateSliceThicknessBounds]:
             self.sequencePipeline.add(f)
         self.sequencePlotPipeline.add(self.renderSliceBoard)
+    
 
-
+    def update_k_line_coords(self, attr, old, hoverIndex):
+        if len(hoverIndex['index']) > 0:
+            object = self.boards[hoverIndex['board'][0]]['object_list'][hoverIndex['index'][0]]
+            self.k_line_coords.send(self.get_k_at_times(object['time']))
+        else:
+            self.k_line_coords.send(None)
+    
+    
     def renderPolygons(self, board):
-        objects = flatten_dicts(self.boards[board]['objects'].values())
-        self.boardPlots[board]['area'] = hv.Area(sequence.accumulateWaveforms(objects, board), self.timeDim, self.boards[board]['dim']).opts(color=self.boards[board]['color'])
-        self.boards[board]['attributes'] = []
         if self.boards[board]['objects']:
-            self.boards[board]['attributes'] += [attr for attr in objects[0].keys() if attr not in ['time', board] and '_f' not in attr]
-            hover = HoverTool(tooltips=[(attr, '@{}'.format(attr)) for attr in self.boards[board]['attributes']], attachment='below')
-            self.boardPlots[board]['polygons'] = hv.Polygons(objects, kdims=[self.timeDim, self.boards[board]['dim']], vdims=self.boards[board]['attributes']).opts(tools=[hover], cmap=[self.boards[board]['color']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=(-19000, 19000))])
+            object_list = flatten_dicts(self.boards[board]['objects'].values())
+            self.boards[board]['object_list'] = object_list
+            self.boardPlots[board]['area'] = hv.Area(sequence.accumulateWaveforms(object_list, board), self.timeDim, self.boards[board]['dim']).opts(color=self.boards[board]['color'])
+            attributes = [attr for attr in object_list[0].keys() if attr not in ['time', board] and '_f' not in attr]
+            if board in ['frequency', 'phase', 'RF']:
+                with open(Path(__file__).parent / 'hoverCallback.js', 'r') as file:
+                    hoverCallback = CustomJS(args={'hoverIndex': self.hoverIndex, 'board': board}, code=file.read())
+            else:
+                hoverCallback = None
+            hover = HoverTool(tooltips=[(attr, '@{}'.format(attr)) for attr in attributes], attachment='below', callback=hoverCallback)
+            self.boardPlots[board]['polygons'] = hv.Polygons(object_list, kdims=[self.timeDim, self.boards[board]['dim']], vdims=attributes).opts(tools=[hover], cmap=[self.boards[board]['color']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=(-19000, 19000))])
     
     
     def renderTRspan(self):
@@ -1596,10 +1617,12 @@ class MRIsimulator(param.Parameterized):
         self.renderPolygons('frequency')
         adc_objects = flatten_dicts(self.boards['ADC']['objects'].values())
         self.boardPlots['frequency']['ADC'] = hv.Rectangles([(obj['time'][0], -100., obj['time'][-1], 100.) for obj in adc_objects])
+        self.sequencePlotPipeline.add(self.calculate_k_trajectory)
     
 
     def renderPhaseBoard(self):
         self.renderPolygons('phase')
+        self.sequencePlotPipeline.add(self.calculate_k_trajectory)
     
 
     def renderSliceBoard(self):
@@ -1609,8 +1632,39 @@ class MRIsimulator(param.Parameterized):
     def renderRFBoard(self):
         self.renderPolygons('RF')
     
+    
+    def get_k_at_times(self, times):
+        return [self.k_trajectory['k'][max(sum(self.k_trajectory['t']<=time) - 1, 0)] for time in times]
+    
 
-    @param.depends('sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'sliceThickness', 'pixelBandWidth', 'partialFourier', 'turboFactor', 'EPIfactor')
+    def get_k_knots(self, grad, time, refocus_time):
+        dt = np.diff(time)
+        g = (grad[:-1] + grad[1:]) / 2 # mean gradient between time points
+        dk = dt * g * constants.GYRO * 1e-3
+        k = np.insert(np.cumsum(dk), 0, [0., 0.]) # insert k=0 at start and origin
+        t = np.insert(time, 0, 0.) # insert origin
+        for (ref_start, ref_stop) in refocus_time:
+            # k inversion of refocusing pulse corresponds to negative shift of 2k:
+            k_before = k[t<=ref_start][-1]
+            k = np.insert(k, sum(t<=ref_start), [k_before, k_before])
+            t = np.insert(t, sum(t<=ref_start), [ref_start, ref_stop])
+            k[t > ref_start] -= 2 * k_before
+        return k, t
+    
+    
+    def calculate_k_trajectory(self):
+        refocus_time = [tuple(rf['time'][[0, -1]]) for rf in self.boards['RF']['objects']['refocusing']]
+        # k trajectories for x and y separately:
+        kxy, txy = [None] * 2, [None] * 2
+        for board, label, kdim in [('frequency', 'G read', self.freqDir), ('phase', 'G phase', self.phaseDir)]:
+            kxy[kdim], txy[kdim] = self.get_k_knots(*(self.boardPlots[board]['area'][dim] for dim in [label, 'time']), refocus_time)
+        # merge into a single (ky, kx) trajectory
+        t = np.unique(np.concatenate(txy))
+        k = [tuple([kxy[dim][sum(txy[dim]<=time) - 1] for dim in [1, 0]]) for time in t]
+        self.k_trajectory = {'k': k, 't': t}
+    
+
+    @param.depends('sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'partialFourier', 'turboFactor', 'EPIfactor')
     def getSequencePlot(self):
         if self.publish==1:
             self.runSequencePlotPipeline()
@@ -1689,8 +1743,8 @@ def getApp():
                       infoNumber(name='Scan time', format=('{value:.1f} sec'), value=explorer.param.scantime),
                       infoNumber(name='Fat/water shift', format='{value:.2f} pixels', value=explorer.param.FWshift),
                       infoNumber(name='Bandwidth', format='{value:.0f} Hz/pixel', value=explorer.param.pixelBandWidth))
-
-    dmapKspace = pn.Row(hv.DynamicMap(explorer.getKspace), visible=False)
+    
+    dmapKspace = pn.Row(hv.DynamicMap(explorer.getKspace) * hv.DynamicMap(hv.Curve, streams=[explorer.k_line_coords]), visible=False)
     dmapMRimage = hv.DynamicMap(explorer.getImage)
     dmapSequence = pn.Row(hv.DynamicMap(explorer.getSequencePlot), visible=False)
     sequenceButton = pn.widgets.Button(name='Show sequence')
