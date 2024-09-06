@@ -387,6 +387,7 @@ class MRIsimulator(param.Parameterized):
         hv.opts.defaults(hv.opts.Box(line_width=3))
         hv.opts.defaults(hv.opts.Area(fill_alpha=.5, line_width=1.5, line_color='gray', default_tools=[]))
         hv.opts.defaults(hv.opts.Polygons(line_width=1.5, fill_alpha=0, line_alpha=0, line_color='gray', selection_line_color='black', hover_fill_alpha=.8, hover_line_alpha=1, selection_fill_alpha=.8, selection_line_alpha=1, nonselection_line_alpha=0, default_tools=[]))
+        hv.opts.defaults(hv.opts.Curve(line_width=5, line_color='orange', line_alpha=.5))
 
         self.maxAmp = 25. # mT/m
         self.maxSlew = 80. # T/m/s
