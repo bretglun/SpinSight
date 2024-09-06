@@ -1731,28 +1731,28 @@ def infoNumber(name, value, format):
 
 
 def getApp():
-    explorer = MRIsimulator(name='')
+    simulator = MRIsimulator(name='')
     title = '# SpinSight MRI simulator'
     author = '*Written by [Johan Berglund](mailto:johan.berglund@akademiska.se), Ph.D.*'
-    settingsParams = pn.panel(explorer.param, parameters=['object', 'fieldStrength', 'parameterStyle'], name='Settings')
-    contrastParams = pn.panel(explorer.param, parameters=['FatSat', 'TR', 'TE', 'FA', 'TI'], widgets={'TR': pn.widgets.DiscreteSlider, 'TE': pn.widgets.DiscreteSlider, 'TI': pn.widgets.DiscreteSlider}, name='Contrast')
-    geometryParams = pn.panel(explorer.param, parameters=['frequencyDirection', 'FOVF', 'FOVP', 'phaseOversampling', 'voxelF', 'voxelP', 'matrixF', 'matrixP', 'reconVoxelF', 'reconVoxelP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness'], widgets={'matrixF': pn.widgets.DiscreteSlider, 'matrixP': pn.widgets.DiscreteSlider, 'voxelF': pn.widgets.DiscreteSlider, 'voxelP': pn.widgets.DiscreteSlider, 'reconVoxelF': pn.widgets.DiscreteSlider, 'reconVoxelP': pn.widgets.DiscreteSlider}, name='Geometry')
-    sequenceParams = pn.panel(explorer.param, parameters=['sequence', 'pixelBandWidth', 'FOVbandwidth', 'FWshift', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor'], widgets={'EPIfactor': pn.widgets.DiscreteSlider}, name='Sequence')
+    settingsParams = pn.panel(simulator.param, parameters=['object', 'fieldStrength', 'parameterStyle'], name='Settings')
+    contrastParams = pn.panel(simulator.param, parameters=['FatSat', 'TR', 'TE', 'FA', 'TI'], widgets={'TR': pn.widgets.DiscreteSlider, 'TE': pn.widgets.DiscreteSlider, 'TI': pn.widgets.DiscreteSlider}, name='Contrast')
+    geometryParams = pn.panel(simulator.param, parameters=['frequencyDirection', 'FOVF', 'FOVP', 'phaseOversampling', 'voxelF', 'voxelP', 'matrixF', 'matrixP', 'reconVoxelF', 'reconVoxelP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness'], widgets={'matrixF': pn.widgets.DiscreteSlider, 'matrixP': pn.widgets.DiscreteSlider, 'voxelF': pn.widgets.DiscreteSlider, 'voxelP': pn.widgets.DiscreteSlider, 'reconVoxelF': pn.widgets.DiscreteSlider, 'reconVoxelP': pn.widgets.DiscreteSlider}, name='Geometry')
+    sequenceParams = pn.panel(simulator.param, parameters=['sequence', 'pixelBandWidth', 'FOVbandwidth', 'FWshift', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor'], widgets={'EPIfactor': pn.widgets.DiscreteSlider}, name='Sequence')
     
-    infoPane = pn.Row(infoNumber(name='Relative SNR', format='{value:.0f}%', value=explorer.param.relativeSNR),
-                      infoNumber(name='Scan time', format=('{value:.1f} sec'), value=explorer.param.scantime),
-                      infoNumber(name='Fat/water shift', format='{value:.2f} pixels', value=explorer.param.FWshift),
-                      infoNumber(name='Bandwidth', format='{value:.0f} Hz/pixel', value=explorer.param.pixelBandWidth))
+    infoPane = pn.Row(infoNumber(name='Relative SNR', format='{value:.0f}%', value=simulator.param.relativeSNR),
+                      infoNumber(name='Scan time', format=('{value:.1f} sec'), value=simulator.param.scantime),
+                      infoNumber(name='Fat/water shift', format='{value:.2f} pixels', value=simulator.param.FWshift),
+                      infoNumber(name='Bandwidth', format='{value:.0f} Hz/pixel', value=simulator.param.pixelBandWidth))
     
-    dmapKspace = pn.Row(hv.DynamicMap(explorer.getKspace) * hv.DynamicMap(hv.Curve, streams=[explorer.k_line_coords]), visible=False)
-    dmapMRimage = hv.DynamicMap(explorer.getImage)
-    dmapSequence = pn.Row(hv.DynamicMap(explorer.getSequencePlot), visible=False)
+    dmapKspace = pn.Row(hv.DynamicMap(simulator.getKspace) * hv.DynamicMap(hv.Curve, streams=[simulator.k_line_coords]), visible=False)
+    dmapMRimage = hv.DynamicMap(simulator.getImage)
+    dmapSequence = pn.Row(hv.DynamicMap(simulator.getSequencePlot), visible=False)
     sequenceButton = pn.widgets.Button(name='Show sequence')
     sequenceButton.on_click(partial(hideShowButtonCallback, dmapSequence))
     kSpaceButton = pn.widgets.Button(name='Show k-space')
     kSpaceButton.on_click(partial(hideShowButtonCallback, dmapKspace))
     resetSNRbutton = pn.widgets.Button(name='Set reference SNR')
-    resetSNRbutton.on_click(explorer.setReferenceSNR)
+    resetSNRbutton.on_click(simulator.setReferenceSNR)
     dashboard = pn.Column(
         pn.Row(
             pn.Column(
@@ -1772,7 +1772,7 @@ def getApp():
             pn.Column(
                 dmapMRimage, 
                 pn.Column(
-                    pn.Row(resetSNRbutton, explorer.param.showFOV), 
+                    pn.Row(resetSNRbutton, simulator.param.showFOV), 
                     infoPane
                 )
             ), 
