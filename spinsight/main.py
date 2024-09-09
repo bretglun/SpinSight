@@ -1638,30 +1638,26 @@ class MRIsimulator(param.Parameterized):
         return [self.k_trajectory['k'][max(sum(self.k_trajectory['t']<=time) - 1, 0)] for time in times]
     
 
-    def get_k_knots(self, grad, time, refocus_time):
-        dt = np.diff(time)
-        g = (grad[:-1] + grad[1:]) / 2 # mean gradient between time points
-        dk = dt * g * constants.GYRO * 1e-3
-        k = np.insert(np.cumsum(dk), 0, [0., 0.]) # insert k=0 at start and origin
-        t = np.insert(time, 0, 0.) # insert origin
-        for (ref_start, ref_stop) in refocus_time:
+    def get_k_coords(self, t, gp, tp, refocus_times):
+        g = np.interp(t, tp, gp)
+        dk = np.diff(t) * (g[:-1] + np.diff(g)/2) * constants.GYRO * 1e-3
+        k = np.insert(np.cumsum(dk), 0, 0.) # start at k=0
+        for (ref_start, ref_stop) in refocus_times:
             # k inversion of refocusing pulse corresponds to negative shift of 2k:
             k_before = k[t<=ref_start][-1]
-            k = np.insert(k, sum(t<=ref_start), [k_before, k_before])
-            t = np.insert(t, sum(t<=ref_start), [ref_start, ref_stop])
             k[t > ref_start] -= 2 * k_before
-        return k, t
+        return k
     
     
     def calculate_k_trajectory(self):
-        refocus_time = [tuple(rf['time'][[0, -1]]) for rf in self.boards['RF']['objects']['refocusing']]
+        refocus_times = [list(rf['time'][[0, -1]]) for rf in self.boards['RF']['objects']['refocusing']]
+        t = np.unique(np.concatenate(([0.], *(self.boardPlots[board]['area']['time'] for board in ['frequency', 'phase']), [t for ref in refocus_times for t in ref])))
         # k trajectories for x and y separately:
-        kxy, txy = [None] * 2, [None] * 2
+        kxy = [None] * 2
         for board, label, kdim in [('frequency', 'G read', self.freqDir), ('phase', 'G phase', self.phaseDir)]:
-            kxy[kdim], txy[kdim] = self.get_k_knots(*(self.boardPlots[board]['area'][dim] for dim in [label, 'time']), refocus_time)
+            kxy[kdim] = self.get_k_coords(t, *(self.boardPlots[board]['area'][dim] for dim in [label, 'time']), refocus_times)
         # merge into a single (ky, kx) trajectory
-        t = np.unique(np.concatenate(txy))
-        k = [tuple([kxy[dim][sum(txy[dim]<=time) - 1] for dim in [1, 0]]) for time in t]
+        k = [tuple(kxy[dim][i] for dim in [1, 0]) for i in range(len(t))]
         self.k_trajectory = {'k': k, 't': t}
     
 
