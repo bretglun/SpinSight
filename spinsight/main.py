@@ -1587,7 +1587,7 @@ class MRIsimulator(param.Parameterized):
     def update_k_line_coords(self, attr, old, hoverIndex):
         if len(hoverIndex['index']) > 0:
             object = self.boards[hoverIndex['board'][0]]['object_list'][hoverIndex['index'][0]]
-            self.k_line_coords.send(self.get_k_at_times(object['time']))
+            self.k_line_coords.send(self.get_k_at_times(object['time'][[0, -1]]))
         else:
             self.k_line_coords.send(None)
     
@@ -1635,7 +1635,10 @@ class MRIsimulator(param.Parameterized):
     
     
     def get_k_at_times(self, times):
-        return [self.k_trajectory['k'][max(sum(self.k_trajectory['t']<=time) - 1, 0)] for time in times]
+        t = np.arange(*times[[0, -1]], self.k_trajectory['dt'])
+        kx = np.interp(t, self.k_trajectory['t'], self.k_trajectory['kx'])
+        ky = np.interp(t, self.k_trajectory['t'], self.k_trajectory['ky'])
+        return zip(ky, kx)
     
 
     def get_k_coords(self, t, gp, tp, refocus_times):
@@ -1645,20 +1648,21 @@ class MRIsimulator(param.Parameterized):
         for (ref_start, ref_stop) in refocus_times:
             # k inversion of refocusing pulse corresponds to negative shift of 2k:
             k_before = k[t<=ref_start][-1]
+            # TODO: linear loss between start and stop
             k[t > ref_start] -= 2 * k_before
         return k
     
     
     def calculate_k_trajectory(self):
+        dt = .01
         refocus_times = [list(rf['time'][[0, -1]]) for rf in self.boards['RF']['objects']['refocusing']]
-        t = np.unique(np.concatenate(([0.], *(self.boardPlots[board]['area']['time'] for board in ['frequency', 'phase']), [t for ref in refocus_times for t in ref])))
-        # k trajectories for x and y separately:
-        kxy = [None] * 2
-        for board, label, kdim in [('frequency', 'G read', self.freqDir), ('phase', 'G phase', self.phaseDir)]:
-            kxy[kdim] = self.get_k_coords(t, *(self.boardPlots[board]['area'][dim] for dim in [label, 'time']), refocus_times)
-        # merge into a single (ky, kx) trajectory
-        k = [tuple(kxy[dim][i] for dim in [1, 0]) for i in range(len(t))]
-        self.k_trajectory = {'k': k, 't': t}
+        t = np.concatenate((*(self.boardPlots[board]['area']['time'] for board in ['frequency', 'phase']), [t for ref in refocus_times for t in ref])) # k event times
+        t = np.unique(np.concatenate((t, np.arange(0., max(t), dt)))) # merge with time grid
+        kx = self.get_k_coords(t, *(self.boardPlots['frequency']['area'][dim] for dim in ['G read', 'time']), refocus_times)
+        ky = self.get_k_coords(t, *(self.boardPlots['phase']['area'][dim] for dim in ['G phase', 'time']), refocus_times)
+        if self.phaseDir==0:
+            kx, ky = ky, kx
+        self.k_trajectory = {'kx': kx, 'ky': ky, 't': t, 'dt': dt}
     
 
     @param.depends('sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'partialFourier', 'turboFactor', 'EPIfactor')
