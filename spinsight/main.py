@@ -1,14 +1,16 @@
 import holoviews as hv
+from holoviews import streams
 import panel as pn
 import param
 import numpy as np
+import math
 import xml.etree.ElementTree as ET
 from pathlib import Path
 import re
 import xarray as xr
 from spinsight import constants
 from spinsight import sequence
-from bokeh.models import HoverTool
+from bokeh.models import HoverTool, CustomJS, ColumnDataSource
 from functools import partial
 
 hv.extension('bokeh')
@@ -363,6 +365,18 @@ class MRIsimulator(param.Parameterized):
     def __init__(self, **params):
         super().__init__(**params)
 
+        def arrow(coords):
+            angle = 0
+            if len(coords)>1:
+                angle = -np.degrees(math.atan2(coords[-1][0]-coords[-2][0], coords[-1][1]-coords[-2][1]))
+            return hv.Curve(coords) * hv.Points(coords[-1]).opts(angle=angle, marker='triangle')
+        
+        arrowStream = streams.Stream.define('arrow', coords=[None])
+        self.kLine = hv.DynamicMap(arrow, streams=[arrowStream()])
+
+        self.hoverIndex = ColumnDataSource({'index': [], 'board': []})
+        self.hoverIndex.on_change('data', self.update_k_line_coords)
+        
         self.publish = 1  # counting semaphore to avoid repeated plot updates
 
         self.timeDim = hv.Dimension('time', label='time', unit='ms')
@@ -382,6 +396,8 @@ class MRIsimulator(param.Parameterized):
         hv.opts.defaults(hv.opts.Box(line_width=3))
         hv.opts.defaults(hv.opts.Area(fill_alpha=.5, line_width=1.5, line_color='gray', default_tools=[]))
         hv.opts.defaults(hv.opts.Polygons(line_width=1.5, fill_alpha=0, line_alpha=0, line_color='gray', selection_line_color='black', hover_fill_alpha=.8, hover_line_alpha=1, selection_fill_alpha=.8, selection_line_alpha=1, nonselection_line_alpha=0, default_tools=[]))
+        hv.opts.defaults(hv.opts.Curve(line_width=5, line_color='peru'))
+        hv.opts.defaults(hv.opts.Points(line_color=None, color='peru', size=15))
 
         self.maxAmp = 25. # mT/m
         self.maxSlew = 80. # T/m/s
@@ -422,7 +438,8 @@ class MRIsimulator(param.Parameterized):
             self.renderPhaseBoard, 
             self.renderSliceBoard, 
             self.renderRFBoard,
-            self.renderTRspan
+            self.renderTRspan,
+            self.calculate_k_trajectory
         ]
         
         self.fullReconPipeline = [
@@ -615,6 +632,7 @@ class MRIsimulator(param.Parameterized):
                 p.label = p.label.replace(' y', ' x')
         self.setup_frequency_encoding() # frequency oversampling is adapted to phantom FOV for efficiency
         self.setup_phase_encoding() # frequency oversampling is adapted to phantom FOV for efficiency
+        self.sequencePlotPipeline.add(self.calculate_k_trajectory)
 
 
     @param.depends('fieldStrength', watch=True)
@@ -1497,6 +1515,7 @@ class MRIsimulator(param.Parameterized):
             self.sequencePipeline.add(self.updateBWbounds)
             self.sequencePlotPipeline.add(self.renderRFBoard)
             self.sequencePlotPipeline.add(self.renderSliceBoard)
+            self.sequencePlotPipeline.add(self.calculate_k_trajectory)
     
 
     def placeInversion(self):
@@ -1573,16 +1592,29 @@ class MRIsimulator(param.Parameterized):
         for f in [self.updateMinTR, self.updateSliceThicknessBounds]:
             self.sequencePipeline.add(f)
         self.sequencePlotPipeline.add(self.renderSliceBoard)
+    
 
-
+    def update_k_line_coords(self, attr, old, hoverIndex):
+        if len(hoverIndex['index']) > 0:
+            object = self.boards[hoverIndex['board'][0]]['object_list'][hoverIndex['index'][0]]
+            self.kLine.event(coords=list(self.get_k_on_interval(object['time'][[0, -1]])))
+        else:
+            self.kLine.event(coords=[None])
+    
+    
     def renderPolygons(self, board):
-        objects = flatten_dicts(self.boards[board]['objects'].values())
-        self.boardPlots[board]['area'] = hv.Area(sequence.accumulateWaveforms(objects, board), self.timeDim, self.boards[board]['dim']).opts(color=self.boards[board]['color'])
-        self.boards[board]['attributes'] = []
         if self.boards[board]['objects']:
-            self.boards[board]['attributes'] += [attr for attr in objects[0].keys() if attr not in ['time', board] and '_f' not in attr]
-            hover = HoverTool(tooltips=[(attr, '@{}'.format(attr)) for attr in self.boards[board]['attributes']], attachment='below')
-            self.boardPlots[board]['polygons'] = hv.Polygons(objects, kdims=[self.timeDim, self.boards[board]['dim']], vdims=self.boards[board]['attributes']).opts(tools=[hover], cmap=[self.boards[board]['color']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=(-19000, 19000))])
+            object_list = flatten_dicts(self.boards[board]['objects'].values())
+            self.boards[board]['object_list'] = object_list
+            self.boardPlots[board]['area'] = hv.Area(sequence.accumulateWaveforms(object_list, board), self.timeDim, self.boards[board]['dim']).opts(color=self.boards[board]['color'])
+            attributes = [attr for attr in object_list[0].keys() if attr not in ['time', board] and '_f' not in attr]
+            if board in ['frequency', 'phase', 'RF']:
+                with open(Path(__file__).parent / 'hoverCallback.js', 'r') as file:
+                    hoverCallback = CustomJS(args={'hoverIndex': self.hoverIndex, 'board': board}, code=file.read())
+            else:
+                hoverCallback = None
+            hover = HoverTool(tooltips=[(attr, '@{}'.format(attr)) for attr in attributes], attachment='below', callback=hoverCallback)
+            self.boardPlots[board]['polygons'] = hv.Polygons(object_list, kdims=[self.timeDim, self.boards[board]['dim']], vdims=attributes).opts(tools=[hover], cmap=[self.boards[board]['color']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=(-19000, 19000))])
     
     
     def renderTRspan(self):
@@ -1596,10 +1628,12 @@ class MRIsimulator(param.Parameterized):
         self.renderPolygons('frequency')
         adc_objects = flatten_dicts(self.boards['ADC']['objects'].values())
         self.boardPlots['frequency']['ADC'] = hv.Rectangles([(obj['time'][0], -100., obj['time'][-1], 100.) for obj in adc_objects])
+        self.sequencePlotPipeline.add(self.calculate_k_trajectory)
     
 
     def renderPhaseBoard(self):
         self.renderPolygons('phase')
+        self.sequencePlotPipeline.add(self.calculate_k_trajectory)
     
 
     def renderSliceBoard(self):
@@ -1609,8 +1643,40 @@ class MRIsimulator(param.Parameterized):
     def renderRFBoard(self):
         self.renderPolygons('RF')
     
+    
+    def get_k_on_interval(self, interval):
+        t = np.arange(*interval[[0, -1]], self.k_trajectory['dt'])
+        kx = np.interp(t, self.k_trajectory['t'], self.k_trajectory['kx'])
+        ky = np.interp(t, self.k_trajectory['t'], self.k_trajectory['ky'])
+        return zip(kx, ky)
+    
 
-    @param.depends('sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'sliceThickness', 'pixelBandWidth', 'partialFourier', 'turboFactor', 'EPIfactor')
+    def get_k_coords(self, t, gp, tp, refocus_intervals):
+        g = np.interp(t, tp, gp)
+        dk = np.diff(t) * (g[:-1] + np.diff(g)/2) * constants.GYRO * 1e-3
+        k = np.insert(np.cumsum(dk), 0, 0.) # start at k=0
+        for (ref_start, ref_stop) in refocus_intervals:
+            # k inversion of refocusing pulse corresponds to negative shift of 2k:
+            k_before = k[t<=ref_start][-1]
+            refocus_times = t[(t>ref_start) & (t<ref_stop)]
+            k[(t>ref_start) & (t<ref_stop)] -= 2 * k_before * (refocus_times - ref_start) / (ref_stop - ref_start)
+            k[t>=ref_stop] -= 2 * k_before
+        return k
+    
+    
+    def calculate_k_trajectory(self):
+        dt = .01
+        refocus_intervals = [list(rf['time'][[0, -1]]) for rf in self.boards['RF']['objects']['refocusing']]
+        t = np.concatenate((*(self.boardPlots[board]['area']['time'] for board in ['frequency', 'phase']), [t for ref in refocus_intervals for t in ref])) # k event times
+        t = np.unique(np.concatenate((t, np.arange(0., max(t), dt)))) # merge with time grid
+        kx = self.get_k_coords(t, *(self.boardPlots['frequency']['area'][dim] for dim in ['G read', 'time']), refocus_intervals)
+        ky = self.get_k_coords(t, *(self.boardPlots['phase']['area'][dim] for dim in ['G phase', 'time']), refocus_intervals)
+        if self.phaseDir==1:
+            kx, ky = ky, kx
+        self.k_trajectory = {'kx': kx, 'ky': ky, 't': t, 'dt': dt}
+    
+
+    @param.depends('sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'partialFourier', 'turboFactor', 'EPIfactor')
     def getSequencePlot(self):
         if self.publish==1:
             self.runSequencePlotPipeline()
@@ -1677,28 +1743,28 @@ def infoNumber(name, value, format):
 
 
 def getApp():
-    explorer = MRIsimulator(name='')
+    simulator = MRIsimulator(name='')
     title = '# SpinSight MRI simulator'
     author = '*Written by [Johan Berglund](mailto:johan.berglund@akademiska.se), Ph.D.*'
-    settingsParams = pn.panel(explorer.param, parameters=['object', 'fieldStrength', 'parameterStyle'], name='Settings')
-    contrastParams = pn.panel(explorer.param, parameters=['FatSat', 'TR', 'TE', 'FA', 'TI'], widgets={'TR': pn.widgets.DiscreteSlider, 'TE': pn.widgets.DiscreteSlider, 'TI': pn.widgets.DiscreteSlider}, name='Contrast')
-    geometryParams = pn.panel(explorer.param, parameters=['frequencyDirection', 'FOVF', 'FOVP', 'phaseOversampling', 'voxelF', 'voxelP', 'matrixF', 'matrixP', 'reconVoxelF', 'reconVoxelP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness'], widgets={'matrixF': pn.widgets.DiscreteSlider, 'matrixP': pn.widgets.DiscreteSlider, 'voxelF': pn.widgets.DiscreteSlider, 'voxelP': pn.widgets.DiscreteSlider, 'reconVoxelF': pn.widgets.DiscreteSlider, 'reconVoxelP': pn.widgets.DiscreteSlider}, name='Geometry')
-    sequenceParams = pn.panel(explorer.param, parameters=['sequence', 'pixelBandWidth', 'FOVbandwidth', 'FWshift', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor'], widgets={'EPIfactor': pn.widgets.DiscreteSlider}, name='Sequence')
+    settingsParams = pn.panel(simulator.param, parameters=['object', 'fieldStrength', 'parameterStyle'], name='Settings')
+    contrastParams = pn.panel(simulator.param, parameters=['FatSat', 'TR', 'TE', 'FA', 'TI'], widgets={'TR': pn.widgets.DiscreteSlider, 'TE': pn.widgets.DiscreteSlider, 'TI': pn.widgets.DiscreteSlider}, name='Contrast')
+    geometryParams = pn.panel(simulator.param, parameters=['frequencyDirection', 'FOVF', 'FOVP', 'phaseOversampling', 'voxelF', 'voxelP', 'matrixF', 'matrixP', 'reconVoxelF', 'reconVoxelP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness'], widgets={'matrixF': pn.widgets.DiscreteSlider, 'matrixP': pn.widgets.DiscreteSlider, 'voxelF': pn.widgets.DiscreteSlider, 'voxelP': pn.widgets.DiscreteSlider, 'reconVoxelF': pn.widgets.DiscreteSlider, 'reconVoxelP': pn.widgets.DiscreteSlider}, name='Geometry')
+    sequenceParams = pn.panel(simulator.param, parameters=['sequence', 'pixelBandWidth', 'FOVbandwidth', 'FWshift', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor'], widgets={'EPIfactor': pn.widgets.DiscreteSlider}, name='Sequence')
     
-    infoPane = pn.Row(infoNumber(name='Relative SNR', format='{value:.0f}%', value=explorer.param.relativeSNR),
-                      infoNumber(name='Scan time', format=('{value:.1f} sec'), value=explorer.param.scantime),
-                      infoNumber(name='Fat/water shift', format='{value:.2f} pixels', value=explorer.param.FWshift),
-                      infoNumber(name='Bandwidth', format='{value:.0f} Hz/pixel', value=explorer.param.pixelBandWidth))
-
-    dmapKspace = pn.Row(hv.DynamicMap(explorer.getKspace), visible=False)
-    dmapMRimage = hv.DynamicMap(explorer.getImage)
-    dmapSequence = pn.Row(hv.DynamicMap(explorer.getSequencePlot), visible=False)
+    infoPane = pn.Row(infoNumber(name='Relative SNR', format='{value:.0f}%', value=simulator.param.relativeSNR),
+                      infoNumber(name='Scan time', format=('{value:.1f} sec'), value=simulator.param.scantime),
+                      infoNumber(name='Fat/water shift', format='{value:.2f} pixels', value=simulator.param.FWshift),
+                      infoNumber(name='Bandwidth', format='{value:.0f} Hz/pixel', value=simulator.param.pixelBandWidth))
+    
+    dmapKspace = pn.Row(hv.DynamicMap(simulator.getKspace) * simulator.kLine, visible=False)
+    dmapMRimage = hv.DynamicMap(simulator.getImage)
+    dmapSequence = pn.Row(hv.DynamicMap(simulator.getSequencePlot), visible=False)
     sequenceButton = pn.widgets.Button(name='Show sequence')
     sequenceButton.on_click(partial(hideShowButtonCallback, dmapSequence))
     kSpaceButton = pn.widgets.Button(name='Show k-space')
     kSpaceButton.on_click(partial(hideShowButtonCallback, dmapKspace))
     resetSNRbutton = pn.widgets.Button(name='Set reference SNR')
-    resetSNRbutton.on_click(explorer.setReferenceSNR)
+    resetSNRbutton.on_click(simulator.setReferenceSNR)
     dashboard = pn.Column(
         pn.Row(
             pn.Column(
@@ -1718,7 +1784,7 @@ def getApp():
             pn.Column(
                 dmapMRimage, 
                 pn.Column(
-                    pn.Row(resetSNRbutton, explorer.param.showFOV), 
+                    pn.Row(resetSNRbutton, simulator.param.showFOV), 
                     infoPane
                 )
             ), 
