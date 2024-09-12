@@ -3,6 +3,7 @@ from holoviews import streams
 import panel as pn
 import param
 import numpy as np
+import math
 import xml.etree.ElementTree as ET
 from pathlib import Path
 import re
@@ -364,7 +365,15 @@ class MRIsimulator(param.Parameterized):
     def __init__(self, **params):
         super().__init__(**params)
 
-        self.k_line_coords = streams.Pipe()
+        def arrow(coords):
+            angle = 0
+            if len(coords)>1:
+                angle = -np.degrees(math.atan2(coords[-1][0]-coords[-2][0], coords[-1][1]-coords[-2][1]))
+            return hv.Curve(coords) * hv.Points(coords[-1]).opts(angle=angle, marker='triangle')
+        
+        arrowStream = streams.Stream.define('arrow', coords=[None])
+        self.kLine = hv.DynamicMap(arrow, streams=[arrowStream()])
+
         self.hoverIndex = ColumnDataSource({'index': [], 'board': []})
         self.hoverIndex.on_change('data', self.update_k_line_coords)
         
@@ -387,7 +396,8 @@ class MRIsimulator(param.Parameterized):
         hv.opts.defaults(hv.opts.Box(line_width=3))
         hv.opts.defaults(hv.opts.Area(fill_alpha=.5, line_width=1.5, line_color='gray', default_tools=[]))
         hv.opts.defaults(hv.opts.Polygons(line_width=1.5, fill_alpha=0, line_alpha=0, line_color='gray', selection_line_color='black', hover_fill_alpha=.8, hover_line_alpha=1, selection_fill_alpha=.8, selection_line_alpha=1, nonselection_line_alpha=0, default_tools=[]))
-        hv.opts.defaults(hv.opts.Curve(line_width=5, line_color='orange', line_alpha=.5))
+        hv.opts.defaults(hv.opts.Curve(line_width=5, line_color='peru'))
+        hv.opts.defaults(hv.opts.Points(line_color=None, color='peru', size=15))
 
         self.maxAmp = 25. # mT/m
         self.maxSlew = 80. # T/m/s
@@ -1587,9 +1597,9 @@ class MRIsimulator(param.Parameterized):
     def update_k_line_coords(self, attr, old, hoverIndex):
         if len(hoverIndex['index']) > 0:
             object = self.boards[hoverIndex['board'][0]]['object_list'][hoverIndex['index'][0]]
-            self.k_line_coords.send(self.get_k_at_times(object['time'][[0, -1]]))
+            self.kLine.event(coords=list(self.get_k_on_interval(object['time'][[0, -1]])))
         else:
-            self.k_line_coords.send(None)
+            self.kLine.event(coords=[None])
     
     
     def renderPolygons(self, board):
@@ -1634,33 +1644,34 @@ class MRIsimulator(param.Parameterized):
         self.renderPolygons('RF')
     
     
-    def get_k_at_times(self, times):
-        t = np.arange(*times[[0, -1]], self.k_trajectory['dt'])
+    def get_k_on_interval(self, interval):
+        t = np.arange(*interval[[0, -1]], self.k_trajectory['dt'])
         kx = np.interp(t, self.k_trajectory['t'], self.k_trajectory['kx'])
         ky = np.interp(t, self.k_trajectory['t'], self.k_trajectory['ky'])
-        return zip(ky, kx)
+        return zip(kx, ky)
     
 
-    def get_k_coords(self, t, gp, tp, refocus_times):
+    def get_k_coords(self, t, gp, tp, refocus_intervals):
         g = np.interp(t, tp, gp)
         dk = np.diff(t) * (g[:-1] + np.diff(g)/2) * constants.GYRO * 1e-3
         k = np.insert(np.cumsum(dk), 0, 0.) # start at k=0
-        for (ref_start, ref_stop) in refocus_times:
+        for (ref_start, ref_stop) in refocus_intervals:
             # k inversion of refocusing pulse corresponds to negative shift of 2k:
             k_before = k[t<=ref_start][-1]
-            # TODO: linear loss between start and stop
-            k[t > ref_start] -= 2 * k_before
+            refocus_times = t[(t>ref_start) & (t<ref_stop)]
+            k[(t>ref_start) & (t<ref_stop)] -= 2 * k_before * (refocus_times - ref_start) / (ref_stop - ref_start)
+            k[t>=ref_stop] -= 2 * k_before
         return k
     
     
     def calculate_k_trajectory(self):
         dt = .01
-        refocus_times = [list(rf['time'][[0, -1]]) for rf in self.boards['RF']['objects']['refocusing']]
-        t = np.concatenate((*(self.boardPlots[board]['area']['time'] for board in ['frequency', 'phase']), [t for ref in refocus_times for t in ref])) # k event times
+        refocus_intervals = [list(rf['time'][[0, -1]]) for rf in self.boards['RF']['objects']['refocusing']]
+        t = np.concatenate((*(self.boardPlots[board]['area']['time'] for board in ['frequency', 'phase']), [t for ref in refocus_intervals for t in ref])) # k event times
         t = np.unique(np.concatenate((t, np.arange(0., max(t), dt)))) # merge with time grid
-        kx = self.get_k_coords(t, *(self.boardPlots['frequency']['area'][dim] for dim in ['G read', 'time']), refocus_times)
-        ky = self.get_k_coords(t, *(self.boardPlots['phase']['area'][dim] for dim in ['G phase', 'time']), refocus_times)
-        if self.phaseDir==0:
+        kx = self.get_k_coords(t, *(self.boardPlots['frequency']['area'][dim] for dim in ['G read', 'time']), refocus_intervals)
+        ky = self.get_k_coords(t, *(self.boardPlots['phase']['area'][dim] for dim in ['G phase', 'time']), refocus_intervals)
+        if self.phaseDir==1:
             kx, ky = ky, kx
         self.k_trajectory = {'kx': kx, 'ky': ky, 't': t, 'dt': dt}
     
@@ -1745,7 +1756,7 @@ def getApp():
                       infoNumber(name='Fat/water shift', format='{value:.2f} pixels', value=simulator.param.FWshift),
                       infoNumber(name='Bandwidth', format='{value:.0f} Hz/pixel', value=simulator.param.pixelBandWidth))
     
-    dmapKspace = pn.Row(hv.DynamicMap(simulator.getKspace) * hv.DynamicMap(hv.Curve, streams=[simulator.k_line_coords]), visible=False)
+    dmapKspace = pn.Row(hv.DynamicMap(simulator.getKspace) * simulator.kLine, visible=False)
     dmapMRimage = hv.DynamicMap(simulator.getImage)
     dmapSequence = pn.Row(hv.DynamicMap(simulator.getSequencePlot), visible=False)
     sequenceButton = pn.widgets.Button(name='Show sequence')
