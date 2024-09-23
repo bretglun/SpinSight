@@ -1179,9 +1179,8 @@ class MRIsimulator(param.Parameterized):
         else: # linear k-space order for EPI / GRASE
             # pick forward or reverse order that minimizes spacing while respecting minimum spacing
             # TODO: respect TR as well
-            cands = [(self.get_readtrain_spacing_linear_order(reverse), reverse) for reverse in [True, False]]
-            cands = [cand for cand in cands if cand[0] >= min_readtrain_spacing]
-            (self.readtrain_spacing, self.reverse_linear_order) = min(cands, key=lambda c: c[0])
+            cands = sorted([(self.get_readtrain_spacing_linear_order(reverse), reverse) for reverse in [True, False]])
+            (self.readtrain_spacing, self.reverse_linear_order) = cands[0] if cands[0][0]>min_readtrain_spacing and cands[1][0]>min_readtrain_spacing else cands[1]
         self.sequencePipeline.add(self.placeRefocusing)
         self.sequencePipeline.add(self.placeReadouts)
         self.sequencePipeline.add(self.placePhasers)
