@@ -864,11 +864,30 @@ class MRIsimulator(param.Parameterized):
         d = 1e3 / self.pixelBandWidth # readout duration
         s = self.maxSlew
         if isGradientEcho(self.sequence):
+            centermost_gr_echoes, centermost_rf_echoes = self.get_centermost_echoes_linear_order(reverse=True)
+            if len(centermost_gr_echoes)==1:
+                N = centermost_gr_echoes[0] + 1/2
+                M = centermost_gr_echoes[0] * 2 + 1
+            else:
+                N = max(centermost_gr_echoes)
+                M = N * 2
             t = self.TE - self.boards['RF']['objects']['excitation']['dur_f']/2
-            h = s * (t - np.sqrt(t**2/2 + d**2/8)) # negative sqrt seems to be the reasonable solution
-            h = min(h, self.maxAmp)
-            A = d * (np.sqrt((d*s+2*h)**2 - 8*h*(h-s*(t-d/2))) - d*s - 2*h) / 2
-            maxReadoutAreas.append(A)
+            v = 0 # gap between readouts
+            for _ in range(2): # update readout gap after first pass
+                if (M > 1):
+                    # max wrt G slice or G phase:
+                    q = t - max(self.boards['phase']['objects']['phasers'][0]['dur_f'],
+                                self.boards['slice']['objects']['slice select excitation']['riseTime_f'] + self.boards['slice']['objects']['slice select rephaser']['dur_f'])
+                    A = d*s*(q - N*(d+v) + v/2) / (M-1) # eq. 15
+                    maxReadoutAreas.append(A)
+                # max wrt G read:
+                h_roots = np.roots([8*(3-2*M), 4*s*(t*(2*M-6)+d*(2*N-M)+v*(2*N-1)), s**2*(4*t**2-d**2)]) # eq. 12
+                h = min([h for h in h_roots if h>0] + [self.maxAmp]) # truncate prephaser amp to max amp
+                A_roots = np.roots([1, d*(d*s + 2*M*h), d**2*h*(2*h-s*(2*t-2*N*(d+v)+v))]) # eq. 13
+                A = min([A for A in A_roots if A>0])
+                maxReadoutAreas.append(A)
+                read_risetime = min(maxReadoutAreas) / (d * s)
+                v = max(self.max_blip_dur - 2 * read_risetime, 0)
         else: # (turbo) spin echo / GRASE
             # limit by half readout duration tr:
             tr = (self.readtrain_spacing - self.boards['RF']['objects']['refocusing'][0]['dur_f']) / self.EPIfactor / 2
@@ -1464,12 +1483,12 @@ class MRIsimulator(param.Parameterized):
         phase_step_area = 1e3 / (acq_FOVP * constants.GYRO) # uTs/m
         maxPhaserArea = np.min(self.kAxes[self.phaseDir]) * 1e3 / constants.GYRO   # uTs/m
         
-        max_blip_dur = 0
+        self.max_blip_dur = 0
         if (self.EPIfactor > 1):
             max_blip_area = phase_step_area * self.num_shots * self.turboFactor
-            max_blip_dur = sequence.getGradient('phase', totalArea=max_blip_area, name='dummy blip')['dur_f']
+            self.max_blip_dur = sequence.getGradient('phase', totalArea=max_blip_area, name='dummy blip')['dur_f']
         readout = self.boards['frequency']['objects']['readouts'][0][0]
-        readout_gap = max(max_blip_dur - 2 * readout['riseTime_f'], 0)
+        readout_gap = max(self.max_blip_dur - 2 * readout['riseTime_f'], 0)
         self.gr_echo_spacing = readout['dur_f'] + readout_gap
         self.gre_echo_train_dur = self.EPIfactor * self.gr_echo_spacing - readout_gap
        

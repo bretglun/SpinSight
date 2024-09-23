@@ -90,7 +90,7 @@ We wish to determine $h$ under the assumption that the prephaser is triangular:
     \label{eq:greTriangleT}
 \end{equation}
 
-It follows from eqs. \ref{eq:readArea}, \ref{eq:slewArea}, \ref{eq:grePrephaserArea}, and \ref{eq:greTriangleT} that:
+It follows from eqs. \ref{eq:readArea}, \ref{eq:slewArea}, \ref{eq:grePrephaserArea}, and \ref{eq:greTriangleT} that
 \begin{equation}
     \begin{split}
         0 & = 8h^2 - 16sth + s^2(4t^2-d^2) \\
@@ -108,6 +108,34 @@ The maximum area is can then be found:
     \label{eq:greArea}
 \end{equation}
 
+\subsection{Gradient echo EPI}
+For EPI, eq. \ref{eq:grePrephaserArea} can be replaced by:
+\begin{equation}
+    A/2 + B = h(t-N(d+v)-Mg/s-h/s+v/2)
+    \label{eq:greEPIprephaserArea}
+\end{equation}
+where $N$ and $M$ are the number of readouts and readout ramps up to $TE$, and $v$ is the gap duration between readouts. 
+Then, it follows from eqs. \ref{eq:readArea}, \ref{eq:slewArea}, \ref{eq:greTriangleT}, and \ref{eq:greEPIprephaserArea} that $h$ may be calculated as
+\begin{equation}
+    0 = 8h^2(3-2M) + 4 hs (t(2M-6)+d(2N-M)+v(2N-1)) + s^2(4t^2-d^2)
+    \label{eq:GREEPIprephaserAmp}
+\end{equation}
+After truncating to $g_{max}$, $A$ can be calculated as
+\begin{equation}
+    0 = A^2 + Ad(ds+2Mh) + d^2h(2h-s(2t-2N(d+v)+v))
+    \label{eq:greEPIArea}
+\end{equation}
+
+In case the duration of the read prephaser plus readut rampup is shorter than either the phaser or the slice selection gradient rampdown plus the slice rephaser, the area will be limited by $q$, defined as the available time from readout plateu start to $TE$:
+\begin{equation}
+    q = Nd + (M-1) g/s
+    \label{eq:q}
+\end{equation}
+which implies that
+\begin{equation}
+    A = \frac{ds(q - N(d+v) + v/2)}{M-1}
+    \label{eq:qArea}
+\end{equation}
 
 \begin{figure}
     \centering
