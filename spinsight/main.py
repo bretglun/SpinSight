@@ -324,7 +324,7 @@ EPIfactorValues = list(range(1, 64+1))
 class MRIsimulator(param.Parameterized):
     object = param.ObjectSelector(default='brain', objects=PHANTOMS.keys(), label='Phantom object')
     fieldStrength = param.ObjectSelector(default=1.5, objects=[1.5, 3.0], label='B0 field strength [T]')
-    parameterStyle = param.ObjectSelector(default='Siemens', objects=['Siemens', 'Philips', 'GE'], label='Parameter Style')
+    parameterStyle = param.ObjectSelector(default='Matrix and Pixel BW', objects=['Matrix and Pixel BW', 'Voxelsize and Fat/water shift', 'Matrix and FOV BW'], label='Parameter Style')
     
     FatSat = param.Boolean(default=False, label='Fat saturation')
     TR = param.Selector(default=10000, objects=TRvalues, label='TR [msec]')
@@ -511,7 +511,7 @@ class MRIsimulator(param.Parameterized):
     def _watch_parameterStyle(self):
         for param in [self.param.voxelF, self.param.voxelP, self.param.matrixF, self.param.matrixP, self.param.reconVoxelF, self.param.reconVoxelP, self.param.reconMatrixF, self.param.reconMatrixP, self.param.pixelBandWidth, self.param.FOVbandwidth, self.param.FWshift]:
             param.precedence = -1
-        if self.parameterStyle == 'Philips':
+        if self.parameterStyle == 'Voxelsize and Fat/water shift':
             self.param.voxelF.precedence = 4
             self.param.voxelP.precedence = 4
             self.param.reconVoxelF.precedence = 5
@@ -522,16 +522,16 @@ class MRIsimulator(param.Parameterized):
             self.param.matrixP.precedence = 4
             self.param.reconMatrixF.precedence = 5
             self.param.reconMatrixP.precedence = 5
-            if self.parameterStyle == 'Siemens':
+            if self.parameterStyle == 'Matrix and Pixel BW':
                 self.param.pixelBandWidth.precedence = 2
-            elif self.parameterStyle == 'GE':
+            elif self.parameterStyle == 'Matrix and FOV BW':
                 self.param.FOVbandwidth.precedence = 2
                 self.updateMatrixFbounds()
 
 
     @param.depends('FOVF', watch=True)
     def _watch_FOVF(self):
-        if self.parameterStyle=='Philips': # Philips style, update matrix
+        if self.parameterStyle=='Voxelsize and Fat/water shift': # Voxelsize and Fat/water shift style, update matrix
             self.matrixF = int(np.round(self.FOVF / self.voxelF))
             self.reconMatrixF = int(np.round(self.FOVF / self.reconVoxelF))
         self.updateVoxelFobjects()
@@ -546,7 +546,7 @@ class MRIsimulator(param.Parameterized):
 
     @param.depends('FOVP', watch=True)
     def _watch_FOVP(self):
-        if self.parameterStyle=='Philips': # Philips style, update matrix
+        if self.parameterStyle=='Voxelsize and Fat/water shift': # Voxelsize and Fat/water shift style, update matrix
             self.matrixP = int(np.round(self.FOVP / self.voxelP))
             self.reconMatrixP = int(np.round(self.FOVP / self.reconVoxelP))
         self.updateVoxelPobjects()
@@ -567,7 +567,7 @@ class MRIsimulator(param.Parameterized):
     @param.depends('matrixF', watch=True)
     def _watch_matrixF(self):
         self.param.FOVbandwidth.bounds = getBounds(pixelBW2FOVBW(self.param.pixelBandWidth.bounds[0], self.matrixF), pixelBW2FOVBW(self.param.pixelBandWidth.bounds[1], self.matrixF), self.FOVbandwidth)
-        if self.parameterStyle == 'GE':
+        if self.parameterStyle == 'Matrix and FOV BW':
             self.pixelBandWidth = FOVBW2pixelBW(self.FOVbandwidth, self.matrixF)
         else:
             self.FOVbandwidth = pixelBW2FOVBW(self.pixelBandWidth, self.matrixF)
@@ -992,7 +992,7 @@ class MRIsimulator(param.Parameterized):
     def updateMatrixFbounds(self):
         minMatrixF, maxMatrixF = 16, 600
         maxMatrixF = min(maxMatrixF, int(np.floor(self.getMaxReadoutArea() * 1e-3 * self.FOVF * constants.GYRO)))
-        if self.parameterStyle == 'GE':
+        if self.parameterStyle == 'Matrix and FOV BW':
             minMatrixF = max(minMatrixF, int(np.ceil(self.FOVbandwidth * 2e3 / self.param.pixelBandWidth.bounds[1])))
             maxMatrixF = min(maxMatrixF, int(np.floor(self.FOVbandwidth * 2e3 / self.param.pixelBandWidth.bounds[0])))
         self.param.matrixF.objects, _ = updateBounds(self.matrixF, matrixValues, minval=minMatrixF, maxval=maxMatrixF)
