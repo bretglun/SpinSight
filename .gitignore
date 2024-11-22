@@ -2,6 +2,7 @@
 .*
 !.gitignore
 *.png
+!spinsight.png
 *.jpeg
 *.jpg
 *.npy
