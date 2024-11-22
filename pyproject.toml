@@ -3,7 +3,7 @@ name = "spinsight"
 version = "1.0.0"
 description = "MR image simulator for teaching purposes"
 authors = ["Johan Berglund <johan.berglund@akademiska.se>"]
-license = "MIT"
+license = "GPL-3.0-or-later"
 readme = "README.md"
 
 [tool.poetry.dependencies]
