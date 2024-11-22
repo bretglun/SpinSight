@@ -17,4 +17,9 @@
 testSampling.py
 notes.md
 TODO.md
+localReadme.md
 deploy.sh
+restart.sh
+serveSpinSight.sh
+nohup.out
+pidFile
