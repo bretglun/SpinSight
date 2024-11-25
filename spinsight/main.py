@@ -1764,7 +1764,7 @@ def hideShowButtonCallback(pane, event):
 
 
 def infoNumber(name, value, format):
-    return pn.indicators.Number(default_color='white', name=name, format=format, font_size='12pt', title_size='12pt', value=value)
+    return pn.indicators.Number(name=name, format=format, font_size='12pt', title_size='12pt', value=value)
 
 
 def getApp():
