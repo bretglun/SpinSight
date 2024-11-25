@@ -2,24 +2,21 @@ SpinSight MRI simulator
 ===
 SpinSight is an MRI simulator written in Python and created for educational puposes. It jointly visualizes the imaging parameters, the MRI pulse sequence, the k-space data matrix, and the MR image. These are updated in near real-time when the user changes parameters. The simulator is run as a web browser dashboard. The data is simulated from computational 2D phantoms in vector graphics format (SVG).
 
-Dependencies
-------------
-See [pyproject.toml](./pyproject.toml) under heading **[tool.poetry.dependencies]**. Install using pip: 
-```
-pip install .
-```
-Or install [using poetry](https://python-poetry.org/docs/): 
-```
-poetry install
-```
-
 Running the Simulator
 ---
-SpinSight is served on the local host by running [spinsight/deploy.py](./spinsight/deploy.py) and navigating to [localhost](http://localhost) in the web browser. The same script can be used to deploy the simulator on a local network, or on a web server (run `deploy.py -h` for help). Be aware that several minutes are required upon loading a phantom for the first time.  
-To run using poetry:
+Install using pip: 
 ```
-poetry run python spinsight/deploy.py
+pip install spinsight
 ```
+Then run as a command line tool
+```
+spinsight
+```
+This serves SpinSight on the local host, so that the simulator can be run by navigating to [localhost](http://localhost) in the web browser. The same command line tool can be used to deploy the simulator on a local network, or on a web server (run `spinsight -h` for help). Be aware that several minutes are required upon loading a phantom for the first time.  
+
+Dependencies
+------------
+See [pyproject.toml](./pyproject.toml) under heading **[tool.poetry.dependencies]**. 
 
 License
 -------
