@@ -6,7 +6,7 @@ Dependencies
 ------------
 See [pyproject.toml](./pyproject.toml) under heading **[tool.poetry.dependencies]**. Install using pip: 
 ```
-pip install pyproject.toml
+pip install .
 ```
 Or install [using poetry](https://python-poetry.org/docs/): 
 ```
