@@ -35,3 +35,7 @@ def CLI():
 
     # serve application
     pn.serve(main.getApp, show=False, title='SpinSight', port=options.port, websocket_origin=['{}:{}'.format(host, options.port) for host in hosts])
+
+if __name__ == "__main__":
+    CLI()
+

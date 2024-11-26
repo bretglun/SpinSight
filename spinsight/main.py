@@ -12,6 +12,7 @@ from spinsight import constants
 from spinsight import sequence
 from bokeh.models import HoverTool, CustomJS, ColumnDataSource
 from functools import partial
+from tqdm import tqdm
 
 hv.extension('bokeh')
 pn.config.theme = 'dark' # 'default' / 'dark'
@@ -1102,14 +1103,14 @@ class MRIsimulator(param.Parameterized):
                 self.tissues.add(tissue)
                 self.phantom['kspace'][tissue] = np.load(file)
         else:
-            print('Preparing k-space for "{}" phantom. This might take a few minutes on first use...'.format(self.object), end='', flush=True)
+            print('Preparing k-space for "{}" phantom. This might take a few minutes on first use...'.format(self.object))
             polys = readSVG(Path(phantomPath / self.object).with_suffix('.svg'))
             self.tissues = set([poly['tissue'] for poly in polys])
             self.phantom['kspace'] = {tissue: np.zeros((self.phantom['matrix']), dtype=complex) for tissue in self.tissues}
             k = np.array(np.meshgrid(self.phantom['kAxes'][0], self.phantom['kAxes'][1])).T
-            for poly in polys:
+            for poly in tqdm(polys):
                 self.phantom['kspace'][poly['tissue']] += kspacePolygon(poly, k)
-            for tissue in self.tissues:
+            for tissue in tqdm(self.tissues):
                 file = Path(phantomPath / tissue).with_suffix('.npy')
                 np.save(file, self.phantom['kspace'][tissue])
             print('DONE')
