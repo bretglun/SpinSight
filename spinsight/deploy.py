@@ -34,4 +34,8 @@ def CLI():
             print('* http://{}:{}'.format(host, options.port))
 
     # serve application
-    pn.serve(main.getApp, show=False, title='SpinSight', port=options.port, websocket_origin=['{}:{}'.format(host, options.port) for host in hosts])
+    try:
+        pn.serve(main.getApp, show=False, title='SpinSight', port=options.port, websocket_origin=['{}:{}'.format(host, options.port) for host in hosts])
+    except OSError as e:
+        print(e)
+        print('Could not serve SpinSight on port {}. Perhaps try another port (specify using the -p flag)'.format(options.port))
