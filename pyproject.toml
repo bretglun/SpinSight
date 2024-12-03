@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "spinsight"
-version = "1.0.2"
+version = "1.0.3"
 description = "MR image simulator for teaching purposes"
 authors = ["Johan Berglund <johan.berglund@akademiska.se>"]
 license = "GPL-3.0-or-later"
