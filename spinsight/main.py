@@ -15,7 +15,6 @@ from functools import partial
 from tqdm import tqdm
 
 hv.extension('bokeh')
-pn.config.theme = 'dark' # 'default' / 'dark'
 
 
 TISSUES = {
@@ -1764,11 +1763,14 @@ def hideShowButtonCallback(pane, event):
         event.obj.name = event.obj.name.replace('Hide', 'Show')
 
 
-def infoNumber(name, value, format):
-    return pn.indicators.Number(name=name, format=format, font_size='12pt', title_size='12pt', value=value)
+def infoNumber(name, value, format, textColor):
+    return pn.indicators.Number(default_color=textColor, name=name, format=format, font_size='12pt', title_size='12pt', value=value)
 
 
-def getApp():
+def getApp(darkMode):
+    pn.config.theme = 'dark' if darkMode else 'default'
+    textColor = 'white' if darkMode else 'black' # needed for pn.indicators.Number which doesn't respect pn.config.theme
+
     simulator = MRIsimulator(name='')
     title = '# SpinSight MRI simulator'
     author = '*Written by [Johan Berglund](mailto:johan.berglund@akademiska.se), Ph.D.*'
@@ -1777,10 +1779,10 @@ def getApp():
     geometryParams = pn.panel(simulator.param, parameters=['frequencyDirection', 'FOVF', 'FOVP', 'phaseOversampling', 'voxelF', 'voxelP', 'matrixF', 'matrixP', 'reconVoxelF', 'reconVoxelP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness'], widgets={'matrixF': pn.widgets.DiscreteSlider, 'matrixP': pn.widgets.DiscreteSlider, 'voxelF': pn.widgets.DiscreteSlider, 'voxelP': pn.widgets.DiscreteSlider, 'reconVoxelF': pn.widgets.DiscreteSlider, 'reconVoxelP': pn.widgets.DiscreteSlider}, name='Geometry')
     sequenceParams = pn.panel(simulator.param, parameters=['sequence', 'pixelBandWidth', 'FOVbandwidth', 'FWshift', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor'], widgets={'EPIfactor': pn.widgets.DiscreteSlider}, name='Sequence')
     
-    infoPane = pn.Row(infoNumber(name='Relative SNR', format='{value:.0f}%', value=simulator.param.relativeSNR),
-                      infoNumber(name='Scan time', format=('{value:.1f} sec'), value=simulator.param.scantime),
-                      infoNumber(name='Fat/water shift', format='{value:.2f} pixels', value=simulator.param.FWshift),
-                      infoNumber(name='Bandwidth', format='{value:.0f} Hz/pixel', value=simulator.param.pixelBandWidth))
+    infoPane = pn.Row(infoNumber(name='Relative SNR', format='{value:.0f}%', value=simulator.param.relativeSNR, textColor=textColor),
+                      infoNumber(name='Scan time', format=('{value:.1f} sec'), value=simulator.param.scantime, textColor=textColor),
+                      infoNumber(name='Fat/water shift', format='{value:.2f} pixels', value=simulator.param.FWshift, textColor=textColor),
+                      infoNumber(name='Bandwidth', format='{value:.0f} Hz/pixel', value=simulator.param.pixelBandWidth, textColor=textColor))
     
     dmapKspace = pn.Row(hv.DynamicMap(simulator.getKspace) * simulator.kLine, visible=False)
     dmapMRimage = hv.DynamicMap(simulator.getImage)
