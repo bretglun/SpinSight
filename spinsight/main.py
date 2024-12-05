@@ -1767,7 +1767,7 @@ def infoNumber(name, value, format, textColor):
     return pn.indicators.Number(default_color=textColor, name=name, format=format, font_size='12pt', title_size='12pt', value=value)
 
 
-def getApp(darkMode):
+def getApp(darkMode='dark'):
     pn.config.theme = 'dark' if darkMode else 'default'
     textColor = 'white' if darkMode else 'black' # needed for pn.indicators.Number which doesn't respect pn.config.theme
 
