@@ -1001,7 +1001,7 @@ class MRIsimulator(param.Parameterized):
     
 
     def updateMatrixPbounds(self):
-        maxMatrixP = int(self.getMaxPhaserArea() * 2e-3 * self.FOVP * constants.GYRO)
+        maxMatrixP = int(self.getMaxPhaserArea() * 2e-3 * self.FOVP * constants.GYRO) + 1
         self.param.matrixP.objects, _ = updateBounds(self.matrixP, matrixValues, maxval=maxMatrixP)
         self.updateVoxelPobjects()
         self.updateReconVoxelPobjects()
@@ -1013,7 +1013,7 @@ class MRIsimulator(param.Parameterized):
 
 
     def updateFOVPbounds(self):
-        minFOVP = 1e3 * self.matrixP / (self.getMaxPhaserArea() * constants.GYRO * 2)
+        minFOVP = (self.matrixP - 1) / (self.getMaxPhaserArea() * constants.GYRO * 2e-3)
         self.param.FOVP.bounds = getBounds(max(minFOVP, 100), 600, self.FOVP)
 
 
