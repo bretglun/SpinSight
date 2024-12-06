@@ -45,7 +45,8 @@ def CLI():
 
     # serve application
     try:
-        pn.serve(main.getApp, darkMode=darkMode, show=False, title='SpinSight', port=options.port, websocket_origin=['{}:{}'.format(host, options.port) for host in hosts])
+        def getApp(): return main.getApp(darkMode) # closure function
+        pn.serve(getApp, show=False, title='SpinSight', port=options.port, websocket_origin=['{}:{}'.format(host, options.port) for host in hosts])
     except OSError as e:
         print(e)
         print('Could not serve SpinSight on port {}. Perhaps try another port (specify using the -p flag)'.format(options.port))
