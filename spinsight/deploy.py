@@ -50,3 +50,7 @@ def CLI():
     except OSError as e:
         print(e)
         print('Could not serve SpinSight on port {}. Perhaps try another port (specify using the -p flag)'.format(options.port))
+
+
+if __name__ == '__main__':
+    CLI()
