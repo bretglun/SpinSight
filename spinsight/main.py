@@ -273,28 +273,6 @@ def get_segment_order(N, Nsym, c):
     return segment_order
 
 
-def updateBounds(curval, values, minval=None, maxval=None):
-    if minval is not None:
-        values = [val for val in values if not val < minval]
-    if maxval is not None:
-        values = [val for val in values if not val > maxval]
-    if not values:
-        print('Warning: trying to set bounds [{}, {}] outside current value ({})'.format(minval, maxval, curval))
-        values = [curval]
-    value = min(values, key=lambda x: abs(x-curval))    
-    return values, value
-
-
-def getBounds(minval, maxval, curval):
-    if curval < minval:
-        print('Warning: trying to set bounds above current value ({} > {})'.format(minval, curval))
-        minval = curval
-    if curval > maxval:
-        print('Warning: trying to set bounds below current value ({} < {})'.format(maxval, curval))
-        maxval = curval
-    return (minval, maxval)
-
-
 def bounds_hook(plot, elem, xbounds=None):
     x_range = plot.handles['plot'].x_range
     if xbounds is not None:
@@ -494,6 +472,30 @@ class MRIsimulator(param.Parameterized):
                 self.reconPipeline.remove(f)
     
     
+    def setParamBounds(self, param, minval, maxval):
+        curval = getattr(self, param.name)
+        if curval < minval:
+            print('Warning: trying to set {} bounds above current value ({} > {})'.format(param.name, minval, curval))
+            minval = curval
+        if curval > maxval:
+            print('Warning: trying to set {} bounds below current value ({} < {})'.format(param.name, maxval, curval))
+            maxval = curval
+        param.bounds = (minval, maxval)
+    
+
+    def setParamDiscreteBounds(self, param, values, minval=None, maxval=None):
+        curval = getattr(self, param.name)
+        if minval is not None:
+            values = [val for val in values if not val < minval]
+        if maxval is not None:
+            values = [val for val in values if not val > maxval]
+        if not values:
+            print('Warning: trying to set {} bounds [{}, {}] outside current value ({})'.format(param.name, minval, maxval, curval))
+            values = [curval]
+        value = min(values, key=lambda x: abs(x-curval))
+        param.objects = values
+    
+
     @param.depends('object', watch=True)
     def _watch_object(self):
         for f in self.fullReconPipeline:
@@ -566,7 +568,7 @@ class MRIsimulator(param.Parameterized):
 
     @param.depends('matrixF', watch=True)
     def _watch_matrixF(self):
-        self.param.FOVbandwidth.bounds = getBounds(pixelBW2FOVBW(self.param.pixelBandWidth.bounds[0], self.matrixF), pixelBW2FOVBW(self.param.pixelBandWidth.bounds[1], self.matrixF), self.FOVbandwidth)
+        self.setParamBounds(self.param.FOVbandwidth, pixelBW2FOVBW(self.param.pixelBandWidth.bounds[0], self.matrixF), pixelBW2FOVBW(self.param.pixelBandWidth.bounds[1], self.matrixF))
         if self.parameterStyle == 'Matrix and FOV BW':
             self.pixelBandWidth = FOVBW2pixelBW(self.FOVbandwidth, self.matrixF)
         else:
@@ -827,20 +829,20 @@ class MRIsimulator(param.Parameterized):
     def updateMinTR(self):
         self.minTR = self.boards['slice']['objects']['spoiler']['time'][-1]
         self.minTR -= self.getSeqStart()
-        self.param.TR.objects, _ = updateBounds(self.TR, TRvalues, minval=self.minTR)
+        self.setParamDiscreteBounds(self.param.TR, TRvalues, minval=self.minTR)
         self.sequencePipeline.add(self.updateMaxTE)
         self.sequencePipeline.add(self.updateMaxTI)
     
 
     def updateMaxTE(self):
         maxTE = self.TR - self.minTR + self.TE
-        self.param.TE.objects, _ = updateBounds(self.TE, TEvalues, minval=self.minTE, maxval=maxTE)
+        self.setParamDiscreteBounds(self.param.TE, TEvalues, minval=self.minTE, maxval=maxTE)
     
     
     def updateMaxTI(self):
         if self.sequence != 'Inversion Recovery': return
         maxTI = self.TR - self.minTR + self.TI
-        self.param.TI.objects, _ = updateBounds(self.TI, TIvalues, minval=40, maxval=maxTI)
+        self.setParamDiscreteBounds(self.param.TI, TIvalues, minval=40, maxval=maxTI)
     
     
     def getMaxPrephaserArea(self, readAmp):
@@ -984,9 +986,9 @@ class MRIsimulator(param.Parameterized):
         small = 1e-2 # to avoid roundoff errors
         minpBW = 1e3 / min(maxReadDurations) + small
         maxpBW = 1e3 / max(minReadDurations) - small
-        self.param.pixelBandWidth.bounds = getBounds(minpBW, maxpBW, self.pixelBandWidth)
-        self.param.FWshift.bounds = getBounds(pixelBW2shift(maxpBW, self.fieldStrength), pixelBW2shift(minpBW, self.fieldStrength), self.FWshift)
-        self.param.FOVbandwidth.bounds = getBounds(pixelBW2FOVBW(minpBW, self.matrixF), pixelBW2FOVBW(maxpBW, self.matrixF), self.FOVbandwidth)
+        self.setParamBounds(self.param.pixelBandWidth, minpBW, maxpBW)
+        self.setParamBounds(self.param.FWshift, pixelBW2shift(maxpBW, self.fieldStrength), pixelBW2shift(minpBW, self.fieldStrength))
+        self.setParamBounds(self.param.FOVbandwidth, pixelBW2FOVBW(minpBW, self.matrixF), pixelBW2FOVBW(maxpBW, self.matrixF))
     
 
     def updateMatrixFbounds(self):
@@ -995,26 +997,26 @@ class MRIsimulator(param.Parameterized):
         if self.parameterStyle == 'Matrix and FOV BW':
             minMatrixF = max(minMatrixF, int(np.ceil(self.FOVbandwidth * 2e3 / self.param.pixelBandWidth.bounds[1])))
             maxMatrixF = min(maxMatrixF, int(np.floor(self.FOVbandwidth * 2e3 / self.param.pixelBandWidth.bounds[0])))
-        self.param.matrixF.objects, _ = updateBounds(self.matrixF, matrixValues, minval=minMatrixF, maxval=maxMatrixF)
+        self.setParamDiscreteBounds(self.param.matrixF, matrixValues, minval=minMatrixF, maxval=maxMatrixF)
         self.updateVoxelFobjects()
         self.updateReconVoxelFobjects()
     
 
     def updateMatrixPbounds(self):
         maxMatrixP = int(self.getMaxPhaserArea() * 2e-3 * self.FOVP * constants.GYRO) + 1
-        self.param.matrixP.objects, _ = updateBounds(self.matrixP, matrixValues, maxval=maxMatrixP)
+        self.setParamDiscreteBounds(self.param.matrixP, matrixValues, maxval=maxMatrixP)
         self.updateVoxelPobjects()
         self.updateReconVoxelPobjects()
 
 
     def updateFOVFbounds(self):
         minFOVF = 1e3 * self.matrixF / (self.getMaxReadoutArea() * constants.GYRO)
-        self.param.FOVF.bounds = getBounds(max(minFOVF, 100), 600, self.FOVF)
+        self.setParamBounds(self.param.FOVF, max(minFOVF, 100), 600)
 
 
     def updateFOVPbounds(self):
         minFOVP = (self.matrixP - 1) / (self.getMaxPhaserArea() * constants.GYRO * 2e-3)
-        self.param.FOVP.bounds = getBounds(max(minFOVP, 100), 600, self.FOVP)
+        self.setParamBounds(self.param.FOVP, max(minFOVP, 100), 600)
 
 
     def updateVoxelFobjects(self):
@@ -1067,7 +1069,7 @@ class MRIsimulator(param.Parameterized):
         Be = self.boards['RF']['objects']['excitation']['FWHM_f']
         minThks.append(Be * d / (constants.GYRO * A)) # mm
         
-        self.param.sliceThickness.bounds = getBounds(max(minThks), 10., self.sliceThickness)
+        self.setParamBounds(self.param.sliceThickness, max(minThks), 10.)
 
 
     def updateTurboFactorBounds(self):
