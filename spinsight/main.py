@@ -968,7 +968,7 @@ class MRIsimulator(param.Parameterized):
                 h = min(h, self.maxAmp)
                 minReadDurations.append(np.sqrt(A**2/(2*h*s*tp - s*A - 2*h**2)))
             if self.EPIfactor==1:
-                max_readtrain_spacing = self.TE * (1 + 1/2 * self.split_center)
+                max_readtrain_spacing = self.TE / (1 + 1/2 * self.split_center)
             else: # linear k-space order
                 # TODO: correct this
                 max_readtrain_spacing = max([self.get_readtrain_spacing_linear_order(reverse) for reverse in [True, False]])
