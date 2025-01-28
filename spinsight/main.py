@@ -493,6 +493,8 @@ class MRIsimulator(param.Parameterized):
             print('Warning: trying to set {} bounds [{}, {}] outside current value ({})'.format(param.name, minval, maxval, curval))
             values = [curval]
         value = min(values, key=lambda x: abs(x-curval))
+        if value != curval:
+            print('Warning: {} current value {} is outside its new bounds [{}, {}]'.format(param.name, curval, minval, maxval))
         param.objects = values
     
 
@@ -907,9 +909,9 @@ class MRIsimulator(param.Parameterized):
 
     def getMaxPhaserArea(self):
         if isGradientEcho(self.sequence):
-            maxPhaserDuration = self.readtrain_spacing - self.boards['RF']['objects']['excitation']['dur_f']/2 - self.gr_echo_spacing * self.EPIfactor/2 + self.readout_risetime
+            maxPhaserDuration = self.readtrain_spacing - self.boards['RF']['objects']['excitation']['dur_f']/2 - self.gre_echo_train_dur/2 + self.readout_risetime
         else:
-            maxPhaserDuration = (self.readtrain_spacing - self.boards['RF']['objects']['refocusing'][0]['dur_f'] - self.gr_echo_spacing * self.EPIfactor)/2 + self.readout_risetime
+            maxPhaserDuration = (self.readtrain_spacing - self.boards['RF']['objects']['refocusing'][0]['dur_f'] - self.gre_echo_train_dur)/2 + self.readout_risetime
         maxRiseTime = self.maxAmp / self.maxSlew
         if maxPhaserDuration > 2 * maxRiseTime: # trapezoid maxPhaser
             maxPhaserArea = (maxPhaserDuration - maxRiseTime) * self.maxAmp
@@ -970,13 +972,14 @@ class MRIsimulator(param.Parameterized):
             else: # linear k-space order
                 # TODO: correct this
                 max_readtrain_spacing = max([self.get_readtrain_spacing_linear_order(reverse) for reverse in [True, False]])
-            # tr is half readout gradient duration
-            tr = (max_readtrain_spacing - self.boards['RF']['objects']['refocusing'][0]['dur_f']) / self.EPIfactor / 2
+            idle_space = max_readtrain_spacing - self.boards['RF']['objects']['refocusing'][0]['dur_f']
+            # max limit imposed by phaser:
+            maxPhaserDuration = max([phaser['dur_f'] for phaser in self.boards['phase']['objects']['phasers']])
+            maxReadDurations.append((idle_space - 2 * maxPhaserDuration - self.max_blip_dur * (self.EPIfactor-1))/self.EPIfactor)
+            # tr is half the maximum readout gradient duration
+            tr = ((idle_space) / self.EPIfactor) / 2
             # max limit imposed by readout rise time:
             maxReadDurations.append(tr + np.sqrt(tr**2 - 2*A/s))
-            # max limit imposed by phaser:
-            maxPhaserTime = max([phaser['dur_f'] for phaser in self.boards['phase']['objects']['phasers']])
-            maxReadDurations.append((tr - maxPhaserTime) * 2)
             # max limit imposed by slice select refocusing down ramp time:
             maxReadDurations.append((tr - self.boards['slice']['objects']['slice select refocusing'][0]['riseTime_f']) * 2)
             # readtrain_spacing may be limited by TR:
