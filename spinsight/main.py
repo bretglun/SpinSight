@@ -6,6 +6,7 @@ import numpy as np
 import math
 import xml.etree.ElementTree as ET
 from pathlib import Path
+import toml
 import re
 import xarray as xr
 from spinsight import constants
@@ -384,6 +385,8 @@ class MRIsimulator(param.Parameterized):
         for board in self.boards:
             self.boards[board]['objects'] = {}
 
+        self.derivedParams = ['FOVbandwidth', 'FWshift', 'SNR', 'name', 'reconVoxelF', 'reconVoxelP', 'referenceSNR', 'relativeSNR', 'scantime', 'voxelF', 'voxelP']
+        
         self.fullSequencePipeline = [
             self.setupExcitation, 
             self.setupRefocusing,
@@ -471,6 +474,14 @@ class MRIsimulator(param.Parameterized):
                 f()
                 self.reconPipeline.remove(f)
     
+    
+    def getParams(self):
+        return {param: self.__getattribute__(param) for param in self.param.values().keys() if param not in self.derivedParams}
+    
+    
+    def setParams(self, settings):
+        self.param.update(settings)
+
     
     def setParamBounds(self, param, minval, maxval):
         curval = getattr(self, param.name)
@@ -1768,13 +1779,29 @@ def hideShowButtonCallback(pane, event):
         event.obj.name = event.obj.name.replace('Hide', 'Show')
 
 
+def loadButtonCallback(simulator, settingsFile, event):
+    print('Loading settings from file', settingsFile)
+    with open(settingsFile, 'r') as f:
+        settings = toml.load(f)
+    simulator.setParams(settings)
+
+
+def saveButtonCallback(simulator, settingsFile, event):
+    print('Saving settings to file', settingsFile)
+    settings = simulator.getParams()
+    with open(settingsFile, 'w') as f:
+        toml.dump(settings, f)
+
+
 def infoNumber(name, value, format, textColor):
     return pn.indicators.Number(default_color=textColor, name=name, format=format, font_size='12pt', title_size='12pt', value=value)
 
 
-def getApp(darkMode=True):
+def getApp(darkMode=True, settingsFilestem=''):
     pn.config.theme = 'dark' if darkMode else 'default'
     textColor = 'white' if darkMode else 'black' # needed for pn.indicators.Number which doesn't respect pn.config.theme
+
+    settingsFile = Path(settingsFilestem).with_suffix('.toml') if bool(settingsFilestem) else Path('')
 
     simulator = MRIsimulator(name='')
     title = '# SpinSight MRI simulator'
@@ -1792,6 +1819,10 @@ def getApp(darkMode=True):
     dmapKspace = pn.Row(hv.DynamicMap(simulator.getKspace) * simulator.kLine, visible=False)
     dmapMRimage = hv.DynamicMap(simulator.getImage)
     dmapSequence = pn.Row(hv.DynamicMap(simulator.getSequencePlot), visible=False)
+    loadButton = pn.widgets.Button(name='Load settings', visible=settingsFile.is_file())
+    loadButton.on_click(partial(loadButtonCallback, simulator, settingsFile))
+    saveButton = pn.widgets.Button(name='Save settings', visible=settingsFile.is_file())
+    saveButton.on_click(partial(saveButtonCallback, simulator, settingsFile))
     sequenceButton = pn.widgets.Button(name='Show sequence')
     sequenceButton.on_click(partial(hideShowButtonCallback, dmapSequence))
     kSpaceButton = pn.widgets.Button(name='Show k-space')
@@ -1804,6 +1835,7 @@ def getApp(darkMode=True):
                 pn.pane.Markdown(title), 
                 pn.Row(
                     pn.Column(
+                        pn.Row(loadButton, saveButton), 
                         settingsParams, 
                         pn.Row(sequenceButton, kSpaceButton), 
                         sequenceParams

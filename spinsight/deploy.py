@@ -21,6 +21,8 @@ def CLI():
                     help="URL identifying server")
     p.add_option('--mode', '-m', default='',  type="string",
                     help="GUI mode (\"dark\"/\"light\")")
+    p.add_option('--settingsFile', '-s', default='',  type="string",
+                    help="settings filename (stem only)")
     options, arguments = p.parse_args()
 
     hosts = []
@@ -45,7 +47,7 @@ def CLI():
 
     # serve application
     try:
-        def getApp(): return main.getApp(darkMode) # closure function
+        def getApp(): return main.getApp(darkMode, options.settingsFile) # closure function
         pn.serve(getApp, show=False, title='SpinSight', port=options.port, websocket_origin=['{}:{}'.format(host, options.port) for host in hosts])
     except OSError as e:
         print(e)

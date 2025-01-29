@@ -25,3 +25,5 @@ restart.sh
 serveSpinSight.sh
 nohup.out
 pidFile
+
+settings.toml
