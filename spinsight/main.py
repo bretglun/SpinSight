@@ -1403,8 +1403,10 @@ class MRIsimulator(param.Parameterized):
             for rf_echo in range(self.turboFactor):
                 self.boards['RF']['objects']['refocusing'].append(sequence.getRF(flipAngle=180., dur=3., shape='hammingSinc',  name='refocusing {}'.format(rf_echo)))
             self.sequencePipeline.add(self.placeRefocusing)
-        for f in [self.setupSliceSelection, self.renderRFBoard, self.updateMinTE, self.updateMatrixPbounds, self.updateFOVPbounds, self.updateSliceThicknessBounds]:
+        for f in [self.setupSliceSelection, self.updateMinTE, self.updateMatrixPbounds, self.updateFOVPbounds, self.updateSliceThicknessBounds]:
             self.sequencePipeline.add(f)
+        self.sequencePlotPipeline.add(self.renderRFBoard)
+
 
 
     def setupInversion(self):
@@ -1413,8 +1415,9 @@ class MRIsimulator(param.Parameterized):
             self.sequencePipeline.add(self.placeInversion)
         elif 'inversion' in self.boards['RF']['objects']:
             del self.boards['RF']['objects']['inversion']
-        for f in [self.setupSliceSelection, self.renderRFBoard, self.updateMaxTI, self.updateSliceThicknessBounds]:
+        for f in [self.setupSliceSelection, self.updateMaxTI, self.updateSliceThicknessBounds]:
             self.sequencePipeline.add(f)
+        self.sequencePlotPipeline.add(self.renderRFBoard)
     
     
     def setupFatSat(self):
