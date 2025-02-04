@@ -356,7 +356,7 @@ class MRIsimulator(param.Parameterized):
         self.hoverIndex = ColumnDataSource({'index': [], 'board': []})
         self.hoverIndex.on_change('data', self.update_k_line_coords)
         
-        self.publish = 1  # counting semaphore to avoid repeated plot updates
+        self.outbound_params = set()
 
         self.timeDim = hv.Dimension('time', label='time', unit='ms')
 
@@ -457,6 +457,7 @@ class MRIsimulator(param.Parameterized):
             if f in self.sequencePipeline:
                 f()
                 self.sequencePipeline.remove(f)
+        self.resolveConflicts()
     
 
     def runSequencePlotPipeline(self):
@@ -503,9 +504,11 @@ class MRIsimulator(param.Parameterized):
         if not values:
             print('Warning: trying to set {} bounds [{}, {}] outside current value ({})'.format(param.name, minval, maxval, curval))
             values = [curval]
+            self.outbound_params.add(param.name)
         value = min(values, key=lambda x: abs(x-curval))
         if value != curval:
             print('Warning: {} current value {} is outside its new bounds [{}, {}]'.format(param.name, curval, minval, maxval))
+            self.outbound_params.add(param.name)
         param.objects = values
     
 
@@ -692,7 +695,6 @@ class MRIsimulator(param.Parameterized):
             self.reconPipeline.add(f)
         for f in [self.setupRefocusing, self.setupReadouts, self.setupPhasers, self.updateMinTE, self.updateMinTR, self.updateMaxTE, self.updateMaxTI, self.updateBWbounds, self.updateMatrixFbounds, self.updateMatrixPbounds, self.updateFOVFbounds,  self.updateFOVPbounds, self.updateSliceThicknessBounds]:
             self.sequencePipeline.add(f)
-        self.adjust_timing_params()
 
 
     @param.depends('turboFactor', watch=True)
@@ -702,7 +704,6 @@ class MRIsimulator(param.Parameterized):
         for f in [self.setupRefocusing, self.setupReadouts, self.setupPhasers, self.updateMinTE, self.updateMinTR, self.updateMaxTE, self.updateMaxTI, self.updateBWbounds, self.updateMatrixFbounds, self.updateMatrixPbounds, self.updateFOVFbounds,  self.updateFOVPbounds, self.updateSliceThicknessBounds]:
             self.sequencePipeline.add(f)
         self.updateEPIfactorObjects()
-        self.adjust_timing_params()
 
 
     @param.depends('EPIfactor', watch=True)
@@ -712,7 +713,6 @@ class MRIsimulator(param.Parameterized):
         for f in [self.setupReadouts, self.setupPhasers, self.updateMinTE, self.updateMinTR, self.updateMaxTE, self.updateMaxTI, self.updateBWbounds, self.updateMatrixFbounds, self.updateMatrixPbounds, self.updateFOVFbounds,  self.updateFOVPbounds, self.updateSliceThicknessBounds]:
             self.sequencePipeline.add(f)
         self.updateTurboFactorBounds()
-        self.adjust_timing_params()
     
 
     @param.depends('sequence', watch=True)
@@ -728,7 +728,6 @@ class MRIsimulator(param.Parameterized):
             self.param.turboFactor.precedence = -6
         else:
             self.param.turboFactor.precedence = 6
-        self.adjust_timing_params()
     
 
     @param.depends('TE', watch=True)
@@ -768,7 +767,6 @@ class MRIsimulator(param.Parameterized):
             self.reconPipeline.add(f)
         for f in [self.setupFatSat, self.updateMaxTE, self.updateBWbounds]:
             self.sequencePipeline.add(f)
-        self.adjust_timing_params()
 
 
     @param.depends('reconMatrixF', watch=True)
@@ -786,27 +784,6 @@ class MRIsimulator(param.Parameterized):
         for f in [self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
     
-    
-    def adjust_timing_params(self):
-        # runs the sequence pipeline adjusting TR, TE and TI to stay within bounds
-        self.publish -= 1
-        tr = self.TR
-        te = self.TE
-        ti = self.TI
-        self.TR = self.param.TR.objects[-1] # max TR
-        self.param.TE.objects = TEvalues
-        self.TE = self.param.TE.objects[-1] # max TE
-        if self.sequence=='Inversion Recovery':
-            self.TI = self.param.TI.objects[0] # min TI
-            self.runSequencePipeline()
-            self.TI = min(self.param.TI.objects, key=lambda x: abs(x-ti)) # Set back TI within (new) bounds
-        self.runSequencePipeline()    
-        self.TE = min(self.param.TE.objects, key=lambda x: abs(x-te)) # Set back TE within (new) bounds
-        self.runSequencePipeline()
-        self.TR = min(self.param.TR.objects, key=lambda x: abs(x-tr)) # Set back TR within (new) bounds
-        self.publish += 1
-        self.param.trigger('TR') # to trigger pipelines to run and plots to update
-
 
     def getSeqStart(self):
         if self.sequence == 'Inversion Recovery': 
@@ -857,7 +834,27 @@ class MRIsimulator(param.Parameterized):
         maxTI = self.TR - self.minTR + self.TI
         self.setParamDiscreteBounds(self.param.TI, TIvalues, minval=40, maxval=maxTI)
     
+
+    def resolveConflicts(self):
+        if not self.outbound_params: return
+        if 'TR' in self.outbound_params:
+            print('Warning: Resolving conflict: TR')
+            self.outbound_params.remove('TR')
+            tr = self.TR
+            self.TR = self.param.TR.objects[-1] # max TR
+            self.TR = min(self.param.TR.objects, key=lambda x: abs(x-tr)) # Set back TR within (new) bounds
+        if 'TI' in self.outbound_params:
+            print('Warning: Resolving conflict: TI')
+            self.outbound_params.remove('TI')
+            self.TI = min(self.param.TI.objects, key=lambda x: abs(x-self.TI)) # Set back TI within (new) bounds
+        if 'TE' in self.outbound_params:
+            print('Warning: Resolving conflict: TE')
+            self.outbound_params.remove('TE')
+            self.TE = min(self.param.TE.objects, key=lambda x: abs(x-self.TE)) # Set back TE within (new) bounds
+        elif self.outbound_params:
+            print('Warning: Unresolved conflict:', self.outbound_params)
     
+
     def getMaxPrephaserArea(self, readAmp):
         if isGradientEcho(self.sequence):
             maxPrephaserDur =  self.TE - self.boards['ADC']['objects']['samplings'][0][0]['dur_f']/2 - self.boards['RF']['objects']['excitation']['dur_f']/2 - readAmp/self.maxSlew
@@ -1722,30 +1719,28 @@ class MRIsimulator(param.Parameterized):
 
     @param.depends('sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'partialFourier', 'turboFactor', 'EPIfactor')
     def getSequencePlot(self):
-        if self.publish==1:
-            self.runSequencePlotPipeline()
-            self.seqPlot = hv.Layout(list([hv.Overlay(list(boardPlot.values())).opts(width=1700, height=120, border=0, xaxis='bottom' if n==len(self.boardPlots)-1 else None) for n, boardPlot in enumerate(self.boardPlots.values())])).cols(1).options(toolbar='below')
+        self.runSequencePlotPipeline()
+        self.seqPlot = hv.Layout(list([hv.Overlay(list(boardPlot.values())).opts(width=1700, height=120, border=0, xaxis='bottom' if n==len(self.boardPlots)-1 else None) for n, boardPlot in enumerate(self.boardPlots.values())])).cols(1).options(toolbar='below')
         return self.seqPlot
     
     
     @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor')
     def getKspace(self):
-        if self.publish==1:
-            self.runReconPipeline()
-            kAxes = []
-            for dim in range(2):
-                kAxes.append(getKaxis(self.oversampledReconMatrix[dim], self.FOV[dim]/self.reconMatrix[dim]))
-                # half-sample shift axis when odd number of zeroes:
-                if (self.oversampledReconMatrix[dim]-self.oversampledMatrix[dim])%2:
-                    shift = self.reconMatrix[dim] / (2 * self.oversampledReconMatrix[dim] * self.FOV[dim])
-                    kAxes[-1] += shift * (-1)**(self.oversampledMatrix[dim]%2)
-            ksp = xr.DataArray(
-                np.abs(np.fft.fftshift(self.zerofilledkspace))**.2, 
-                dims=('ky', 'kx'),
-                coords={'kx': kAxes[1], 'ky': kAxes[0]}
-            )
-            ksp.kx.attrs['units'] = ksp.ky.attrs['units'] = '1/mm'
-            self.kspaceimage = hv.Image(ksp, vdims=['magnitude'])
+        self.runReconPipeline()
+        kAxes = []
+        for dim in range(2):
+            kAxes.append(getKaxis(self.oversampledReconMatrix[dim], self.FOV[dim]/self.reconMatrix[dim]))
+            # half-sample shift axis when odd number of zeroes:
+            if (self.oversampledReconMatrix[dim]-self.oversampledMatrix[dim])%2:
+                shift = self.reconMatrix[dim] / (2 * self.oversampledReconMatrix[dim] * self.FOV[dim])
+                kAxes[-1] += shift * (-1)**(self.oversampledMatrix[dim]%2)
+        ksp = xr.DataArray(
+            np.abs(np.fft.fftshift(self.zerofilledkspace))**.2, 
+            dims=('ky', 'kx'),
+            coords={'kx': kAxes[1], 'ky': kAxes[0]}
+        )
+        ksp.kx.attrs['units'] = ksp.ky.attrs['units'] = '1/mm'
+        self.kspaceimage = hv.Image(ksp, vdims=['magnitude'])
         return self.kspaceimage
 
 
@@ -1757,17 +1752,16 @@ class MRIsimulator(param.Parameterized):
 
     @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor', 'showFOV')
     def getImage(self):
-        if self.publish==1:
-            self.runReconPipeline()
-            iAxes = [(np.arange(self.reconMatrix[dim]) - (self.reconMatrix[dim]-1)/2) / self.reconMatrix[dim] * self.FOV[dim] for dim in range(2)]
-            img = xr.DataArray(
-                np.abs(self.imageArray), 
-                dims=('y', 'x'),
-                coords={'x': iAxes[1], 'y': iAxes[0][::-1]}
-            )
-            img.x.attrs['units'] = img.y.attrs['units'] = 'mm'
-            self.image = hv.Overlay([hv.Image(img, vdims=['magnitude'])])
-        
+        self.runReconPipeline()
+        iAxes = [(np.arange(self.reconMatrix[dim]) - (self.reconMatrix[dim]-1)/2) / self.reconMatrix[dim] * self.FOV[dim] for dim in range(2)]
+        img = xr.DataArray(
+            np.abs(self.imageArray), 
+            dims=('y', 'x'),
+            coords={'x': iAxes[1], 'y': iAxes[0][::-1]}
+        )
+        img.x.attrs['units'] = img.y.attrs['units'] = 'mm'
+        self.image = hv.Overlay([hv.Image(img, vdims=['magnitude'])])
+
         if self.showFOV:
             self.image *= self.getFOVbox()
         return self.image
