@@ -501,14 +501,13 @@ class MRIsimulator(param.Parameterized):
             values = [val for val in values if not val < minval]
         if maxval is not None:
             values = [val for val in values if not val > maxval]
-        if not values:
-            print('Warning: trying to set {} bounds [{}, {}] outside current value ({})'.format(param.name, minval, maxval, curval))
-            values = [curval]
-            self.outbound_params.add(param.name)
-        value = min(values, key=lambda x: abs(x-curval))
-        if value != curval:
+        if curval not in values:
             print('Warning: {} current value {} is outside its new bounds [{}, {}]'.format(param.name, curval, minval, maxval))
+            values = [curval] # necessary to avoid empty bounds
             self.outbound_params.add(param.name)
+        elif param.name in self.outbound_params:
+            print('Param {} no longer conflicting'.format(param.name))
+            self.outbound_params.remove(param.name)
         param.objects = values
     
 
@@ -841,7 +840,9 @@ class MRIsimulator(param.Parameterized):
             print('Warning: Resolving conflict: TR')
             self.outbound_params.remove('TR')
             tr = self.TR
-            self.TR = self.param.TR.objects[-1] # max TR
+            self.param.TR.objects = TRvalues
+            self.sequencePipeline.add(self.updateMinTR)
+            self.TR = TRvalues[-1] # max TR
             self.TR = min(self.param.TR.objects, key=lambda x: abs(x-tr)) # Set back TR within (new) bounds
         if 'TI' in self.outbound_params:
             print('Warning: Resolving conflict: TI')
@@ -850,7 +851,8 @@ class MRIsimulator(param.Parameterized):
         if 'TE' in self.outbound_params:
             print('Warning: Resolving conflict: TE')
             self.outbound_params.remove('TE')
-            self.TE = min(self.param.TE.objects, key=lambda x: abs(x-self.TE)) # Set back TE within (new) bounds
+            self.param.TE.objects = TEvalues
+            self.TE = min([t for t in TEvalues if t>=self.minTE], key=lambda x: abs(x-self.TE))
         elif self.outbound_params:
             print('Warning: Unresolved conflict:', self.outbound_params)
     
@@ -896,6 +898,8 @@ class MRIsimulator(param.Parameterized):
                 h_roots = np.roots([8*(3-2*M), 4*s*(t*(2*M-6)+d*(2*N-M)+v*(2*N-1)), s**2*(4*t**2-d**2)]) # eq. 12
                 h = min([h for h in h_roots if h>0] + [self.maxAmp]) # truncate prephaser amp to max amp
                 A_roots = np.roots([1, d*(d*s + 2*M*h), d**2*h*(2*h-s*(2*t-2*N*(d+v)+v))]) # eq. 13
+                if np.all(A_roots<0):
+                    return 0 # no positive roots
                 A = min([A for A in A_roots if A>0])
                 maxReadoutAreas.append(A)
                 read_risetime = min(maxReadoutAreas) / (d * s)
@@ -1021,7 +1025,8 @@ class MRIsimulator(param.Parameterized):
 
 
     def updateFOVFbounds(self):
-        minFOVF = 1e3 * self.matrixF / (self.getMaxReadoutArea() * constants.GYRO)
+        maxReadoutArea = self.getMaxReadoutArea()
+        minFOVF = 1e3 * self.matrixF / (maxReadoutArea * constants.GYRO) if maxReadoutArea > 0 else 600
         self.setParamBounds(self.param.FOVF, max(minFOVF, 100), 600)
 
 
