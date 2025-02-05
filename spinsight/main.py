@@ -1186,9 +1186,11 @@ class MRIsimulator(param.Parameterized):
         # Equals rf echo spacing for spin echo sequences
         min_readtrain_spacing = self.get_min_readtrain_spacing()
         if self.EPIfactor == 1: # (turbo) spin echo
-            self.centermost_rf_echo = int(np.floor(self.TE / min_readtrain_spacing - (1 + .5 * self.split_center)))
+            minTE = min_readtrain_spacing * (1 + .5 * self.split_center)
+            te = max(self.TE, minTE)
+            self.centermost_rf_echo = int(np.floor(te / min_readtrain_spacing - (1 + .5 * self.split_center)))
             self.centermost_rf_echo = min(self.centermost_rf_echo, self.turboFactor - 1 - self.split_center)
-            self.readtrain_spacing = self.TE / (self.centermost_rf_echo + (1 + .5 * self.split_center))
+            self.readtrain_spacing = te / (self.centermost_rf_echo + (1 + .5 * self.split_center))
         else: # linear k-space order for EPI / GRASE
             # pick forward or reverse order that minimizes spacing while respecting minimum spacing
             # TODO: respect TR as well
