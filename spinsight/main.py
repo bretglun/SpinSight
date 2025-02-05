@@ -453,6 +453,7 @@ class MRIsimulator(param.Parameterized):
 
 
     def runSequencePipeline(self):
+        if not self.sequencePipeline: return
         for f in self.fullSequencePipeline:
             if f in self.sequencePipeline:
                 f()
@@ -461,6 +462,7 @@ class MRIsimulator(param.Parameterized):
     
 
     def runSequencePlotPipeline(self):
+        if not self.sequencePlotPipeline: return
         self.runSequencePipeline()
         for f in self.fullSequencePlotPipeline:
             if f in self.sequencePlotPipeline:
@@ -469,6 +471,7 @@ class MRIsimulator(param.Parameterized):
     
 
     def runReconPipeline(self):
+        if not self.reconPipeline: return
         self.runSequencePipeline()
         for f in self.fullReconPipeline:
             if f in self.reconPipeline:
