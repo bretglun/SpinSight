@@ -799,7 +799,7 @@ class MRIsimulator(param.Parameterized):
     def get_TE_from_centermost_echoes(self, readtrain_spacing, centermost_gr_echoes, centermost_rf_echoes):
         TE = readtrain_spacing * (1 + np.mean(centermost_rf_echoes))
         readtrain_shift = self.gr_echo_spacing * (np.mean(centermost_gr_echoes) - (self.EPIfactor-1)/2)
-        TE -= readtrain_shift
+        TE += readtrain_shift
         return TE
     
     
@@ -1399,7 +1399,7 @@ class MRIsimulator(param.Parameterized):
     def setupExcitation(self):
         FA = self.FA if isGradientEcho(self.sequence) else 90.
         self.boards['RF']['objects']['excitation'] = sequence.getRF(flipAngle=FA, time=0., dur=3., shape='hammingSinc',  name='excitation')
-        for f in [self.setupSliceSelection, self.placeFatSat, self.updateMinTE, self.updateBWbounds, self.updateMatrixFbounds, self.updateFOVFbounds, self.updateMatrixPbounds, self.updateFOVPbounds, self.updateSliceThicknessBounds]:
+        for f in [self.setupSliceSelection, self.setupPhasers, self.placeFatSat, self.updateMinTE, self.updateBWbounds, self.updateMatrixFbounds, self.updateFOVFbounds, self.updateMatrixPbounds, self.updateFOVPbounds, self.updateSliceThicknessBounds]:
             self.sequencePipeline.add(f)
         self.sequencePlotPipeline.add(self.renderRFBoard)
 
@@ -1470,7 +1470,7 @@ class MRIsimulator(param.Parameterized):
             del self.boards['slice']['objects']['slice select inversion']
             del self.boards['slice']['objects']['inversion spoiler']
         
-        for f in [self.updateMinTE, self.updateMaxTI, self.updateMinTR, self.updateBWbounds]:
+        for f in [self.setupPhasers, self.updateMinTE, self.updateMaxTI, self.updateMinTR, self.updateBWbounds]:
             self.sequencePipeline.add(f)
         for f in [self.renderSliceBoard, self.renderTRspan]:
             self.sequencePlotPipeline.add(f)
