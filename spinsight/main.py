@@ -550,7 +550,7 @@ class MRIsimulator(param.Parameterized):
     @param.depends('FOVF', watch=True)
     def _watch_FOVF(self):
         with param.parameterized.batch_call_watchers(self):
-            if self.parameterStyle=='Voxelsize and Fat/water shift': # Voxelsize and Fat/water shift style, update matrix
+            if self.parameterStyle=='Voxelsize and Fat/water shift':
                 self.matrixF = int(np.round(self.FOVF / self.voxelF))
                 self.reconMatrixF = int(np.round(self.FOVF / self.reconVoxelF))
             self.updateVoxelFobjects()
@@ -566,7 +566,7 @@ class MRIsimulator(param.Parameterized):
     @param.depends('FOVP', watch=True)
     def _watch_FOVP(self):
         with param.parameterized.batch_call_watchers(self):
-            if self.parameterStyle=='Voxelsize and Fat/water shift': # Voxelsize and Fat/water shift style, update matrix
+            if self.parameterStyle=='Voxelsize and Fat/water shift':
                 self.matrixP = int(np.round(self.FOVP / self.voxelP))
                 self.reconMatrixP = int(np.round(self.FOVP / self.reconVoxelP))
             self.updateVoxelPobjects()
@@ -628,11 +628,15 @@ class MRIsimulator(param.Parameterized):
     @param.depends('reconVoxelF', watch=True)
     def _watch_reconVoxelF(self):
         self.reconMatrixF = int(np.round(self.FOVF/self.reconVoxelF))
+        if self.parameterStyle=='Voxelsize and Fat/water shift':
+            self.updateFOVFbounds()
 
 
     @param.depends('reconVoxelP', watch=True)
     def _watch_reconVoxelP(self):
         self.reconMatrixP = int(np.round(self.FOVP/self.reconVoxelP))
+        if self.parameterStyle=='Voxelsize and Fat/water shift':
+            self.updateFOVPbounds()
 
 
     @param.depends('sliceThickness', watch=True)
@@ -1033,13 +1037,27 @@ class MRIsimulator(param.Parameterized):
 
     def updateFOVFbounds(self):
         maxReadoutArea = self.getMaxReadoutArea()
-        minFOVF = 1e3 * self.matrixF / (maxReadoutArea * constants.GYRO) if maxReadoutArea > 0 else 600
-        self.setParamBounds(self.param.FOVF, max(minFOVF, 100), 600)
+        minFOV = 1e3 * self.matrixF / (maxReadoutArea * constants.GYRO) if maxReadoutArea > 0 else 600
+        minFOV = max(minFOV, 100)
+        maxFOV = 600
+        if self.parameterStyle == 'Voxelsize and Fat/water shift':
+            minFOV = max(minFOV, self.voxelF * self.param.matrixF.objects[0])
+            minFOV = max(minFOV, self.reconVoxelF * self.param.reconMatrixF.bounds[0])
+            maxFOV = min(maxFOV, self.voxelF * self.param.matrixF.objects[-1])
+            maxFOV = min(maxFOV, self.reconVoxelF * self.param.reconMatrixF.bounds[-1])
+        self.setParamBounds(self.param.FOVF, minFOV, maxFOV)
 
 
     def updateFOVPbounds(self):
-        minFOVP = (self.matrixP - 1) / (self.getMaxPhaserArea() * constants.GYRO * 2e-3)
-        self.setParamBounds(self.param.FOVP, max(minFOVP, 100), 600)
+        minFOV = (self.matrixP - 1) / (self.getMaxPhaserArea() * constants.GYRO * 2e-3)
+        minFOV = max(minFOV, 100)
+        maxFOV = 600
+        if self.parameterStyle == 'Voxelsize and Fat/water shift':
+            minFOV = max(minFOV, self.voxelP * self.param.matrixP.objects[0])
+            minFOV = max(minFOV, self.reconVoxelP * self.param.reconMatrixP.bounds[0])
+            maxFOV = min(maxFOV, self.voxelP * self.param.matrixP.objects[-1])
+            maxFOV = min(maxFOV, self.reconVoxelP * self.param.reconMatrixP.bounds[-1])
+        self.setParamBounds(self.param.FOVP, minFOV, maxFOV)
 
 
     def updateVoxelFobjects(self):
