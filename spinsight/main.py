@@ -606,7 +606,7 @@ class MRIsimulator(param.Parameterized):
         self.voxelP = min(self.param.voxelP.objects, key=lambda x: abs(x-self.FOVP/self.matrixP))
         for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.simulateNoise, self.compileKspace, self.partialFourierRecon, self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
-        for f in [self.setupPhasers, self.updateFOVPbounds]:
+        for f in [self.setupPhasers, self.updateFOVPbounds, self.updateTurboFactorBounds, self.updateEPIfactorObjects]:
             self.sequencePipeline.add(f)
         self.param.reconMatrixP.bounds = (self.matrixP, self.param.reconMatrixP.bounds[1])
         self.updateReconVoxelPobjects()
@@ -695,7 +695,7 @@ class MRIsimulator(param.Parameterized):
     def _watch_partialFourier(self):
         for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.simulateNoise, self.compileKspace, self.partialFourierRecon, self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
-        for f in [self.setupRefocusing, self.setupReadouts, self.setupPhasers, self.updateMinTE, self.updateMinTR, self.updateMaxTE, self.updateMaxTI, self.updateBWbounds, self.updateMatrixFbounds, self.updateMatrixPbounds, self.updateFOVFbounds,  self.updateFOVPbounds, self.updateSliceThicknessBounds]:
+        for f in [self.setupRefocusing, self.setupReadouts, self.setupPhasers, self.updateMinTE, self.updateMinTR, self.updateMaxTE, self.updateMaxTI, self.updateBWbounds, self.updateMatrixFbounds, self.updateMatrixPbounds, self.updateFOVFbounds,  self.updateFOVPbounds, self.updateSliceThicknessBounds, self.updateTurboFactorBounds, self.updateEPIfactorObjects]:
             self.sequencePipeline.add(f)
 
 
@@ -703,7 +703,7 @@ class MRIsimulator(param.Parameterized):
     def _watch_turboFactor(self):
         for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.simulateNoise, self.compileKspace, self.partialFourierRecon, self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
-        for f in [self.setupRefocusing, self.setupReadouts, self.setupPhasers, self.updateMinTE, self.updateMinTR, self.updateMaxTE, self.updateMaxTI, self.updateBWbounds, self.updateMatrixFbounds, self.updateMatrixPbounds, self.updateFOVFbounds,  self.updateFOVPbounds, self.updateSliceThicknessBounds]:
+        for f in [self.setupRefocusing, self.setupReadouts, self.setupPhasers, self.updateMinTE, self.updateMinTR, self.updateMaxTE, self.updateMaxTI, self.updateBWbounds, self.updateMatrixFbounds, self.updateMatrixPbounds, self.updateFOVFbounds,  self.updateFOVPbounds, self.updateSliceThicknessBounds, self.updateEPIfactorObjects]:
             self.sequencePipeline.add(f)
         self.updateEPIfactorObjects()
 
@@ -712,7 +712,7 @@ class MRIsimulator(param.Parameterized):
     def _watch_EPIfactor(self):
         for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.simulateNoise, self.compileKspace, self.partialFourierRecon, self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
-        for f in [self.setupReadouts, self.setupPhasers, self.updateMinTE, self.updateMinTR, self.updateMaxTE, self.updateMaxTI, self.updateBWbounds, self.updateMatrixFbounds, self.updateMatrixPbounds, self.updateFOVFbounds,  self.updateFOVPbounds, self.updateSliceThicknessBounds]:
+        for f in [self.setupReadouts, self.setupPhasers, self.updateMinTE, self.updateMinTR, self.updateMaxTE, self.updateMaxTI, self.updateBWbounds, self.updateMatrixFbounds, self.updateMatrixPbounds, self.updateFOVFbounds,  self.updateFOVPbounds, self.updateSliceThicknessBounds, self.updateTurboFactorBounds]:
             self.sequencePipeline.add(f)
         self.updateTurboFactorBounds()
     
@@ -1092,21 +1092,26 @@ class MRIsimulator(param.Parameterized):
 
 
     def updateTurboFactorBounds(self):
+        maxTurboFactor = int(np.floor(self.matrix[self.phaseDir] * self.partialFourier / self.EPIfactor * 2)) # let's limit phase oversampling to 2
+        maxTurboFactor = min(maxTurboFactor, 64)
+
         # turboFactor must equal 1 when the EPIfactor is even
         if not self.EPIfactor%2:
             self.param.turboFactor.bounds = (1, 1)
             self.param.turboFactor.constant = True
         else:
-            self.param.turboFactor.bounds = (1, 64)
+            self.param.turboFactor.bounds = (1, maxTurboFactor)
             self.param.turboFactor.constant = False
 
 
     def updateEPIfactorObjects(self):
+        maxEPIFactor = int(np.floor(self.matrix[self.phaseDir] * self.partialFourier / self.turboFactor * 2)) # let's limit phase oversampling to 2
+        values = [v for v in EPIfactorValues if v <= maxEPIFactor]
         # EPIfactor must be odd for turbo spin echo (GRASE)
         if self.turboFactor > 1:
-            self.param.EPIfactor.objects = [v for v in EPIfactorValues if v%2]
+            self.param.EPIfactor.objects = [v for v in values if v%2]
         else:
-            self.param.EPIfactor.objects = EPIfactorValues
+            self.param.EPIfactor.objects = values
 
 
     def loadPhantom(self):
