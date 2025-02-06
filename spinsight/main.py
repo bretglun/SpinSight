@@ -516,15 +516,13 @@ class MRIsimulator(param.Parameterized):
 
     @param.depends('object', watch=True)
     def _watch_object(self):
-        for f in self.fullReconPipeline:
-            self.reconPipeline.add(f)
-        minFOV = PHANTOMS[self.object]['FOV']
-        if self.frequencyDirection=='left-right':
-            minFOV = minFOV.reverse()
-        self.FOVF = max(self.FOVF, minFOV[0])
-        self.FOVP = max(self.FOVP, minFOV[1])
-        self.reconPipeline.add(self.setReferenceSNR)
-        self.runReconPipeline() # rerun recon pipeline to set referenceSNR after FOV update
+        with param.parameterized.batch_call_watchers(self):
+            self.reconPipeline = set(self.fullReconPipeline)
+            minFOV = PHANTOMS[self.object]['FOV']
+            if self.frequencyDirection=='left-right':
+                minFOV = minFOV.reverse()
+            self.FOVF = max(self.FOVF, minFOV[0])
+            self.FOVP = max(self.FOVP, minFOV[1])
     
 
     @param.depends('parameterStyle', watch=True)
@@ -551,32 +549,34 @@ class MRIsimulator(param.Parameterized):
 
     @param.depends('FOVF', watch=True)
     def _watch_FOVF(self):
-        if self.parameterStyle=='Voxelsize and Fat/water shift': # Voxelsize and Fat/water shift style, update matrix
-            self.matrixF = int(np.round(self.FOVF / self.voxelF))
-            self.reconMatrixF = int(np.round(self.FOVF / self.reconVoxelF))
-        self.updateVoxelFobjects()
-        self.updateReconVoxelFobjects()
-        self.voxelF = min(self.param.voxelF.objects, key=lambda x: abs(x-self.FOVF/self.matrixF))
-        self.reconVoxelF = min(self.param.reconVoxelF.objects, key=lambda x: abs(x-self.FOVF/self.reconMatrixF))
-        for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.simulateNoise, self.compileKspace, self.partialFourierRecon, self.zerofill, self.reconstruct]:
-            self.reconPipeline.add(f)
-        for f in [self.setupReadouts, self.updateBWbounds, self.updateMatrixFbounds]:
-            self.sequencePipeline.add(f)
+        with param.parameterized.batch_call_watchers(self):
+            if self.parameterStyle=='Voxelsize and Fat/water shift': # Voxelsize and Fat/water shift style, update matrix
+                self.matrixF = int(np.round(self.FOVF / self.voxelF))
+                self.reconMatrixF = int(np.round(self.FOVF / self.reconVoxelF))
+            self.updateVoxelFobjects()
+            self.updateReconVoxelFobjects()
+            self.voxelF = min(self.param.voxelF.objects, key=lambda x: abs(x-self.FOVF/self.matrixF))
+            self.reconVoxelF = min(self.param.reconVoxelF.objects, key=lambda x: abs(x-self.FOVF/self.reconMatrixF))
+            for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.simulateNoise, self.compileKspace, self.partialFourierRecon, self.zerofill, self.reconstruct]:
+                self.reconPipeline.add(f)
+            for f in [self.setupReadouts, self.updateBWbounds, self.updateMatrixFbounds]:
+                self.sequencePipeline.add(f)
     
 
     @param.depends('FOVP', watch=True)
     def _watch_FOVP(self):
-        if self.parameterStyle=='Voxelsize and Fat/water shift': # Voxelsize and Fat/water shift style, update matrix
-            self.matrixP = int(np.round(self.FOVP / self.voxelP))
-            self.reconMatrixP = int(np.round(self.FOVP / self.reconVoxelP))
-        self.updateVoxelPobjects()
-        self.updateReconVoxelPobjects()
-        self.voxelP = min(self.param.voxelP.objects, key=lambda x: abs(x-self.FOVP/self.matrixP))
-        self.reconVoxelP = min(self.param.reconVoxelP.objects, key=lambda x: abs(x-self.FOVP/self.reconMatrixP))
-        for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.simulateNoise, self.compileKspace, self.partialFourierRecon, self.zerofill, self.reconstruct]:
-            self.reconPipeline.add(f)
-        for f in [self.setupPhasers, self.updateMatrixPbounds]:
-            self.sequencePipeline.add(f)
+        with param.parameterized.batch_call_watchers(self):
+            if self.parameterStyle=='Voxelsize and Fat/water shift': # Voxelsize and Fat/water shift style, update matrix
+                self.matrixP = int(np.round(self.FOVP / self.voxelP))
+                self.reconMatrixP = int(np.round(self.FOVP / self.reconVoxelP))
+            self.updateVoxelPobjects()
+            self.updateReconVoxelPobjects()
+            self.voxelP = min(self.param.voxelP.objects, key=lambda x: abs(x-self.FOVP/self.matrixP))
+            self.reconVoxelP = min(self.param.reconVoxelP.objects, key=lambda x: abs(x-self.FOVP/self.reconMatrixP))
+            for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.simulateNoise, self.compileKspace, self.partialFourierRecon, self.zerofill, self.reconstruct]:
+                self.reconPipeline.add(f)
+            for f in [self.setupPhasers, self.updateMatrixPbounds]:
+                self.sequencePipeline.add(f)
 
 
     @param.depends('phaseOversampling', watch=True)
@@ -586,31 +586,33 @@ class MRIsimulator(param.Parameterized):
 
     @param.depends('matrixF', watch=True)
     def _watch_matrixF(self):
-        self.setParamBounds(self.param.FOVbandwidth, pixelBW2FOVBW(self.param.pixelBandWidth.bounds[0], self.matrixF), pixelBW2FOVBW(self.param.pixelBandWidth.bounds[1], self.matrixF))
-        if self.parameterStyle == 'Matrix and FOV BW':
-            self.pixelBandWidth = FOVBW2pixelBW(self.FOVbandwidth, self.matrixF)
-        else:
-            self.FOVbandwidth = pixelBW2FOVBW(self.pixelBandWidth, self.matrixF)
-        self.voxelF = min(self.param.voxelF.objects, key=lambda x: abs(x-self.FOVF/self.matrixF))
-        for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.simulateNoise, self.compileKspace, self.partialFourierRecon, self.zerofill, self.reconstruct]:
-            self.reconPipeline.add(f)
-        for f in [self.setupReadouts, self.updateBWbounds, self.updateMatrixFbounds, self.updateFOVFbounds]:
-            self.sequencePipeline.add(f)
-        self.param.reconMatrixF.bounds = (self.matrixF, self.param.reconMatrixF.bounds[1])
-        self.updateReconVoxelFobjects()
-        self.reconMatrixF = min(max(int(np.round(self.matrixF * self.recAcqRatioF)), self.matrixF), self.param.reconMatrixF.bounds[1])
+        with param.parameterized.batch_call_watchers(self):
+            self.setParamBounds(self.param.FOVbandwidth, pixelBW2FOVBW(self.param.pixelBandWidth.bounds[0], self.matrixF), pixelBW2FOVBW(self.param.pixelBandWidth.bounds[1], self.matrixF))        
+            if self.parameterStyle == 'Matrix and FOV BW':
+                self.pixelBandWidth = FOVBW2pixelBW(self.FOVbandwidth, self.matrixF)
+            else:
+                self.FOVbandwidth = pixelBW2FOVBW(self.pixelBandWidth, self.matrixF)
+            self.voxelF = min(self.param.voxelF.objects, key=lambda x: abs(x-self.FOVF/self.matrixF))
+            for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.simulateNoise, self.compileKspace, self.partialFourierRecon, self.zerofill, self.reconstruct]:
+                self.reconPipeline.add(f)
+            for f in [self.setupReadouts, self.updateBWbounds, self.updateMatrixFbounds, self.updateFOVFbounds]:
+                self.sequencePipeline.add(f)
+            self.param.reconMatrixF.bounds = (self.matrixF, self.param.reconMatrixF.bounds[1])
+            self.updateReconVoxelFobjects()
+            self.reconMatrixF = min(max(int(np.round(self.matrixF * self.recAcqRatioF)), self.matrixF), self.param.reconMatrixF.bounds[1])
     
     
     @param.depends('matrixP', watch=True)
     def _watch_matrixP(self):
-        self.voxelP = min(self.param.voxelP.objects, key=lambda x: abs(x-self.FOVP/self.matrixP))
-        for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.simulateNoise, self.compileKspace, self.partialFourierRecon, self.zerofill, self.reconstruct]:
-            self.reconPipeline.add(f)
-        for f in [self.setupPhasers, self.updateFOVPbounds, self.updateTurboFactorBounds, self.updateEPIfactorObjects]:
-            self.sequencePipeline.add(f)
-        self.param.reconMatrixP.bounds = (self.matrixP, self.param.reconMatrixP.bounds[1])
-        self.updateReconVoxelPobjects()
-        self.reconMatrixP = min(max(int(np.round(self.matrixP * self.recAcqRatioP)), self.matrixP), self.param.reconMatrixP.bounds[1])
+        with param.parameterized.batch_call_watchers(self):
+            self.voxelP = min(self.param.voxelP.objects, key=lambda x: abs(x-self.FOVP/self.matrixP))
+            for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.simulateNoise, self.compileKspace, self.partialFourierRecon, self.zerofill, self.reconstruct]:
+                self.reconPipeline.add(f)
+            for f in [self.setupPhasers, self.updateFOVPbounds, self.updateTurboFactorBounds, self.updateEPIfactorObjects]:
+                self.sequencePipeline.add(f)
+            self.param.reconMatrixP.bounds = (self.matrixP, self.param.reconMatrixP.bounds[1])
+            self.updateReconVoxelPobjects()
+            self.reconMatrixP = min(max(int(np.round(self.matrixP * self.recAcqRatioP)), self.matrixP), self.param.reconMatrixP.bounds[1])
 
 
     @param.depends('voxelF', watch=True)
@@ -657,21 +659,23 @@ class MRIsimulator(param.Parameterized):
 
     @param.depends('fieldStrength', watch=True)
     def _watch_fieldStrength(self):
-        self.updateBWbounds()
-        self.FWshift = pixelBW2shift(self.pixelBandWidth, self.fieldStrength)
-        for f in [self.updateSamplingTime, self.modulateKspace, self.simulateNoise, self.updatePDandT1w, self.compileKspace, self.partialFourierRecon, self.zerofill, self.reconstruct]:
-            self.reconPipeline.add(f)
-        self._watch_FatSat() # since fatsat pulse duration depends on fieldStrength
+        with param.parameterized.batch_call_watchers(self):
+            self.updateBWbounds()
+            self.FWshift = pixelBW2shift(self.pixelBandWidth, self.fieldStrength)
+            for f in [self.updateSamplingTime, self.modulateKspace, self.simulateNoise, self.updatePDandT1w, self.compileKspace, self.partialFourierRecon, self.zerofill, self.reconstruct]:
+                self.reconPipeline.add(f)
+            self._watch_FatSat() # since fatsat pulse duration depends on fieldStrength
     
 
     @param.depends('pixelBandWidth', watch=True)
     def _watch_pixelBandWidth(self):
-        self.FWshift = pixelBW2shift(self.pixelBandWidth, self.fieldStrength)
-        self.FOVbandwidth = pixelBW2FOVBW(self.pixelBandWidth, self.matrixF)
-        for f in [self.updateSamplingTime, self.modulateKspace, self.simulateNoise, self.compileKspace, self.partialFourierRecon, self.zerofill, self.reconstruct]:
-            self.reconPipeline.add(f)
-        for f in [self.setupReadouts, self.updateMatrixFbounds, self.updateFOVFbounds, self.updateMatrixPbounds, self.updateFOVPbounds]:
-            self.sequencePipeline.add(f)
+        with param.parameterized.batch_call_watchers(self):
+            self.FWshift = pixelBW2shift(self.pixelBandWidth, self.fieldStrength)
+            self.FOVbandwidth = pixelBW2FOVBW(self.pixelBandWidth, self.matrixF)
+            for f in [self.updateSamplingTime, self.modulateKspace, self.simulateNoise, self.compileKspace, self.partialFourierRecon, self.zerofill, self.reconstruct]:
+                self.reconPipeline.add(f)
+            for f in [self.setupReadouts, self.updateMatrixFbounds, self.updateFOVFbounds, self.updateMatrixPbounds, self.updateFOVPbounds]:
+                self.sequencePipeline.add(f)
     
     @param.depends('FWshift', watch=True)
     def _watch_FWshift(self):
@@ -774,17 +778,17 @@ class MRIsimulator(param.Parameterized):
     @param.depends('reconMatrixF', watch=True)
     def _watch_reconMatrixF(self):
         self.recAcqRatioF = self.reconMatrixF / self.matrixF
-        self.reconVoxelF = min(self.param.reconVoxelF.objects, key=lambda x: abs(x-self.FOVF/self.reconMatrixF))
         for f in [self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
+        self.reconVoxelF = min(self.param.reconVoxelF.objects, key=lambda x: abs(x-self.FOVF/self.reconMatrixF))
 
 
     @param.depends('reconMatrixP', watch=True)
     def _watch_reconMatrixP(self):
         self.recAcqRatioP = self.reconMatrixP / self.matrixP
-        self.reconVoxelP = min(self.param.reconVoxelP.objects, key=lambda x: abs(x-self.FOVP/self.reconMatrixP))
         for f in [self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
+        self.reconVoxelP = min(self.param.reconVoxelP.objects, key=lambda x: abs(x-self.FOVP/self.reconMatrixP))
     
 
     def getSeqStart(self):
