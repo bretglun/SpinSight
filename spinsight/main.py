@@ -296,6 +296,7 @@ def flatten_dicts(list_of_dicts_and_lists):
 TRvalues = [float('{:.2g}'.format(tr)) for tr in 10.**np.linspace(0, 4, 500)]
 TEvalues = [float('{:.2g}'.format(te)) for te in 10.**np.linspace(0, 3, 500)]
 TIvalues = [float('{:.2g}'.format(ti)) for ti in 10.**np.linspace(0, 4, 500)]
+pBWvalues = [float('{:.3g}'.format(pbw)) for pbw in 10.**np.linspace(2.1, 3.3, 500)]
 matrixValues = list(range(16, 600+1))
 EPIfactorValues = list(range(1, 64+1))
 
@@ -326,9 +327,9 @@ class MRIsimulator(param.Parameterized):
     sliceThickness = param.Number(default=3, bounds=(0.5, 10), precedence=6, label='Slice thickness [mm]')
     
     sequence = param.ObjectSelector(default=SEQUENCES[0], objects=SEQUENCES, precedence=1, label='Pulse sequence')
-    pixelBandWidth = param.Number(default=500, bounds=(125, 2000), precedence=2, label='Pixel bandwidth [Hz]')
-    FOVbandwidth = param.Number(default=pixelBW2FOVBW(500, 180), bounds=(pixelBW2FOVBW(125, 180), pixelBW2FOVBW(2000, 180)), precedence=-2, label='FOV bandwidth [±kHz]')
-    FWshift = param.Number(default=pixelBW2shift(500), bounds=(pixelBW2shift(2000), pixelBW2shift(125)), precedence=-2, label='Fat/water shift [pixels]')
+    pixelBandWidth = param.Selector(default=pBWvalues[249], objects=pBWvalues, precedence=2, label='Pixel bandwidth [Hz]')
+    FOVbandwidth = param.Selector(default=pixelBW2FOVBW(500, 180), precedence=-2, label='FOV bandwidth [±kHz]')
+    FWshift = param.Selector(default=pixelBW2shift(500), precedence=-2, label='Fat/water shift [pixels]')
     NSA = param.Integer(default=1, bounds=(1, 16), precedence=3, label='NSA')
     partialFourier = param.Number(default=1, bounds=(.6, 1), step=0.01, precedence=5, label='Partial Fourier factor')
     turboFactor = param.Integer(default=1, bounds=(1, 64), precedence=6, label='Turbo factor')
@@ -553,6 +554,7 @@ class MRIsimulator(param.Parameterized):
             if self.parameterStyle=='Voxelsize and Fat/water shift':
                 self.matrixF = int(np.round(self.FOVF / self.voxelF))
                 self.reconMatrixF = int(np.round(self.FOVF / self.reconVoxelF))
+            self.updateFOVbandwidthObjects()
             self.updateVoxelFobjects()
             self.updateReconVoxelFobjects()
             self.voxelF = min(self.param.voxelF.objects, key=lambda x: abs(x-self.FOVF/self.matrixF))
@@ -587,11 +589,11 @@ class MRIsimulator(param.Parameterized):
     @param.depends('matrixF', watch=True)
     def _watch_matrixF(self):
         with param.parameterized.batch_call_watchers(self):
-            self.setParamBounds(self.param.FOVbandwidth, pixelBW2FOVBW(self.param.pixelBandWidth.bounds[0], self.matrixF), pixelBW2FOVBW(self.param.pixelBandWidth.bounds[1], self.matrixF))        
+            self.updateFOVbandwidthObjects()
             if self.parameterStyle == 'Matrix and FOV BW':
-                self.pixelBandWidth = FOVBW2pixelBW(self.FOVbandwidth, self.matrixF)
+                self.pixelBandWidth = min(self.param.pixelBandWidth.objects, key=lambda x: abs(x-FOVBW2pixelBW(self.FOVbandwidth, self.matrixF)))
             else:
-                self.FOVbandwidth = pixelBW2FOVBW(self.pixelBandWidth, self.matrixF)
+                self.FOVbandwidth = min(self.param.FOVbandwidth.objects, key=lambda x: abs(x-pixelBW2FOVBW(self.pixelBandWidth, self.matrixF)))
             self.voxelF = min(self.param.voxelF.objects, key=lambda x: abs(x-self.FOVF/self.matrixF))
             for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.simulateNoise, self.compileKspace, self.partialFourierRecon, self.zerofill, self.reconstruct]:
                 self.reconPipeline.add(f)
@@ -664,8 +666,8 @@ class MRIsimulator(param.Parameterized):
     @param.depends('fieldStrength', watch=True)
     def _watch_fieldStrength(self):
         with param.parameterized.batch_call_watchers(self):
-            self.updateBWbounds()
-            self.FWshift = pixelBW2shift(self.pixelBandWidth, self.fieldStrength)
+            self.updateFWshiftObjects()
+            self.FWshift = min(self.param.FWshift.objects, key=lambda x: abs(x-pixelBW2shift(self.pixelBandWidth, self.fieldStrength)))
             for f in [self.updateSamplingTime, self.modulateKspace, self.simulateNoise, self.updatePDandT1w, self.compileKspace, self.partialFourierRecon, self.zerofill, self.reconstruct]:
                 self.reconPipeline.add(f)
             self._watch_FatSat() # since fatsat pulse duration depends on fieldStrength
@@ -674,8 +676,8 @@ class MRIsimulator(param.Parameterized):
     @param.depends('pixelBandWidth', watch=True)
     def _watch_pixelBandWidth(self):
         with param.parameterized.batch_call_watchers(self):
-            self.FWshift = pixelBW2shift(self.pixelBandWidth, self.fieldStrength)
-            self.FOVbandwidth = pixelBW2FOVBW(self.pixelBandWidth, self.matrixF)
+            self.FWshift = min(self.param.FWshift.objects, key=lambda x: abs(x-pixelBW2shift(self.pixelBandWidth, self.fieldStrength)))
+            self.FOVbandwidth = min(self.param.FOVbandwidth.objects, key=lambda x: abs(x-pixelBW2FOVBW(self.pixelBandWidth, self.matrixF)))
             for f in [self.updateSamplingTime, self.modulateKspace, self.simulateNoise, self.compileKspace, self.partialFourierRecon, self.zerofill, self.reconstruct]:
                 self.reconPipeline.add(f)
             for f in [self.setupReadouts, self.updateMatrixFbounds, self.updateFOVFbounds, self.updateMatrixPbounds, self.updateFOVPbounds]:
@@ -684,13 +686,13 @@ class MRIsimulator(param.Parameterized):
     @param.depends('FWshift', watch=True)
     def _watch_FWshift(self):
         if self.param.FWshift.precedence > 0:
-            self.pixelBandWidth = shift2pixelBW(self.FWshift, self.fieldStrength)
+            self.pixelBandWidth = min(self.param.pixelBandWidth.objects, key=lambda x: abs(x-shift2pixelBW(self.FWshift, self.fieldStrength)))
     
 
     @param.depends('FOVbandwidth', watch=True)
     def _watch_FOVbandwidth(self):
         if self.param.FOVbandwidth.precedence > 0:
-            self.pixelBandWidth = FOVBW2pixelBW(self.FOVbandwidth, self.matrixF)
+            self.pixelBandWidth = min(self.param.pixelBandWidth.objects, key=lambda x: abs(x-FOVBW2pixelBW(self.FOVbandwidth, self.matrixF)))
 
 
     @param.depends('NSA', watch=True)
@@ -1012,17 +1014,17 @@ class MRIsimulator(param.Parameterized):
         small = 1e-2 # to avoid roundoff errors
         minpBW = 1e3 / min(maxReadDurations) + small
         maxpBW = 1e3 / max(minReadDurations) - small
-        self.setParamBounds(self.param.pixelBandWidth, minpBW, maxpBW)
-        self.setParamBounds(self.param.FWshift, pixelBW2shift(maxpBW, self.fieldStrength), pixelBW2shift(minpBW, self.fieldStrength))
-        self.setParamBounds(self.param.FOVbandwidth, pixelBW2FOVBW(minpBW, self.matrixF), pixelBW2FOVBW(maxpBW, self.matrixF))
-    
-
+        self.setParamDiscreteBounds(self.param.pixelBandWidth, pBWvalues, minval=minpBW, maxval=maxpBW)
+        self.updateFWshiftObjects()
+        self.updateFOVbandwidthObjects()
+        
+        
     def updateMatrixFbounds(self):
         minMatrixF, maxMatrixF = 16, 600
         maxMatrixF = min(maxMatrixF, int(np.floor(self.getMaxReadoutArea() * 1e-3 * self.FOVF * constants.GYRO)))
         if self.parameterStyle == 'Matrix and FOV BW':
-            minMatrixF = max(minMatrixF, int(np.ceil(self.FOVbandwidth * 2e3 / self.param.pixelBandWidth.bounds[1])))
-            maxMatrixF = min(maxMatrixF, int(np.floor(self.FOVbandwidth * 2e3 / self.param.pixelBandWidth.bounds[0])))
+            minMatrixF = max(minMatrixF, int(np.ceil(self.FOVbandwidth * 2e3 / self.param.pixelBandWidth.objects[-1])))
+            maxMatrixF = min(maxMatrixF, int(np.floor(self.FOVbandwidth * 2e3 / self.param.pixelBandWidth.objects[0])))
         self.setParamDiscreteBounds(self.param.matrixF, matrixValues, minval=minMatrixF, maxval=maxMatrixF)
         self.updateVoxelFobjects()
         self.updateReconVoxelFobjects()
@@ -1060,6 +1062,14 @@ class MRIsimulator(param.Parameterized):
         self.setParamBounds(self.param.FOVP, minFOV, maxFOV)
 
 
+    def updateFWshiftObjects(self):
+        self.param.FWshift.objects = [float('{:.2f}'.format(pixelBW2shift(pBW, self.fieldStrength))) for pBW in self.param.pixelBandWidth.objects[::-1]]
+    
+
+    def updateFOVbandwidthObjects(self):
+        self.param.FOVbandwidth.objects = [float('{:.2g}'.format(pixelBW2FOVBW(pBW, self.matrixF))) for pBW in self.param.pixelBandWidth.objects]
+    
+    
     def updateVoxelFobjects(self):
         self.param.voxelF.objects = [float('{:.4g}'.format(self.FOVF/matrix)) for matrix in self.param.matrixF.objects[::-1]]
 
@@ -1843,7 +1853,7 @@ def getApp(darkMode=True, settingsFilestem=''):
     settingsParams = pn.panel(simulator.param, parameters=['object', 'fieldStrength', 'parameterStyle'], name='Settings')
     contrastParams = pn.panel(simulator.param, parameters=['FatSat', 'TR', 'TE', 'FA', 'TI'], widgets={'TR': pn.widgets.DiscreteSlider, 'TE': pn.widgets.DiscreteSlider, 'TI': pn.widgets.DiscreteSlider}, name='Contrast')
     geometryParams = pn.panel(simulator.param, parameters=['frequencyDirection', 'FOVF', 'FOVP', 'phaseOversampling', 'voxelF', 'voxelP', 'matrixF', 'matrixP', 'reconVoxelF', 'reconVoxelP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness'], widgets={'matrixF': pn.widgets.DiscreteSlider, 'matrixP': pn.widgets.DiscreteSlider, 'voxelF': pn.widgets.DiscreteSlider, 'voxelP': pn.widgets.DiscreteSlider, 'reconVoxelF': pn.widgets.DiscreteSlider, 'reconVoxelP': pn.widgets.DiscreteSlider}, name='Geometry')
-    sequenceParams = pn.panel(simulator.param, parameters=['sequence', 'pixelBandWidth', 'FOVbandwidth', 'FWshift', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor'], widgets={'EPIfactor': pn.widgets.DiscreteSlider}, name='Sequence')
+    sequenceParams = pn.panel(simulator.param, parameters=['sequence', 'pixelBandWidth', 'FOVbandwidth', 'FWshift', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor'], widgets={'pixelBandWidth': pn.widgets.DiscreteSlider, 'FOVbandwidth': pn.widgets.DiscreteSlider, 'FWshift': pn.widgets.DiscreteSlider, 'EPIfactor': pn.widgets.DiscreteSlider}, name='Sequence')
     
     infoPane = pn.Row(infoNumber(name='Relative SNR', format='{value:.0f}%', value=simulator.param.relativeSNR, textColor=textColor),
                       infoNumber(name='Scan time', format=('{value:.1f} sec'), value=simulator.param.scantime, textColor=textColor),
