@@ -651,7 +651,7 @@ class MRIsimulator(param.Parameterized):
                 p.label = p.label.replace(' y', ' x')
         self.setup_frequency_encoding() # frequency oversampling is adapted to phantom FOV for efficiency
         self.setup_phase_encoding() # frequency oversampling is adapted to phantom FOV for efficiency
-        add_to_pipeline(self.sequencePlotPipeline, [','] ['calculate_k_trajectory'])
+        add_to_pipeline(self.sequencePlotPipeline, ['calculate_k_trajectory'])
 
 
     @param.depends('fieldStrength', watch=True)
