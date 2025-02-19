@@ -993,10 +993,10 @@ class MRIsimulator(param.Parameterized):
         
     def updateMatrixFbounds(self):
         minMatrixF, maxMatrixF = 16, 600
-        maxMatrixF = min(maxMatrixF, int(np.floor(self.getMaxReadoutArea() * 1e-3 * self.FOVF * constants.GYRO)))
+        maxMatrixF = min(maxMatrixF, self.getMaxReadoutArea() * 1e-3 * self.FOVF * constants.GYRO)
         if self.parameterStyle == 'Matrix and FOV BW':
-            minMatrixF = max(minMatrixF, int(np.ceil(self.FOVbandwidth * 2e3 / self.param.pixelBandWidth.objects[-1])))
-            maxMatrixF = min(maxMatrixF, int(np.floor(self.FOVbandwidth * 2e3 / self.param.pixelBandWidth.objects[0])))
+            minMatrixF = max(minMatrixF, self.pixelBandWidth * self.matrixF / self.param.pixelBandWidth.objects[-1])
+            maxMatrixF = min(maxMatrixF, self.pixelBandWidth * self.matrixF / self.param.pixelBandWidth.objects[0])
         self.setParamDiscreteBounds(self.param.matrixF, matrixValues, minval=minMatrixF, maxval=maxMatrixF)
         self.updateVoxelFobjects()
         self.updateReconVoxelFobjects()
