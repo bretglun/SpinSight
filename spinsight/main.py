@@ -310,6 +310,7 @@ TEvalues = unique_list([float('{:.2g}'.format(te)) for te in 10.**np.linspace(0,
 TIvalues = unique_list([float('{:.2g}'.format(ti)) for ti in 10.**np.linspace(0, 4, 500)])
 pBWvalues = unique_list([float('{:.3g}'.format(pbw)) for pbw in 10.**np.linspace(2.1, 3.3, 500)])
 matrixValues = list(range(16, 600+1))
+reconMatrixValues = list(range(16, 1200+1))
 EPIfactorValues = list(range(1, 64+1))
 
 
@@ -334,8 +335,8 @@ class MRIsimulator(param.Parameterized):
     matrixF = param.Selector(default=180, objects=matrixValues, precedence=4, label='Acquisition matrix y')
     reconVoxelP = param.Selector(default=0.666, precedence=-5, label='Reconstructed voxel size x [mm]')
     reconVoxelF = param.Selector(default=0.666, precedence=-5, label='Reconstructed voxel size y [mm]')
-    reconMatrixP = param.Integer(default=360, bounds=(matrixP.default, 1024), precedence=5, label='Reconstruction matrix x')
-    reconMatrixF = param.Integer(default=360, bounds=(matrixF.default, 1024), precedence=5, label='Reconstruction matrix y')
+    reconMatrixP = param.Selector(default=360, objects=reconMatrixValues, precedence=5, label='Reconstruction matrix x')
+    reconMatrixF = param.Selector(default=360, objects=reconMatrixValues, precedence=5, label='Reconstruction matrix y')
     sliceThickness = param.Number(default=3, bounds=(0.5, 10), precedence=6, label='Slice thickness [mm]')
     
     sequence = param.ObjectSelector(default=SEQUENCES[0], objects=SEQUENCES, precedence=1, label='Pulse sequence')
@@ -452,6 +453,8 @@ class MRIsimulator(param.Parameterized):
 
         self._watch_reconMatrixF()
         self._watch_reconMatrixP()
+        self._watch_matrixF()
+        self._watch_matrixP()
 
         self.FOV = [None]*2
         self.matrix = [None]*2
@@ -542,6 +545,8 @@ class MRIsimulator(param.Parameterized):
             self.param.reconVoxelF.precedence = 5
             self.param.reconVoxelP.precedence = 5
             self.param.FWshift.precedence = 2
+            self._watch_reconMatrixF()
+            self._watch_reconMatrixP()
         else:
             self.param.matrixF.precedence = 4
             self.param.matrixP.precedence = 4
@@ -558,8 +563,8 @@ class MRIsimulator(param.Parameterized):
     def _watch_FOVF(self):
         with param.parameterized.batch_call_watchers(self):
             if self.parameterStyle=='Voxelsize and Fat/water shift':
-                self.matrixF = int(np.round(self.FOVF / self.voxelF))
-                self.reconMatrixF = int(np.round(self.FOVF / self.reconVoxelF))
+                self.matrixF = take_closest(self.param.matrixF.objects, self.FOVF/self.voxelF)
+                self.reconMatrixF = take_closest(self.param.reconMatrixF.objects, self.FOVF/self.reconVoxelF)
             self.updateFOVbandwidthObjects()
             self.updateVoxelFobjects()
             self.updateReconVoxelFobjects()
@@ -573,8 +578,8 @@ class MRIsimulator(param.Parameterized):
     def _watch_FOVP(self):
         with param.parameterized.batch_call_watchers(self):
             if self.parameterStyle=='Voxelsize and Fat/water shift':
-                self.matrixP = int(np.round(self.FOVP / self.voxelP))
-                self.reconMatrixP = int(np.round(self.FOVP / self.reconVoxelP))
+                self.matrixP = take_closest(self.param.matrixP.objects, self.FOVP/self.voxelP)
+                self.reconMatrixP = take_closest(self.param.reconMatrixP.objects, self.FOVP/self.reconVoxelP)
             self.updateVoxelPobjects()
             self.updateReconVoxelPobjects()
             self.voxelP = take_closest(self.param.voxelP.objects, self.FOVP/self.matrixP)
@@ -596,47 +601,53 @@ class MRIsimulator(param.Parameterized):
                 self.pixelBandWidth = take_closest(self.param.pixelBandWidth.objects, FOVBW2pixelBW(self.FOVbandwidth, self.matrixF))
             else:
                 self.FOVbandwidth = take_closest(self.param.FOVbandwidth.objects, pixelBW2FOVBW(self.pixelBandWidth, self.matrixF))
+            self.updateVoxelFobjects()
             self.voxelF = take_closest(self.param.voxelF.objects, self.FOVF/self.matrixF)
             add_to_pipeline(self.reconPipeline, ['sampleKspace', 'updateSamplingTime', 'modulateKspace', 'simulateNoise', 'compileKspace', 'partialFourierRecon', 'zerofill', 'reconstruct'])
             add_to_pipeline(self.sequencePipeline, ['setupReadouts', 'updateBWbounds', 'updateMatrixFbounds', 'updateFOVFbounds'])
-            self.param.reconMatrixF.bounds = (self.matrixF, self.param.reconMatrixF.bounds[1])
+            self.param.reconMatrixF.objects = [m for m in reconMatrixValues if m>=self.matrixF]
             self.updateReconVoxelFobjects()
-            self.reconMatrixF = min(max(int(np.round(self.matrixF * self.recAcqRatioF)), self.matrixF), self.param.reconMatrixF.bounds[1])
+            self.reconMatrixF = take_closest(self.param.reconMatrixF.objects, self.matrixF * self.recAcqRatioF)
     
     
     @param.depends('matrixP', watch=True)
     def _watch_matrixP(self):
         with param.parameterized.batch_call_watchers(self):
+            self.updateVoxelPobjects()
             self.voxelP = take_closest(self.param.voxelP.objects, self.FOVP/self.matrixP)
             add_to_pipeline(self.reconPipeline, ['sampleKspace', 'updateSamplingTime', 'modulateKspace', 'simulateNoise', 'compileKspace', 'partialFourierRecon', 'zerofill', 'reconstruct'])
             add_to_pipeline(self.sequencePipeline, ['setupPhasers', 'updateFOVPbounds', 'updateTurboFactorBounds', 'updateEPIfactorObjects'])
-            self.param.reconMatrixP.bounds = (self.matrixP, self.param.reconMatrixP.bounds[1])
+            self.param.reconMatrixP.objects = [m for m in reconMatrixValues if m>=self.matrixP]
             self.updateReconVoxelPobjects()
-            self.reconMatrixP = min(max(int(np.round(self.matrixP * self.recAcqRatioP)), self.matrixP), self.param.reconMatrixP.bounds[1])
+            self.reconMatrixP = take_closest(self.param.reconMatrixP.objects, self.matrixP * self.recAcqRatioP)
 
 
     @param.depends('voxelF', watch=True)
     def _watch_voxelF(self):
-        self.matrixF = int(np.round(self.FOVF/self.voxelF))
+        if self.param.voxelF.precedence > 0:
+            self.matrixF = take_closest(self.param.matrixF.objects, self.FOVF/self.voxelF)
+            add_to_pipeline(self.sequencePipeline, ['updateFOVFbounds'])
 
 
     @param.depends('voxelP', watch=True)
     def _watch_voxelP(self):
-        self.matrixP = int(np.round(self.FOVP/self.voxelP))
+        if self.param.voxelP.precedence > 0:
+            self.matrixP = take_closest(self.param.matrixP.objects, self.FOVP/self.voxelP)
+            add_to_pipeline(self.sequencePipeline, ['updateFOVPbounds'])
 
 
     @param.depends('reconVoxelF', watch=True)
     def _watch_reconVoxelF(self):
-        self.reconMatrixF = int(np.round(self.FOVF/self.reconVoxelF))
-        if self.parameterStyle=='Voxelsize and Fat/water shift':
-            self.updateFOVFbounds()
+        if self.param.reconVoxelF.precedence > 0:
+            self.reconMatrixF = take_closest(self.param.reconMatrixF.objects, self.FOVF/self.reconVoxelF)
+            add_to_pipeline(self.sequencePipeline, ['updateFOVFbounds'])
 
 
     @param.depends('reconVoxelP', watch=True)
     def _watch_reconVoxelP(self):
-        self.reconMatrixP = int(np.round(self.FOVP/self.reconVoxelP))
-        if self.parameterStyle=='Voxelsize and Fat/water shift':
-            self.updateFOVPbounds()
+        if self.param.reconVoxelP.precedence > 0:
+            self.reconMatrixP = take_closest(self.param.reconMatrixP.objects, self.FOVP/self.reconVoxelP)
+            add_to_pipeline(self.sequencePipeline, ['updateFOVPbounds'])
 
 
     @param.depends('sliceThickness', watch=True)
@@ -1015,10 +1026,10 @@ class MRIsimulator(param.Parameterized):
         minFOV = max(minFOV, 100)
         maxFOV = 600
         if self.parameterStyle == 'Voxelsize and Fat/water shift':
-            minFOV = max(minFOV, self.voxelF * self.param.matrixF.objects[0])
-            minFOV = max(minFOV, self.reconVoxelF * self.param.reconMatrixF.bounds[0])
-            maxFOV = min(maxFOV, self.voxelF * self.param.matrixF.objects[-1])
-            maxFOV = min(maxFOV, self.reconVoxelF * self.param.reconMatrixF.bounds[-1])
+            minFOV = max(minFOV, self.FOVF/self.matrixF * self.param.matrixF.objects[0])
+            minFOV = max(minFOV, self.FOVF/self.reconMatrixF * self.param.reconMatrixF.objects[0])
+            maxFOV = min(maxFOV, self.FOVF/self.matrixF * self.param.matrixF.objects[-1])
+            maxFOV = min(maxFOV, self.FOVF/self.reconMatrixF * self.param.reconMatrixF.objects[-1])
         self.setParamBounds(self.param.FOVF, minFOV, maxFOV)
 
 
@@ -1027,10 +1038,10 @@ class MRIsimulator(param.Parameterized):
         minFOV = max(minFOV, 100)
         maxFOV = 600
         if self.parameterStyle == 'Voxelsize and Fat/water shift':
-            minFOV = max(minFOV, self.voxelP * self.param.matrixP.objects[0])
-            minFOV = max(minFOV, self.reconVoxelP * self.param.reconMatrixP.bounds[0])
-            maxFOV = min(maxFOV, self.voxelP * self.param.matrixP.objects[-1])
-            maxFOV = min(maxFOV, self.reconVoxelP * self.param.reconMatrixP.bounds[-1])
+            minFOV = max(minFOV, self.FOVP/self.matrixP * self.param.matrixP.objects[0])
+            minFOV = max(minFOV, self.FOVP/self.reconMatrixP * self.param.reconMatrixP.objects[0])
+            maxFOV = min(maxFOV, self.FOVP/self.matrixP * self.param.matrixP.objects[-1])
+            maxFOV = min(maxFOV, self.FOVP/self.reconMatrixP * self.param.reconMatrixP.objects[-1])
         self.setParamBounds(self.param.FOVP, minFOV, maxFOV)
 
 
@@ -1043,19 +1054,19 @@ class MRIsimulator(param.Parameterized):
     
     
     def updateVoxelFobjects(self):
-        self.param.voxelF.objects = [float('{:.4g}'.format(self.FOVF/matrix)) for matrix in self.param.matrixF.objects[::-1]]
+        self.param.voxelF.objects = [float('{:.3g}'.format(self.FOVF/matrix)) for matrix in self.param.matrixF.objects[::-1]]
 
 
     def updateVoxelPobjects(self):
-        self.param.voxelP.objects = [float('{:.4g}'.format(self.FOVP/matrix)) for matrix in self.param.matrixP.objects[::-1]]
+        self.param.voxelP.objects = [float('{:.3g}'.format(self.FOVP/matrix)) for matrix in self.param.matrixP.objects[::-1]]
 
 
     def updateReconVoxelFobjects(self):
-        self.param.reconVoxelF.objects = [float('{:.4g}'.format(self.FOVF/matrix)) for matrix in range(self.param.reconMatrixF.bounds[1], self.param.reconMatrixF.bounds[0]-1, -1)]
+        self.param.reconVoxelF.objects = [float('{:.3g}'.format(self.FOVF/matrix)) for matrix in self.param.reconMatrixF.objects[::-1]]
 
 
     def updateReconVoxelPobjects(self):
-        self.param.reconVoxelP.objects = [float('{:.4g}'.format(self.FOVP/matrix)) for matrix in range(self.param.reconMatrixP.bounds[1], self.param.reconMatrixP.bounds[0]-1, -1)]
+        self.param.reconVoxelP.objects = [float('{:.3g}'.format(self.FOVP/matrix)) for matrix in self.param.reconMatrixP.objects[::-1]]
 
 
     def updateSliceThicknessBounds(self):
@@ -1807,7 +1818,7 @@ def getApp(darkMode=True, settingsFilestem=''):
     author = '*Written by [Johan Berglund](mailto:johan.berglund@akademiska.se), Ph.D.*'
     settingsParams = pn.panel(simulator.param, parameters=['object', 'fieldStrength', 'parameterStyle'], name='Settings')
     contrastParams = pn.panel(simulator.param, parameters=['FatSat', 'TR', 'TE', 'FA', 'TI'], widgets={'TR': pn.widgets.DiscreteSlider, 'TE': pn.widgets.DiscreteSlider, 'TI': pn.widgets.DiscreteSlider}, name='Contrast')
-    geometryParams = pn.panel(simulator.param, parameters=['frequencyDirection', 'FOVF', 'FOVP', 'phaseOversampling', 'voxelF', 'voxelP', 'matrixF', 'matrixP', 'reconVoxelF', 'reconVoxelP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness'], widgets={'matrixF': pn.widgets.DiscreteSlider, 'matrixP': pn.widgets.DiscreteSlider, 'voxelF': pn.widgets.DiscreteSlider, 'voxelP': pn.widgets.DiscreteSlider, 'reconVoxelF': pn.widgets.DiscreteSlider, 'reconVoxelP': pn.widgets.DiscreteSlider}, name='Geometry')
+    geometryParams = pn.panel(simulator.param, parameters=['frequencyDirection', 'FOVF', 'FOVP', 'phaseOversampling', 'voxelF', 'voxelP', 'matrixF', 'matrixP', 'reconVoxelF', 'reconVoxelP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness'], widgets={'matrixF': pn.widgets.DiscreteSlider, 'matrixP': pn.widgets.DiscreteSlider, 'reconMatrixF': pn.widgets.DiscreteSlider, 'reconMatrixP': pn.widgets.DiscreteSlider, 'voxelF': pn.widgets.DiscreteSlider, 'voxelP': pn.widgets.DiscreteSlider, 'reconVoxelF': pn.widgets.DiscreteSlider, 'reconVoxelP': pn.widgets.DiscreteSlider}, name='Geometry')
     sequenceParams = pn.panel(simulator.param, parameters=['sequence', 'pixelBandWidth', 'FOVbandwidth', 'FWshift', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor'], widgets={'pixelBandWidth': pn.widgets.DiscreteSlider, 'FOVbandwidth': pn.widgets.DiscreteSlider, 'FWshift': pn.widgets.DiscreteSlider, 'EPIfactor': pn.widgets.DiscreteSlider}, name='Sequence')
     
     infoPane = pn.Row(infoNumber(name='Relative SNR', format='{value:.0f}%', value=simulator.param.relativeSNR, textColor=textColor),
