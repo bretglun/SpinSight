@@ -301,10 +301,14 @@ def add_to_pipeline(pipeline, functions):
     pipeline.update({f: True for f in functions})
 
 
-TRvalues = [float('{:.2g}'.format(tr)) for tr in 10.**np.linspace(0, 4, 500)]
-TEvalues = [float('{:.2g}'.format(te)) for te in 10.**np.linspace(0, 3, 500)]
-TIvalues = [float('{:.2g}'.format(ti)) for ti in 10.**np.linspace(0, 4, 500)]
-pBWvalues = [float('{:.3g}'.format(pbw)) for pbw in 10.**np.linspace(2.1, 3.3, 500)]
+def unique_list(l):
+    return list(dict.fromkeys(l))
+
+
+TRvalues = unique_list([float('{:.2g}'.format(tr)) for tr in 10.**np.linspace(0, 4, 500)])
+TEvalues = unique_list([float('{:.2g}'.format(te)) for te in 10.**np.linspace(0, 3, 500)])
+TIvalues = unique_list([float('{:.2g}'.format(ti)) for ti in 10.**np.linspace(0, 4, 500)])
+pBWvalues = unique_list([float('{:.3g}'.format(pbw)) for pbw in 10.**np.linspace(2.1, 3.3, 500)])
 matrixValues = list(range(16, 600+1))
 EPIfactorValues = list(range(1, 64+1))
 
