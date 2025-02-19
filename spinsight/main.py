@@ -293,6 +293,10 @@ def flatten_dicts(list_of_dicts_and_lists):
     return res
 
 
+def take_closest(objects, value):
+    return min(objects, key=lambda x: abs(x-value))
+
+
 TRvalues = [float('{:.2g}'.format(tr)) for tr in 10.**np.linspace(0, 4, 500)]
 TEvalues = [float('{:.2g}'.format(te)) for te in 10.**np.linspace(0, 3, 500)]
 TIvalues = [float('{:.2g}'.format(ti)) for ti in 10.**np.linspace(0, 4, 500)]
@@ -557,8 +561,8 @@ class MRIsimulator(param.Parameterized):
             self.updateFOVbandwidthObjects()
             self.updateVoxelFobjects()
             self.updateReconVoxelFobjects()
-            self.voxelF = min(self.param.voxelF.objects, key=lambda x: abs(x-self.FOVF/self.matrixF))
-            self.reconVoxelF = min(self.param.reconVoxelF.objects, key=lambda x: abs(x-self.FOVF/self.reconMatrixF))
+            self.voxelF = take_closest(self.param.voxelF.objects, self.FOVF/self.matrixF)
+            self.reconVoxelF = take_closest(self.param.reconVoxelF.objects, self.FOVF/self.reconMatrixF)
             for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.simulateNoise, self.compileKspace, self.partialFourierRecon, self.zerofill, self.reconstruct]:
                 self.reconPipeline.add(f)
             for f in [self.setupReadouts, self.updateBWbounds, self.updateMatrixFbounds]:
@@ -573,8 +577,8 @@ class MRIsimulator(param.Parameterized):
                 self.reconMatrixP = int(np.round(self.FOVP / self.reconVoxelP))
             self.updateVoxelPobjects()
             self.updateReconVoxelPobjects()
-            self.voxelP = min(self.param.voxelP.objects, key=lambda x: abs(x-self.FOVP/self.matrixP))
-            self.reconVoxelP = min(self.param.reconVoxelP.objects, key=lambda x: abs(x-self.FOVP/self.reconMatrixP))
+            self.voxelP = take_closest(self.param.voxelP.objects, self.FOVP/self.matrixP)
+            self.reconVoxelP = take_closest(self.param.reconVoxelP.objects, self.FOVP/self.reconMatrixP)
             for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.simulateNoise, self.compileKspace, self.partialFourierRecon, self.zerofill, self.reconstruct]:
                 self.reconPipeline.add(f)
             for f in [self.setupPhasers, self.updateMatrixPbounds]:
@@ -591,10 +595,10 @@ class MRIsimulator(param.Parameterized):
         with param.parameterized.batch_call_watchers(self):
             self.updateFOVbandwidthObjects()
             if self.parameterStyle == 'Matrix and FOV BW':
-                self.pixelBandWidth = min(self.param.pixelBandWidth.objects, key=lambda x: abs(x-FOVBW2pixelBW(self.FOVbandwidth, self.matrixF)))
+                self.pixelBandWidth = take_closest(self.param.pixelBandWidth.objects, FOVBW2pixelBW(self.FOVbandwidth, self.matrixF))
             else:
-                self.FOVbandwidth = min(self.param.FOVbandwidth.objects, key=lambda x: abs(x-pixelBW2FOVBW(self.pixelBandWidth, self.matrixF)))
-            self.voxelF = min(self.param.voxelF.objects, key=lambda x: abs(x-self.FOVF/self.matrixF))
+                self.FOVbandwidth = take_closest(self.param.FOVbandwidth.objects, pixelBW2FOVBW(self.pixelBandWidth, self.matrixF))
+            self.voxelF = take_closest(self.param.voxelF.objects, self.FOVF/self.matrixF)
             for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.simulateNoise, self.compileKspace, self.partialFourierRecon, self.zerofill, self.reconstruct]:
                 self.reconPipeline.add(f)
             for f in [self.setupReadouts, self.updateBWbounds, self.updateMatrixFbounds, self.updateFOVFbounds]:
@@ -607,7 +611,7 @@ class MRIsimulator(param.Parameterized):
     @param.depends('matrixP', watch=True)
     def _watch_matrixP(self):
         with param.parameterized.batch_call_watchers(self):
-            self.voxelP = min(self.param.voxelP.objects, key=lambda x: abs(x-self.FOVP/self.matrixP))
+            self.voxelP = take_closest(self.param.voxelP.objects, self.FOVP/self.matrixP)
             for f in [self.sampleKspace, self.updateSamplingTime, self.modulateKspace, self.simulateNoise, self.compileKspace, self.partialFourierRecon, self.zerofill, self.reconstruct]:
                 self.reconPipeline.add(f)
             for f in [self.setupPhasers, self.updateFOVPbounds, self.updateTurboFactorBounds, self.updateEPIfactorObjects]:
@@ -667,7 +671,7 @@ class MRIsimulator(param.Parameterized):
     def _watch_fieldStrength(self):
         with param.parameterized.batch_call_watchers(self):
             self.updateFWshiftObjects()
-            self.FWshift = min(self.param.FWshift.objects, key=lambda x: abs(x-pixelBW2shift(self.pixelBandWidth, self.fieldStrength)))
+            self.FWshift = take_closest(self.param.FWshift.objects, pixelBW2shift(self.pixelBandWidth, self.fieldStrength))
             for f in [self.updateSamplingTime, self.modulateKspace, self.simulateNoise, self.updatePDandT1w, self.compileKspace, self.partialFourierRecon, self.zerofill, self.reconstruct]:
                 self.reconPipeline.add(f)
             self._watch_FatSat() # since fatsat pulse duration depends on fieldStrength
@@ -676,8 +680,8 @@ class MRIsimulator(param.Parameterized):
     @param.depends('pixelBandWidth', watch=True)
     def _watch_pixelBandWidth(self):
         with param.parameterized.batch_call_watchers(self):
-            self.FWshift = min(self.param.FWshift.objects, key=lambda x: abs(x-pixelBW2shift(self.pixelBandWidth, self.fieldStrength)))
-            self.FOVbandwidth = min(self.param.FOVbandwidth.objects, key=lambda x: abs(x-pixelBW2FOVBW(self.pixelBandWidth, self.matrixF)))
+            self.FWshift = take_closest(self.param.FWshift.objects, pixelBW2shift(self.pixelBandWidth, self.fieldStrength))
+            self.FOVbandwidth = take_closest(self.param.FOVbandwidth.objects, pixelBW2FOVBW(self.pixelBandWidth, self.matrixF))
             for f in [self.updateSamplingTime, self.modulateKspace, self.simulateNoise, self.compileKspace, self.partialFourierRecon, self.zerofill, self.reconstruct]:
                 self.reconPipeline.add(f)
             for f in [self.setupReadouts, self.updateMatrixFbounds, self.updateFOVFbounds, self.updateMatrixPbounds, self.updateFOVPbounds]:
@@ -686,13 +690,13 @@ class MRIsimulator(param.Parameterized):
     @param.depends('FWshift', watch=True)
     def _watch_FWshift(self):
         if self.param.FWshift.precedence > 0:
-            self.pixelBandWidth = min(self.param.pixelBandWidth.objects, key=lambda x: abs(x-shift2pixelBW(self.FWshift, self.fieldStrength)))
+            self.pixelBandWidth = take_closest(self.param.pixelBandWidth.objects, shift2pixelBW(self.FWshift, self.fieldStrength))
     
 
     @param.depends('FOVbandwidth', watch=True)
     def _watch_FOVbandwidth(self):
         if self.param.FOVbandwidth.precedence > 0:
-            self.pixelBandWidth = min(self.param.pixelBandWidth.objects, key=lambda x: abs(x-FOVBW2pixelBW(self.FOVbandwidth, self.matrixF)))
+            self.pixelBandWidth = take_closest(self.param.pixelBandWidth.objects, FOVBW2pixelBW(self.FOVbandwidth, self.matrixF))
 
 
     @param.depends('NSA', watch=True)
@@ -786,7 +790,7 @@ class MRIsimulator(param.Parameterized):
         self.recAcqRatioF = self.reconMatrixF / self.matrixF
         for f in [self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
-        self.reconVoxelF = min(self.param.reconVoxelF.objects, key=lambda x: abs(x-self.FOVF/self.reconMatrixF))
+        self.reconVoxelF = take_closest(self.param.reconVoxelF.objects, self.FOVF/self.reconMatrixF)
 
 
     @param.depends('reconMatrixP', watch=True)
@@ -794,7 +798,7 @@ class MRIsimulator(param.Parameterized):
         self.recAcqRatioP = self.reconMatrixP / self.matrixP
         for f in [self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
-        self.reconVoxelP = min(self.param.reconVoxelP.objects, key=lambda x: abs(x-self.FOVP/self.reconMatrixP))
+        self.reconVoxelP = take_closest(self.param.reconVoxelP.objects, self.FOVP/self.reconMatrixP)
     
 
     def getSeqStart(self):
@@ -856,16 +860,16 @@ class MRIsimulator(param.Parameterized):
             self.param.TR.objects = TRvalues
             self.sequencePipeline.add(self.updateMinTR)
             self.TR = TRvalues[-1] # max TR
-            self.TR = min(self.param.TR.objects, key=lambda x: abs(x-tr)) # Set back TR within (new) bounds
+            self.TR = take_closest(self.param.TR.objects, tr) # Set back TR within (new) bounds
         if 'TI' in self.outbound_params:
             print('Warning: Resolving conflict: TI')
             self.outbound_params.remove('TI')
-            self.TI = min(self.param.TI.objects, key=lambda x: abs(x-self.TI)) # Set back TI within (new) bounds
+            self.TI = take_closest(self.param.TI.objects, self.TI) # Set back TI within (new) bounds
         if 'TE' in self.outbound_params:
             print('Warning: Resolving conflict: TE')
             self.outbound_params.remove('TE')
             self.param.TE.objects = TEvalues
-            self.TE = min([t for t in TEvalues if t>=self.minTE], key=lambda x: abs(x-self.TE))
+            self.TE = take_closest([t for t in TEvalues if t>=self.minTE], self.TE)
         elif self.outbound_params:
             print('Warning: Unresolved conflict:', self.outbound_params)
     
