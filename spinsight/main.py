@@ -547,6 +547,7 @@ class MRIsimulator(param.Parameterized):
             self.param.FWshift.precedence = 2
             self._watch_reconMatrixF()
             self._watch_reconMatrixP()
+            self._watch_pixelBandWidth()
         else:
             self.param.matrixF.precedence = 4
             self.param.matrixP.precedence = 4
