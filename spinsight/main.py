@@ -423,14 +423,14 @@ class MRIsimulator(param.Parameterized):
             'updateSliceThicknessBounds'
             ]}
         
-        self.fullSequencePlotPipeline = [
-            self.renderFrequencyBoard, 
-            self.renderPhaseBoard, 
-            self.renderSliceBoard, 
-            self.renderRFBoard,
-            self.renderTRspan,
-            self.calculate_k_trajectory
-        ]
+        self.sequencePlotPipeline = {f: True for f in [
+            'renderFrequencyBoard', 
+            'renderPhaseBoard', 
+            'renderSliceBoard', 
+            'renderRFBoard',
+            'renderTRspan',
+            'calculate_k_trajectory'
+        ]}
         
         self.fullReconPipeline = [
             self.loadPhantom, 
@@ -446,7 +446,7 @@ class MRIsimulator(param.Parameterized):
             self.setReferenceSNR
         ]
 
-        self.sequencePlotPipeline = set(self.fullSequencePlotPipeline)
+        
         self.reconPipeline = set(self.fullReconPipeline)
 
         self._watch_reconMatrixF()
@@ -470,12 +470,12 @@ class MRIsimulator(param.Parameterized):
     
 
     def runSequencePlotPipeline(self):
-        if not self.sequencePlotPipeline: return
+        if not any(self.sequencePlotPipeline.values()): return
         self.runSequencePipeline()
-        for f in self.fullSequencePlotPipeline:
-            if f in self.sequencePlotPipeline:
-                f()
-                self.sequencePlotPipeline.remove(f)
+        for f in self.sequencePlotPipeline:
+            if self.sequencePlotPipeline[f]:
+                self.__getattribute__(f)()
+                self.sequencePlotPipeline[f] = False
     
 
     def runReconPipeline(self):
@@ -662,7 +662,7 @@ class MRIsimulator(param.Parameterized):
                 p.label = p.label.replace(' y', ' x')
         self.setup_frequency_encoding() # frequency oversampling is adapted to phantom FOV for efficiency
         self.setup_phase_encoding() # frequency oversampling is adapted to phantom FOV for efficiency
-        self.sequencePlotPipeline.add(self.calculate_k_trajectory)
+        add_to_pipeline(self.sequencePlotPipeline, [','] ['calculate_k_trajectory'])
 
 
     @param.depends('fieldStrength', watch=True)
@@ -751,7 +751,7 @@ class MRIsimulator(param.Parameterized):
         for f in [self.updatePDandT1w, self.compileKspace, self.partialFourierRecon, self.zerofill, self.reconstruct]:
             self.reconPipeline.add(f)
         add_to_pipeline(self.sequencePipeline, ['updateMaxTE', 'updateMaxTI', 'updateBWbounds', 'updateSliceThicknessBounds'])
-        self.sequencePlotPipeline.add(self.renderTRspan)
+        add_to_pipeline(self.sequencePlotPipeline, ['renderTRspan'])
     
 
     @param.depends('TI', watch=True)
@@ -1428,7 +1428,7 @@ class MRIsimulator(param.Parameterized):
         FA = self.FA if isGradientEcho(self.sequence) else 90.
         self.boards['RF']['objects']['excitation'] = sequence.getRF(flipAngle=FA, time=0., dur=3., shape='hammingSinc',  name='excitation')
         add_to_pipeline(self.sequencePipeline, ['setupSliceSelection', 'setupPhasers', 'placeFatSat', 'updateMinTE', 'updateBWbounds', 'updateMatrixFbounds', 'updateFOVFbounds', 'updateMatrixPbounds', 'updateFOVPbounds', 'updateSliceThicknessBounds'])
-        self.sequencePlotPipeline.add(self.renderRFBoard)
+        add_to_pipeline(self.sequencePlotPipeline, ['renderRFBoard'])
 
 
     def setupRefocusing(self):
@@ -1438,7 +1438,7 @@ class MRIsimulator(param.Parameterized):
                 self.boards['RF']['objects']['refocusing'].append(sequence.getRF(flipAngle=180., dur=3., shape='hammingSinc',  name='refocusing {}'.format(rf_echo)))
             add_to_pipeline(self.sequencePipeline, ['placeRefocusing'])
         add_to_pipeline(self.sequencePipeline, ['setupSliceSelection', 'updateMinTE', 'updateMatrixPbounds', 'updateFOVPbounds', 'updateSliceThicknessBounds'])
-        self.sequencePlotPipeline.add(self.renderRFBoard)
+        add_to_pipeline(self.sequencePlotPipeline, ['renderRFBoard'])
 
 
 
@@ -1449,7 +1449,7 @@ class MRIsimulator(param.Parameterized):
         elif 'inversion' in self.boards['RF']['objects']:
             del self.boards['RF']['objects']['inversion']
         add_to_pipeline(self.sequencePipeline, ['setupSliceSelection', 'updateMaxTI', 'updateSliceThicknessBounds'])
-        self.sequencePlotPipeline.add(self.renderRFBoard)
+        add_to_pipeline(self.sequencePlotPipeline, ['renderRFBoard'])
     
     
     def setupFatSat(self):
@@ -1496,8 +1496,7 @@ class MRIsimulator(param.Parameterized):
             del self.boards['slice']['objects']['inversion spoiler']
         
         add_to_pipeline(self.sequencePipeline, ['setupPhasers', 'updateMinTE', 'updateMaxTI', 'updateMinTR', 'updateBWbounds'])
-        for f in [self.renderSliceBoard, self.renderTRspan]:
-            self.sequencePlotPipeline.add(f)
+        add_to_pipeline(self.sequencePlotPipeline, ['renderSliceBoard', 'renderTRspan'])
     
 
     def setupReadouts(self):
@@ -1584,22 +1583,19 @@ class MRIsimulator(param.Parameterized):
                 sequence.moveWaveform(self.boards['RF']['objects']['refocusing'][rf_echo], pos)
                 sequence.moveWaveform(self.boards['slice']['objects']['slice select refocusing'][rf_echo], pos)
             add_to_pipeline(self.sequencePipeline, ['updateBWbounds'])
-            self.sequencePlotPipeline.add(self.renderRFBoard)
-            self.sequencePlotPipeline.add(self.renderSliceBoard)
-            self.sequencePlotPipeline.add(self.calculate_k_trajectory)
+            add_to_pipeline(self.sequencePlotPipeline, ['renderRFBoard', 'renderSliceBoard', 'calculate_k_trajectory'])
     
 
     def placeInversion(self):
-        for board, name, renderer in [('RF', 'inversion', self.renderRFBoard), ('slice', 'slice select inversion', self.renderSliceBoard)]:
+        for board, name, renderer in [('RF', 'inversion', 'renderRFBoard'), ('slice', 'slice select inversion', 'renderSliceBoard')]:
             if name in self.boards[board]['objects']:
                 sequence.moveWaveform(self.boards[board]['objects'][name], -self.TI)
-                self.sequencePlotPipeline.add(renderer)
+                add_to_pipeline(self.sequencePlotPipeline, [renderer])
         if 'inversion spoiler' in self.boards['slice']['objects']:
             spoilerTime = self.boards['RF']['objects']['inversion']['time'][-1] + self.boards['slice']['objects']['inversion spoiler']['dur_f']/2
             sequence.moveWaveform(self.boards['slice']['objects']['inversion spoiler'], spoilerTime)
         add_to_pipeline(self.sequencePipeline, ['updateMinTR', 'updateBWbounds', 'updateSliceThicknessBounds'])
-        for f in [self.renderSliceBoard, self.renderRFBoard, self.renderTRspan]:
-            self.sequencePlotPipeline.add(f)
+        add_to_pipeline(self.sequencePlotPipeline, ['renderSliceBoard', 'renderRFBoard', 'renderTRspan'])
     
     
     def placeFatSat(self):
@@ -1609,8 +1605,7 @@ class MRIsimulator(param.Parameterized):
             t -= (self.boards['slice']['objects']['fatsat spoiler']['dur_f'] + self.boards['RF']['objects']['fatsat']['dur_f']) / 2
             sequence.moveWaveform(self.boards['RF']['objects']['fatsat'], t)
         add_to_pipeline(self.sequencePipeline, ['updateMinTR'])
-        for f in [self.renderRFBoard, self.renderTRspan]:
-            self.sequencePlotPipeline.add(f)
+        add_to_pipeline(self.sequencePlotPipeline, ['renderRFBoard', 'renderTRspan'])
     
     
     def placeReadouts(self):
@@ -1633,7 +1628,7 @@ class MRIsimulator(param.Parameterized):
             prephaseTime = sum([self.boards[b]['objects'][name]['dur_f'] for (b, name) in [('RF', 'excitation'), ('frequency', 'read prephaser')]])/2
         sequence.moveWaveform(self.boards['frequency']['objects']['read prephaser'], prephaseTime)
         add_to_pipeline(self.sequencePipeline, ['placePhasers', 'placeSpoiler'])
-        self.sequencePlotPipeline.add(self.renderFrequencyBoard)
+        add_to_pipeline(self.sequencePlotPipeline, ['renderFrequencyBoard'])
     
     
     def placePhasers(self):
@@ -1652,14 +1647,14 @@ class MRIsimulator(param.Parameterized):
             rephaserTime = readtrain_pos + (self.gre_echo_train_dur + rephaserDur)/2 - self.readout_risetime
             sequence.moveWaveform(self.boards['phase']['objects']['rephasers'][rf_echo], rephaserTime)
         
-        self.sequencePlotPipeline.add(self.renderPhaseBoard)
+        add_to_pipeline(self.sequencePlotPipeline, ['renderPhaseBoard'])
 
 
     def placeSpoiler(self):
         spoilerTime = self.boards['frequency']['objects']['readouts'][-1][-1]['center_f'] + (self.boards['frequency']['objects']['readouts'][-1][-1]['flatDur_f'] + self.boards['slice']['objects']['spoiler']['dur_f']) / 2
         sequence.moveWaveform(self.boards['slice']['objects']['spoiler'], spoilerTime)
         add_to_pipeline(self.sequencePipeline, ['updateMinTR', 'updateSliceThicknessBounds'])
-        self.sequencePlotPipeline.add(self.renderSliceBoard)
+        add_to_pipeline(self.sequencePlotPipeline, ['renderSliceBoard'])
     
 
     def update_k_line_coords(self, attr, old, hoverIndex):
@@ -1696,12 +1691,12 @@ class MRIsimulator(param.Parameterized):
         self.renderPolygons('frequency')
         adc_objects = flatten_dicts(self.boards['ADC']['objects'].values())
         self.boardPlots['frequency']['ADC'] = hv.Rectangles([(obj['time'][0], -100., obj['time'][-1], 100.) for obj in adc_objects])
-        self.sequencePlotPipeline.add(self.calculate_k_trajectory)
+        add_to_pipeline(self.sequencePlotPipeline, ['calculate_k_trajectory'])
     
 
     def renderPhaseBoard(self):
         self.renderPolygons('phase')
-        self.sequencePlotPipeline.add(self.calculate_k_trajectory)
+        add_to_pipeline(self.sequencePlotPipeline, ['calculate_k_trajectory'])
     
 
     def renderSliceBoard(self):
