@@ -743,7 +743,7 @@ class MRIsimulator(param.Parameterized):
     @param.depends('FA', watch=True)
     def _watch_FA(self):
         add_to_pipeline(self.reconPipeline, ['updatePDandT1w', 'compileKspace', 'partialFourierRecon', 'zerofill', 'reconstruct'])
-        add_to_pipeline(self.sequencePipeline, '[setupExcitation]')
+        add_to_pipeline(self.sequencePipeline, ['setupExcitation'])
     
     
     @param.depends('FatSat', watch=True)
@@ -1436,6 +1436,7 @@ class MRIsimulator(param.Parameterized):
             del self.boards['RF']['objects']['fatsat']
             del self.boards['slice']['objects']['fatsat spoiler']
         add_to_pipeline(self.sequencePipeline, ['placeFatSat'])
+        add_to_pipeline(self.sequencePlotPipeline, ['renderRFBoard', 'renderSliceBoard'])
     
     
     def setupSliceSelection(self):
