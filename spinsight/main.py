@@ -571,6 +571,7 @@ class MRIsimulator(param.Parameterized):
             self.updateReconVoxelFobjects()
             self.voxelF = take_closest(self.param.voxelF.objects, self.FOVF/self.matrixF)
             self.reconVoxelF = take_closest(self.param.reconVoxelF.objects, self.FOVF/self.reconMatrixF)
+            self.param.trigger('voxelF', 'reconVoxelF')
             add_to_pipeline(self.reconPipeline, ['sampleKspace', 'updateSamplingTime', 'modulateKspace', 'simulateNoise', 'compileKspace', 'partialFourierRecon', 'zerofill', 'reconstruct'])
             add_to_pipeline(self.sequencePipeline, ['setupReadouts', 'updateBWbounds', 'updateMatrixFbounds'])
     
@@ -585,6 +586,7 @@ class MRIsimulator(param.Parameterized):
             self.updateReconVoxelPobjects()
             self.voxelP = take_closest(self.param.voxelP.objects, self.FOVP/self.matrixP)
             self.reconVoxelP = take_closest(self.param.reconVoxelP.objects, self.FOVP/self.reconMatrixP)
+            self.param.trigger('voxelP', 'reconVoxelP')
             add_to_pipeline(self.reconPipeline, ['sampleKspace', 'updateSamplingTime', 'modulateKspace', 'simulateNoise', 'compileKspace', 'partialFourierRecon', 'zerofill', 'reconstruct'])
             add_to_pipeline(self.sequencePipeline, ['setupPhasers', 'updateMatrixPbounds'])
 
@@ -602,6 +604,7 @@ class MRIsimulator(param.Parameterized):
                 self.pixelBandWidth = take_closest(self.param.pixelBandWidth.objects, FOVBW2pixelBW(self.FOVbandwidth, self.matrixF))
             else:
                 self.FOVbandwidth = take_closest(self.param.FOVbandwidth.objects, pixelBW2FOVBW(self.pixelBandWidth, self.matrixF))
+                self.param.trigger('FOVbandwidth')
             self.updateVoxelFobjects()
             self.voxelF = take_closest(self.param.voxelF.objects, self.FOVF/self.matrixF)
             add_to_pipeline(self.reconPipeline, ['sampleKspace', 'updateSamplingTime', 'modulateKspace', 'simulateNoise', 'compileKspace', 'partialFourierRecon', 'zerofill', 'reconstruct'])
@@ -609,6 +612,7 @@ class MRIsimulator(param.Parameterized):
             self.param.reconMatrixF.objects = [m for m in reconMatrixValues if m>=self.matrixF]
             self.updateReconVoxelFobjects()
             self.reconMatrixF = take_closest(self.param.reconMatrixF.objects, self.matrixF * self.recAcqRatioF)
+            self.param.trigger('voxelF', 'reconVoxelF')
     
     
     @param.depends('matrixP', watch=True)
@@ -621,6 +625,7 @@ class MRIsimulator(param.Parameterized):
             self.param.reconMatrixP.objects = [m for m in reconMatrixValues if m>=self.matrixP]
             self.updateReconVoxelPobjects()
             self.reconMatrixP = take_closest(self.param.reconMatrixP.objects, self.matrixP * self.recAcqRatioP)
+            self.param.trigger('voxelP', 'reconVoxelP')
 
 
     @param.depends('voxelF', watch=True)
@@ -675,6 +680,7 @@ class MRIsimulator(param.Parameterized):
         with param.parameterized.batch_call_watchers(self):
             self.updateFWshiftObjects()
             self.FWshift = take_closest(self.param.FWshift.objects, pixelBW2shift(self.pixelBandWidth, self.fieldStrength))
+            self.param.trigger('FWshift')
             add_to_pipeline(self.reconPipeline, ['updateSamplingTime', 'modulateKspace', 'simulateNoise', 'updatePDandT1w', 'compileKspace', 'partialFourierRecon', 'zerofill', 'reconstruct'])
             self._watch_FatSat() # since fatsat pulse duration depends on fieldStrength
     
@@ -1047,27 +1053,27 @@ class MRIsimulator(param.Parameterized):
 
 
     def updateFWshiftObjects(self):
-        self.param.FWshift.objects = [float('{:.2f}'.format(pixelBW2shift(pBW, self.fieldStrength))) for pBW in self.param.pixelBandWidth.objects[::-1]]
+        self.param.FWshift.objects = unique_list([float('{:.2f}'.format(pixelBW2shift(pBW, self.fieldStrength))) for pBW in self.param.pixelBandWidth.objects[::-1]])
     
 
     def updateFOVbandwidthObjects(self):
-        self.param.FOVbandwidth.objects = [float('{:.2g}'.format(pixelBW2FOVBW(pBW, self.matrixF))) for pBW in self.param.pixelBandWidth.objects]
+        self.param.FOVbandwidth.objects = unique_list([float('{:.2g}'.format(pixelBW2FOVBW(pBW, self.matrixF))) for pBW in self.param.pixelBandWidth.objects])
     
     
     def updateVoxelFobjects(self):
-        self.param.voxelF.objects = [float('{:.3g}'.format(self.FOVF/matrix)) for matrix in self.param.matrixF.objects[::-1]]
+        self.param.voxelF.objects = unique_list([float('{:.3g}'.format(self.FOVF/matrix)) for matrix in self.param.matrixF.objects[::-1]])
 
 
     def updateVoxelPobjects(self):
-        self.param.voxelP.objects = [float('{:.3g}'.format(self.FOVP/matrix)) for matrix in self.param.matrixP.objects[::-1]]
+        self.param.voxelP.objects = unique_list([float('{:.3g}'.format(self.FOVP/matrix)) for matrix in self.param.matrixP.objects[::-1]])
 
 
     def updateReconVoxelFobjects(self):
-        self.param.reconVoxelF.objects = [float('{:.3g}'.format(self.FOVF/matrix)) for matrix in self.param.reconMatrixF.objects[::-1]]
+        self.param.reconVoxelF.objects = unique_list([float('{:.3g}'.format(self.FOVF/matrix)) for matrix in self.param.reconMatrixF.objects[::-1]])
 
 
     def updateReconVoxelPobjects(self):
-        self.param.reconVoxelP.objects = [float('{:.3g}'.format(self.FOVP/matrix)) for matrix in self.param.reconMatrixP.objects[::-1]]
+        self.param.reconVoxelP.objects = unique_list([float('{:.3g}'.format(self.FOVP/matrix)) for matrix in self.param.reconMatrixP.objects[::-1]])
 
 
     def updateSliceThicknessBounds(self):
