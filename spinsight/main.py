@@ -315,38 +315,38 @@ EPIfactorValues = list(range(1, 64+1))
 
 
 class MRIsimulator(param.Parameterized):
-    object = param.ObjectSelector(default='brain', objects=PHANTOMS.keys(), label='Phantom object')
-    fieldStrength = param.ObjectSelector(default=1.5, objects=[1.5, 3.0], label='B0 field strength [T]')
-    parameterStyle = param.ObjectSelector(default='Matrix and Pixel BW', objects=['Matrix and Pixel BW', 'Voxelsize and Fat/water shift', 'Matrix and FOV BW'], label='Parameter Style')
+    object = param.ObjectSelector(default='brain', label='Phantom object')
+    fieldStrength = param.ObjectSelector(default=1.5, label='B0 field strength [T]')
+    parameterStyle = param.ObjectSelector(default='Matrix and Pixel BW', label='Parameter Style')
     
     FatSat = param.Boolean(default=False, label='Fat saturation')
-    TR = param.Selector(default=10000, objects=TRvalues, label='TR [msec]')
-    TE = param.Selector(default=10, objects=TEvalues, label='TE [msec]')
-    FA = param.Number(default=90.0, bounds=(1, 90.0), precedence=-1, label='Flip angle [°]')
-    TI = param.Selector(default=40, objects=TIvalues, precedence=-1, label='TI [msec]')
+    TR = param.Selector(default=10000, label='TR [msec]')
+    TE = param.Selector(default=10, label='TE [msec]')
+    FA = param.Number(default=90.0, precedence=-1, label='Flip angle [°]')
+    TI = param.Selector(default=40, precedence=-1, label='TI [msec]')
     
-    frequencyDirection = param.ObjectSelector(default=list(DIRECTIONS.keys())[0], objects=DIRECTIONS.keys(), precedence=1, label='Frequency encoding direction')
-    FOVP = param.Number(default=240, bounds=(100, 600), precedence=2, label='FOV x [mm]')
-    FOVF = param.Number(default=240, bounds=(100, 600), precedence=2, label='FOV y [mm]')
-    phaseOversampling = param.Number(default=0, bounds=(0, 100), step=1., precedence=3, label='Phase oversampling [%]')
+    frequencyDirection = param.ObjectSelector(default=list(DIRECTIONS.keys())[0], precedence=1, label='Frequency encoding direction')
+    FOVP = param.Number(default=240, precedence=2, label='FOV x [mm]')
+    FOVF = param.Number(default=240, precedence=2, label='FOV y [mm]')
+    phaseOversampling = param.Number(default=0, step=1., precedence=3, label='Phase oversampling [%]')
     voxelP = param.Selector(default=1.333, precedence=-4, label='Voxel size x [mm]')
     voxelF = param.Selector(default=1.333, precedence=-4, label='Voxel size y [mm]')
-    matrixP = param.Selector(default=180, objects=matrixValues, precedence=4, label='Acquisition matrix x')
-    matrixF = param.Selector(default=180, objects=matrixValues, precedence=4, label='Acquisition matrix y')
+    matrixP = param.Selector(default=180, precedence=4, label='Acquisition matrix x')
+    matrixF = param.Selector(default=180, precedence=4, label='Acquisition matrix y')
     reconVoxelP = param.Selector(default=0.666, precedence=-5, label='Reconstructed voxel size x [mm]')
     reconVoxelF = param.Selector(default=0.666, precedence=-5, label='Reconstructed voxel size y [mm]')
-    reconMatrixP = param.Selector(default=360, objects=reconMatrixValues, precedence=5, label='Reconstruction matrix x')
-    reconMatrixF = param.Selector(default=360, objects=reconMatrixValues, precedence=5, label='Reconstruction matrix y')
-    sliceThickness = param.Number(default=3, bounds=(0.5, 10), precedence=6, label='Slice thickness [mm]')
+    reconMatrixP = param.Selector(default=360, precedence=5, label='Reconstruction matrix x')
+    reconMatrixF = param.Selector(default=360, precedence=5, label='Reconstruction matrix y')
+    sliceThickness = param.Number(default=3, precedence=6, label='Slice thickness [mm]')
     
-    sequence = param.ObjectSelector(default=SEQUENCES[0], objects=SEQUENCES, precedence=1, label='Pulse sequence')
-    pixelBandWidth = param.Selector(default=pBWvalues[249], objects=pBWvalues, precedence=2, label='Pixel bandwidth [Hz]')
+    sequence = param.ObjectSelector(default=SEQUENCES[0], precedence=1, label='Pulse sequence')
+    pixelBandWidth = param.Selector(default=pBWvalues[249], precedence=2, label='Pixel bandwidth [Hz]')
     FOVbandwidth = param.Selector(default=pixelBW2FOVBW(500, 180), precedence=-2, label='FOV bandwidth [±kHz]')
     FWshift = param.Selector(default=pixelBW2shift(500), precedence=-2, label='Fat/water shift [pixels]')
-    NSA = param.Integer(default=1, bounds=(1, 16), precedence=3, label='NSA')
-    partialFourier = param.Number(default=1, bounds=(.6, 1), step=0.01, precedence=5, label='Partial Fourier factor')
-    turboFactor = param.Integer(default=1, bounds=(1, 64), precedence=6, label='Turbo factor')
-    EPIfactor = param.Selector(default=1, objects=EPIfactorValues, precedence=7, label='EPI factor')
+    NSA = param.Integer(default=1, precedence=3, label='NSA')
+    partialFourier = param.Number(default=1, step=0.01, precedence=5, label='Partial Fourier factor')
+    turboFactor = param.Integer(default=1, precedence=6, label='Turbo factor')
+    EPIfactor = param.Selector(default=1, precedence=7, label='EPI factor')
     
     showFOV = param.Boolean(default=False, label='Show FOV')
     noiseGain = param.Number(default=3.)
@@ -357,6 +357,8 @@ class MRIsimulator(param.Parameterized):
 
     def __init__(self, **params):
         super().__init__(**params)
+
+        self.init_bounds()
 
         def arrow(coords):
             angle = 0
@@ -464,6 +466,31 @@ class MRIsimulator(param.Parameterized):
         self.runSequencePipeline()
 
 
+    def init_bounds(self):
+        self.param.object.objects = PHANTOMS.keys()
+        self.param.fieldStrength.objects=[1.5, 3.0]
+        self.param.parameterStyle.objects=['Matrix and Pixel BW', 'Voxelsize and Fat/water shift', 'Matrix and FOV BW']
+        self.param.TR.objects=TRvalues
+        self.param.TE.objects=TEvalues
+        self.param.FA.bounds=(1, 90.0)
+        self.param.TI.objects=TIvalues
+        self.param.frequencyDirection.objects=DIRECTIONS.keys()
+        self.param.FOVP.bounds=(100, 600)
+        self.param.FOVF.bounds=(100, 600)
+        self.param.phaseOversampling.bounds=(0, 100)
+        self.param.matrixP.objects=matrixValues
+        self.param.matrixF.objects=matrixValues
+        self.param.reconMatrixP.objects=reconMatrixValues
+        self.param.reconMatrixF.objects=reconMatrixValues
+        self.param.sliceThickness.bounds=(0.5, 10)        
+        self.param.sequence.objects=SEQUENCES
+        self.param.pixelBandWidth.objects=pBWvalues
+        self.param.NSA.bounds=(1, 16)
+        self.param.partialFourier.bounds=(.6, 1)
+        self.param.turboFactor.bounds=(1, 64)
+        self.param.EPIfactor.objects=EPIfactorValues
+
+
     def runPipeline(self, pipeline):
         for f in pipeline:
             if pipeline[f]:
@@ -494,6 +521,8 @@ class MRIsimulator(param.Parameterized):
     
     
     def setParams(self, settings):
+        self.init_bounds()
+        self.sequencePipeline = {f: True for f in self.sequencePipeline.keys()}
         self.param.update(settings)
 
     
