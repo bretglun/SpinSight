@@ -355,6 +355,8 @@ class MRIsimulator(param.Parameterized):
     relativeSNR = param.Number(label='Relative SNR [%]')
     scantime = param.Number(label='Scan time [sec]')
 
+    showProcessedKspace = param.Boolean(default=False, label='Show processed k-space')
+
     def __init__(self, **params):
         super().__init__(**params)
 
@@ -1421,7 +1423,7 @@ class MRIsimulator(param.Parameterized):
         # Just zerofill for now
         nZeroes = self.oversampledMatrix[self.phaseDir] - self.oversampledPartialMatrix
         shape = tuple(nZeroes if dim==self.phaseDir else n for dim, n in enumerate(self.kspace.shape))
-        self.kspace = np.append(self.kspace, np.zeros(shape), axis=self.phaseDir)
+        self.PFkspace = np.append(self.kspace, np.zeros(shape), axis=self.phaseDir)
     
     
     def zerofill(self):
@@ -1431,7 +1433,7 @@ class MRIsimulator(param.Parameterized):
         self.oversampledReconMatrix = self.reconMatrix.copy()
         for dim in range(len(self.oversampledReconMatrix)):
             self.oversampledReconMatrix[dim] = int(np.round(self.reconMatrix[dim] * self.oversampledMatrix[dim] / self.matrix[dim]))
-        self.zerofilledkspace = zerofill(np.fft.ifftshift(self.kspace), self.oversampledReconMatrix)
+        self.zerofilledkspace = zerofill(np.fft.ifftshift(self.PFkspace), self.oversampledReconMatrix)
     
     
     def reconstruct(self):
@@ -1773,21 +1775,28 @@ class MRIsimulator(param.Parameterized):
         return self.seqPlot
     
     
-    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor')
+    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor', 'showProcessedKspace')
     def getKspace(self):
         self.runReconPipeline()
-        kAxes = []
-        for dim in range(2):
-            kAxes.append(getKaxis(self.oversampledReconMatrix[dim], self.FOV[dim]/self.reconMatrix[dim]))
-            # half-sample shift axis when odd number of zeroes:
-            if (self.oversampledReconMatrix[dim]-self.oversampledMatrix[dim])%2:
-                shift = self.reconMatrix[dim] / (2 * self.oversampledReconMatrix[dim] * self.FOV[dim])
-                kAxes[-1] += shift * (-1)**(self.oversampledMatrix[dim]%2)
-        ksp = xr.DataArray(
-            np.abs(np.fft.fftshift(self.zerofilledkspace))**.2, 
-            dims=('ky', 'kx'),
-            coords={'kx': kAxes[1], 'ky': kAxes[0]}
-        )
+        if self.showProcessedKspace:
+            kAxes = []
+            for dim in range(2):
+                kAxes.append(getKaxis(self.oversampledReconMatrix[dim], self.FOV[dim]/self.reconMatrix[dim]))
+                # half-sample shift axis when odd number of zeroes:
+                if (self.oversampledReconMatrix[dim]-self.oversampledMatrix[dim])%2:
+                    shift = self.reconMatrix[dim] / (2 * self.oversampledReconMatrix[dim] * self.FOV[dim])
+                    kAxes[-1] += shift * (-1)**(self.oversampledMatrix[dim]%2)
+            ksp = xr.DataArray(
+                np.abs(np.fft.fftshift(self.zerofilledkspace))**.2, 
+                dims=('ky', 'kx'),
+                coords={'kx': kAxes[1], 'ky': kAxes[0]}
+            )
+        else:
+            ksp = xr.DataArray(
+                np.abs(self.kspace)**.2, 
+                dims=('ky', 'kx'),
+                coords={'kx': self.kAxes[1], 'ky': self.kAxes[0]}
+            )
         ksp.kx.attrs['units'] = ksp.ky.attrs['units'] = '1/mm'
         self.kspaceimage = hv.Image(ksp, vdims=['magnitude'])
         return self.kspaceimage
@@ -1866,7 +1875,9 @@ def getApp(darkMode=True, settingsFilestem=''):
                       infoNumber(name='Fat/water shift', format='{value:.2f} pixels', value=simulator.param.FWshift, textColor=textColor),
                       infoNumber(name='Bandwidth', format='{value:.0f} Hz/pixel', value=simulator.param.pixelBandWidth, textColor=textColor))
     
-    dmapKspace = pn.Row(hv.DynamicMap(simulator.getKspace) * simulator.kLine, visible=False)
+    dmapKspace = pn.Column(hv.DynamicMap(simulator.getKspace) * simulator.kLine, 
+                           simulator.param.showProcessedKspace, 
+                           visible=False)
     dmapMRimage = hv.DynamicMap(simulator.getImage)
     dmapSequence = pn.Row(hv.DynamicMap(simulator.getSequencePlot), visible=False)
     loadButton = pn.widgets.Button(name='Load settings', visible=settingsFile.is_file())
