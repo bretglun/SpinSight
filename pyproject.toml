@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "spinsight"
-version = "1.0.11"
+version = "1.0.12"
 description = "MR image simulator for teaching purposes"
 authors = ["Johan Berglund <johan.berglund@akademiska.se>"]
 license = "GPL-3.0-or-later"
@@ -24,7 +24,7 @@ toml = "^0.10.2"
 pytest = "^8.3.2"
 
 [project.urls]
-repository = "https://github.com/bretglun/spinsight"
+Repository = "https://github.com/bretglun/spinsight"
 
 [build-system]
 requires = ["poetry-core"]
