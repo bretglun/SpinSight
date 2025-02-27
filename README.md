@@ -32,4 +32,4 @@ johan.berglund@akademiska.se
 ![](spinsight.png)
 
 ---
-Copyright © 2021–2024 Johan Berglund.
+Copyright © 2021–2025 Johan Berglund.
