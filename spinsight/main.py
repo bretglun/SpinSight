@@ -1294,7 +1294,7 @@ class MRIsimulator(param.Parameterized):
         self.num_measured_lines = self.num_shots * self.turboFactor * self.EPIfactor
         self.oversampledPartialMatrix = self.num_measured_lines # Needs to be modified for parallel imaging
         # oversampling may be higher than prescribed since num_shots must be integer:
-        self.oversampledMatrix[self.phaseDir] = int(np.ceil(self.oversampledPartialMatrix / self.partialFourier))
+        self.oversampledMatrix[self.phaseDir] = max(self.oversampledPartialMatrix, int(np.ceil(self.matrix[self.phaseDir] * (1 + self.phaseOversampling / 100))))
         self.kAxes = [getKaxis(self.oversampledMatrix[dim], self.FOV[dim]/self.matrix[dim]) for dim in range(len(self.matrix))]
         # undersample by partial Fourier:
         self.kAxes[self.phaseDir] = self.kAxes[self.phaseDir][:self.oversampledPartialMatrix]
