@@ -198,6 +198,15 @@ def resampleKspace(phantom, kAxes):
     return kspace
 
 
+def homodyneWeights(N, nBlank, dim):
+    # create homodyne ramp filter of length N with nBlank unsampled lines
+    W = np.ones((N,))
+    W[nBlank-1:-nBlank+1] = np.linspace(1,0, N-2*(nBlank-1))
+    W[-nBlank:] = 0
+    shape = (N, 1) if dim==0 else (1, N)
+    return W.reshape(shape)
+
+
 def zerofill(kspace, reconMatrix):
     for dim, n in enumerate(kspace.shape):
         shape = tuple(reconMatrix[dim] - n if d==0 else 1 for d in range(kspace.ndim))
@@ -356,6 +365,7 @@ class MRIsimulator(param.Parameterized):
     scantime = param.Number(label='Scan time [sec]')
 
     showProcessedKspace = param.Boolean(default=False, label='Show processed k-space')
+    homodyne = param.Boolean(default=True, label='Homodyne')
 
     def __init__(self, **params):
         super().__init__(**params)
@@ -803,6 +813,11 @@ class MRIsimulator(param.Parameterized):
     def _watch_FatSat(self):
         add_to_pipeline(self.reconPipeline, ['compileKspace', 'partialFourierRecon', 'zerofill', 'reconstruct'])
         add_to_pipeline(self.sequencePipeline, ['setupFatSat', 'updateMaxTE', 'updateBWbounds'])
+    
+
+    @param.depends('homodyne', watch=True)
+    def _watch_homodyne(self):
+        add_to_pipeline(self.reconPipeline, ['partialFourierRecon', 'zerofill', 'reconstruct'])
 
 
     @param.depends('reconMatrixF', watch=True)
@@ -1399,14 +1414,14 @@ class MRIsimulator(param.Parameterized):
 
 
     def compileKspace(self):
-        self.kspace = self.noise.copy()
+        self.measuredkspace = self.noise.copy()
         for component in self.kspaceComps:
             if 'Fat' in component:
                 tissue = component[:component.find('Fat')]
                 resonance = component[component.find('Fat'):]
                 ratio = FATRESONANCES[resonance]['ratioWithFatSat' if self.FatSat else 'ratio']
                 ratio *= TISSUES[tissue]['FF']
-                self.kspace += self.kspaceComps[component] * self.PDandT1w[resonance] * ratio
+                self.measuredkspace += self.kspaceComps[component] * self.PDandT1w[resonance] * ratio
             else:
                 if 'Water' in component:
                     tissue = component[:component.find('Water')]
@@ -1414,16 +1429,23 @@ class MRIsimulator(param.Parameterized):
                 else:
                     tissue = component
                     ratio = 1.0
-                self.kspace += self.kspaceComps[component] * self.PDandT1w[tissue] * ratio
+                self.measuredkspace += self.kspaceComps[component] * self.PDandT1w[tissue] * ratio
         self.updateSNR(self.decayedSignal * np.abs(self.PDandT1w[self.phantom['referenceTissue']]))
         self.updateScantime()
 
-    
+
     def partialFourierRecon(self):
-        # Just zerofill for now
-        nZeroes = self.oversampledMatrix[self.phaseDir] - self.oversampledPartialMatrix
-        shape = tuple(nZeroes if dim==self.phaseDir else n for dim, n in enumerate(self.kspace.shape))
-        self.PFkspace = np.append(self.kspace, np.zeros(shape), axis=self.phaseDir)
+        nBlank = self.oversampledMatrix[self.phaseDir] - self.oversampledPartialMatrix
+        if (nBlank == 0):
+            self.param.homodyne.precedence = -1
+            self.fullkspace = np.copy(self.measuredkspace)
+            return
+        self.param.homodyne.precedence = 1
+        shapeUnsampled = tuple(nBlank if dim==self.phaseDir else n for dim, n in enumerate(self.measuredkspace.shape))
+        self.fullkspace = np.append(self.measuredkspace, np.zeros(shapeUnsampled), axis=self.phaseDir) # zerofill
+        if self.homodyne:
+            self.fullkspace *= homodyneWeights(self.oversampledMatrix[self.phaseDir], nBlank, self.phaseDir) # pre-weighting
+            self.fullkspace += np.conjugate(np.flip(self.fullkspace))
     
     
     def zerofill(self):
@@ -1433,7 +1455,7 @@ class MRIsimulator(param.Parameterized):
         self.oversampledReconMatrix = self.reconMatrix.copy()
         for dim in range(len(self.oversampledReconMatrix)):
             self.oversampledReconMatrix[dim] = int(np.round(self.reconMatrix[dim] * self.oversampledMatrix[dim] / self.matrix[dim]))
-        self.zerofilledkspace = zerofill(np.fft.ifftshift(self.PFkspace), self.oversampledReconMatrix)
+        self.zerofilledkspace = zerofill(np.fft.ifftshift(self.fullkspace), self.oversampledReconMatrix)
     
     
     def reconstruct(self):
@@ -1775,7 +1797,7 @@ class MRIsimulator(param.Parameterized):
         return self.seqPlot
     
     
-    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor', 'showProcessedKspace')
+    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor', 'showProcessedKspace', 'homodyne')
     def getKspace(self):
         self.runReconPipeline()
         if self.showProcessedKspace:
@@ -1793,7 +1815,7 @@ class MRIsimulator(param.Parameterized):
             )
         else:
             ksp = xr.DataArray(
-                np.abs(self.kspace)**.2, 
+                np.abs(self.measuredkspace)**.2, 
                 dims=('ky', 'kx'),
                 coords={'kx': self.kAxes[1], 'ky': self.kAxes[0]}
             )
@@ -1808,7 +1830,7 @@ class MRIsimulator(param.Parameterized):
         return hv.Box(0, 0, tuple(acqFOV[::-1])).opts(color='lightblue') * hv.Box(0, 0, tuple(self.FOV[::-1])).opts(color='yellow')
 
 
-    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor', 'showFOV')
+    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor', 'showFOV', 'homodyne')
     def getImage(self):
         self.runReconPipeline()
         iAxes = [(np.arange(self.reconMatrix[dim]) - (self.reconMatrix[dim]-1)/2) / self.reconMatrix[dim] * self.FOV[dim] for dim in range(2)]
@@ -1869,7 +1891,8 @@ def getApp(darkMode=True, settingsFilestem=''):
     contrastParams = pn.panel(simulator.param, parameters=['FatSat', 'TR', 'TE', 'FA', 'TI'], widgets={'TR': pn.widgets.DiscreteSlider, 'TE': pn.widgets.DiscreteSlider, 'TI': pn.widgets.DiscreteSlider}, name='Contrast')
     geometryParams = pn.panel(simulator.param, parameters=['frequencyDirection', 'FOVF', 'FOVP', 'phaseOversampling', 'voxelF', 'voxelP', 'matrixF', 'matrixP', 'reconVoxelF', 'reconVoxelP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness'], widgets={'matrixF': pn.widgets.DiscreteSlider, 'matrixP': pn.widgets.DiscreteSlider, 'reconMatrixF': pn.widgets.DiscreteSlider, 'reconMatrixP': pn.widgets.DiscreteSlider, 'voxelF': pn.widgets.DiscreteSlider, 'voxelP': pn.widgets.DiscreteSlider, 'reconVoxelF': pn.widgets.DiscreteSlider, 'reconVoxelP': pn.widgets.DiscreteSlider}, name='Geometry')
     sequenceParams = pn.panel(simulator.param, parameters=['sequence', 'pixelBandWidth', 'FOVbandwidth', 'FWshift', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor'], widgets={'pixelBandWidth': pn.widgets.DiscreteSlider, 'FOVbandwidth': pn.widgets.DiscreteSlider, 'FWshift': pn.widgets.DiscreteSlider, 'EPIfactor': pn.widgets.DiscreteSlider}, name='Sequence')
-    
+    postprocParams = pn.panel(simulator.param, parameters=['homodyne'], name='Post-processing')
+
     infoPane = pn.Row(infoNumber(name='Relative SNR', format='{value:.0f}%', value=simulator.param.relativeSNR, textColor=textColor),
                       infoNumber(name='Scan time', format=('{value:.1f} sec'), value=simulator.param.scantime, textColor=textColor),
                       infoNumber(name='Fat/water shift', format='{value:.2f} pixels', value=simulator.param.FWshift, textColor=textColor),
@@ -1914,7 +1937,10 @@ def getApp(darkMode=True, settingsFilestem=''):
                     infoPane
                 )
             ), 
-            dmapKspace
+            pn.Column(
+                dmapKspace,
+                postprocParams
+            )
         ), 
         dmapSequence, 
         pn.Row(pn.pane.Markdown(author), pn.pane.Markdown(version))
