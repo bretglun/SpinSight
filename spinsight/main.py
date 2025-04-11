@@ -366,6 +366,7 @@ class MRIsimulator(param.Parameterized):
 
     showProcessedKspace = param.Boolean(default=False, label='Show processed k-space')
     homodyne = param.Boolean(default=True, label='Homodyne')
+    doZerofill = param.Boolean(default=True, label='Zerofill')
 
     def __init__(self, **params):
         super().__init__(**params)
@@ -819,18 +820,25 @@ class MRIsimulator(param.Parameterized):
     def _watch_homodyne(self):
         add_to_pipeline(self.reconPipeline, ['partialFourierRecon', 'zerofill', 'reconstruct'])
 
+    
+    @param.depends('doZerofill', watch=True)
+    def _watch_zerofill(self):
+        add_to_pipeline(self.reconPipeline, ['zerofill', 'reconstruct'])
+
 
     @param.depends('reconMatrixF', watch=True)
     def _watch_reconMatrixF(self):
         self.recAcqRatioF = self.reconMatrixF / self.matrixF
-        add_to_pipeline(self.reconPipeline, ['zerofill', 'reconstruct'])
+        if self.doZerofill:
+            add_to_pipeline(self.reconPipeline, ['zerofill', 'reconstruct'])
         self.reconVoxelF = take_closest(self.param.reconVoxelF.objects, self.FOVF/self.reconMatrixF)
 
 
     @param.depends('reconMatrixP', watch=True)
     def _watch_reconMatrixP(self):
         self.recAcqRatioP = self.reconMatrixP / self.matrixP
-        add_to_pipeline(self.reconPipeline, ['zerofill', 'reconstruct'])
+        if self.doZerofill:
+            add_to_pipeline(self.reconPipeline, ['zerofill', 'reconstruct'])
         self.reconVoxelP = take_closest(self.param.reconVoxelP.objects, self.FOVP/self.reconMatrixP)
     
 
@@ -1449,7 +1457,7 @@ class MRIsimulator(param.Parameterized):
     
     
     def zerofill(self):
-        self.reconMatrix = [self.reconMatrixP, self.reconMatrixF]
+        self.reconMatrix = [self.reconMatrixP, self.reconMatrixF] if self.doZerofill else [self.matrixP, self.matrixF]
         if self.freqDir==0:
             self.reconMatrix.reverse()
         self.oversampledReconMatrix = self.reconMatrix.copy()
@@ -1797,7 +1805,7 @@ class MRIsimulator(param.Parameterized):
         return self.seqPlot
     
     
-    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor', 'showProcessedKspace', 'homodyne')
+    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor', 'showProcessedKspace', 'homodyne', 'doZerofill')
     def getKspace(self):
         self.runReconPipeline()
         if self.showProcessedKspace:
@@ -1830,7 +1838,7 @@ class MRIsimulator(param.Parameterized):
         return hv.Box(0, 0, tuple(acqFOV[::-1])).opts(color='lightblue') * hv.Box(0, 0, tuple(self.FOV[::-1])).opts(color='yellow')
 
 
-    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor', 'showFOV', 'homodyne')
+    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor', 'showFOV', 'homodyne', 'doZerofill')
     def getImage(self):
         self.runReconPipeline()
         iAxes = [(np.arange(self.reconMatrix[dim]) - (self.reconMatrix[dim]-1)/2) / self.reconMatrix[dim] * self.FOV[dim] for dim in range(2)]
@@ -1891,7 +1899,7 @@ def getApp(darkMode=True, settingsFilestem=''):
     contrastParams = pn.panel(simulator.param, parameters=['FatSat', 'TR', 'TE', 'FA', 'TI'], widgets={'TR': pn.widgets.DiscreteSlider, 'TE': pn.widgets.DiscreteSlider, 'TI': pn.widgets.DiscreteSlider}, name='Contrast')
     geometryParams = pn.panel(simulator.param, parameters=['frequencyDirection', 'FOVF', 'FOVP', 'phaseOversampling', 'voxelF', 'voxelP', 'matrixF', 'matrixP', 'reconVoxelF', 'reconVoxelP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness'], widgets={'matrixF': pn.widgets.DiscreteSlider, 'matrixP': pn.widgets.DiscreteSlider, 'reconMatrixF': pn.widgets.DiscreteSlider, 'reconMatrixP': pn.widgets.DiscreteSlider, 'voxelF': pn.widgets.DiscreteSlider, 'voxelP': pn.widgets.DiscreteSlider, 'reconVoxelF': pn.widgets.DiscreteSlider, 'reconVoxelP': pn.widgets.DiscreteSlider}, name='Geometry')
     sequenceParams = pn.panel(simulator.param, parameters=['sequence', 'pixelBandWidth', 'FOVbandwidth', 'FWshift', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor'], widgets={'pixelBandWidth': pn.widgets.DiscreteSlider, 'FOVbandwidth': pn.widgets.DiscreteSlider, 'FWshift': pn.widgets.DiscreteSlider, 'EPIfactor': pn.widgets.DiscreteSlider}, name='Sequence')
-    postprocParams = pn.panel(simulator.param, parameters=['homodyne'], name='Post-processing')
+    postprocParams = pn.panel(simulator.param, parameters=['homodyne', 'doZerofill'], name='Post-processing')
 
     infoPane = pn.Row(infoNumber(name='Relative SNR', format='{value:.0f}%', value=simulator.param.relativeSNR, textColor=textColor),
                       infoNumber(name='Scan time', format=('{value:.1f} sec'), value=simulator.param.scantime, textColor=textColor),
