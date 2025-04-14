@@ -366,6 +366,7 @@ class MRIsimulator(param.Parameterized):
     scantime = param.Number(label='Scan time [sec]')
 
     showProcessedKspace = param.Boolean(default=False, label='Show processed k-space')
+    kspaceExponent = param.Number(default=0.2, step=.01, label='k-space exponent')
     homodyne = param.Boolean(default=True, precedence=1, label='Homodyne')
     doApodize = param.Boolean(default=True, precedence=2, label='Apodization')
     apodizationAlpha = param.Number(default=0.25, step=.01, precedence=3, label='Apodization alpha')
@@ -506,6 +507,7 @@ class MRIsimulator(param.Parameterized):
         self.param.partialFourier.bounds=(.6, 1)
         self.param.turboFactor.bounds=(1, 64)
         self.param.EPIfactor.objects=EPIfactorValues
+        self.param.kspaceExponent.bounds=(0.1, 1)
         self.param.apodizationAlpha.bounds=(0, 1)
 
 
@@ -1833,7 +1835,7 @@ class MRIsimulator(param.Parameterized):
         return self.seqPlot
     
     
-    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor', 'showProcessedKspace', 'homodyne', 'doApodize', 'apodizationAlpha', 'doZerofill')
+    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor', 'showProcessedKspace', 'kspaceExponent', 'homodyne', 'doApodize', 'apodizationAlpha', 'doZerofill')
     def getKspace(self):
         self.runReconPipeline()
         if self.showProcessedKspace:
@@ -1845,13 +1847,13 @@ class MRIsimulator(param.Parameterized):
                     shift = self.reconMatrix[dim] / (2 * self.oversampledReconMatrix[dim] * self.FOV[dim])
                     kAxes[-1] += shift * (-1)**(self.oversampledMatrix[dim]%2)
             ksp = xr.DataArray(
-                np.abs(np.fft.fftshift(self.zerofilledkspace))**.2, 
+                np.abs(np.fft.fftshift(self.zerofilledkspace))**self.kspaceExponent, 
                 dims=('ky', 'kx'),
                 coords={'kx': kAxes[1], 'ky': kAxes[0]}
             )
         else:
             ksp = xr.DataArray(
-                np.abs(self.measuredkspace)**.2, 
+                np.abs(self.measuredkspace)**self.kspaceExponent, 
                 dims=('ky', 'kx'),
                 coords={'kx': self.kAxes[1], 'ky': self.kAxes[0]}
             )
@@ -1935,7 +1937,7 @@ def getApp(darkMode=True, settingsFilestem=''):
                       infoNumber(name='Bandwidth', format='{value:.0f} Hz/pixel', value=simulator.param.pixelBandWidth, textColor=textColor))
     
     dmapKspace = pn.Column(hv.DynamicMap(simulator.getKspace) * simulator.kLine, 
-                           simulator.param.showProcessedKspace, 
+                           pn.Row(simulator.param.showProcessedKspace, simulator.param.kspaceExponent), 
                            visible=False)
     dmapMRimage = hv.DynamicMap(simulator.getImage)
     dmapSequence = pn.Row(hv.DynamicMap(simulator.getSequencePlot), visible=False)
