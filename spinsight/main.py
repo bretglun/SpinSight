@@ -208,6 +208,16 @@ def homodyneWeights(N, nBlank, dim):
     return W.reshape(shape)
 
 
+def radialTukey(alpha, matrix):
+    kx = np.linspace(-1, 1, matrix[0]+2)[1:-1]
+    ky = np.linspace(-1, 1, matrix[1]+2)[1:-1]
+    kky, kkx = np.meshgrid(ky, kx)
+    k = (1-np.sqrt(kkx**2 + kky**2))/alpha
+    k[k>1] = 1
+    k[k<0] = 0
+    return np.sin(np.pi*k/2)**2
+
+
 def zerofill(kspace, reconMatrix):
     for dim, n in enumerate(kspace.shape):
         shape = tuple(reconMatrix[dim] - n if d==0 else 1 for d in range(kspace.ndim))
@@ -508,7 +518,7 @@ class MRIsimulator(param.Parameterized):
         self.param.turboFactor.bounds=(1, 64)
         self.param.EPIfactor.objects=EPIfactorValues
         self.param.kspaceExponent.bounds=(0.1, 1)
-        self.param.apodizationAlpha.bounds=(0, 1)
+        self.param.apodizationAlpha.bounds=(.01, 1)
 
 
     def runPipeline(self, pipeline):
@@ -1479,11 +1489,9 @@ class MRIsimulator(param.Parameterized):
     
     def apodization(self):
         self.apodizedkspace = self.fullkspace.copy()
-        alpha = self.apodizationAlpha if self.doApodize else 0
-        for dim, N in enumerate (self.oversampledMatrix):
-            W = signal.windows.tukey(N+2, alpha)[1:-1] # Tukey window, skip zeroes at start and end
-            shape = (N, 1) if dim==0 else (1, N)
-            self.apodizedkspace *= W.reshape(shape)
+        if not self.doApodize: 
+            return
+        self.apodizedkspace *= radialTukey(self.apodizationAlpha, self.oversampledMatrix)
 
     
     def zerofill(self):
