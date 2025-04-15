@@ -14,7 +14,6 @@ from spinsight import sequence
 from bokeh.models import HoverTool, CustomJS, ColumnDataSource
 from functools import partial
 from tqdm import tqdm
-from scipy import signal
 
 hv.extension('bokeh')
 
@@ -321,8 +320,8 @@ def add_to_pipeline(pipeline, functions):
     pipeline.update({f: True for f in functions})
 
 
-def unique_list(l):
-    return list(dict.fromkeys(l))
+def unique_list(lst):
+    return list(dict.fromkeys(lst))
 
 
 TRvalues = unique_list([float('{:.2g}'.format(tr)) for tr in 10.**np.linspace(0, 4, 500)])
@@ -529,19 +528,22 @@ class MRIsimulator(param.Parameterized):
     
 
     def runSequencePipeline(self):
-        if not any(self.sequencePipeline.values()): return
+        if not any(self.sequencePipeline.values()):
+            return
         self.runPipeline(self.sequencePipeline)
         self.resolveConflicts()
     
 
     def runSequencePlotPipeline(self):
-        if not any(self.sequencePlotPipeline.values()): return
+        if not any(self.sequencePlotPipeline.values()):
+            return
         self.runSequencePipeline()
         self.runPipeline(self.sequencePlotPipeline)
     
 
     def runReconPipeline(self):
-        if not any(self.reconPipeline.values()): return
+        if not any(self.reconPipeline.values()):
+            return
         self.runSequencePipeline()
         self.runPipeline(self.reconPipeline)
     
@@ -586,7 +588,8 @@ class MRIsimulator(param.Parameterized):
     @param.depends('object', watch=True)
     def _watch_object(self):
         with param.parameterized.batch_call_watchers(self):
-            for f in self.reconPipeline: self.reconPipeline[f] = True
+            for f in self.reconPipeline:
+                self.reconPipeline[f] = True
             minFOV = PHANTOMS[self.object]['FOV']
             if self.frequencyDirection=='left-right':
                 minFOV = minFOV.reverse()
@@ -596,8 +599,8 @@ class MRIsimulator(param.Parameterized):
 
     @param.depends('parameterStyle', watch=True)
     def _watch_parameterStyle(self):
-        for param in [self.param.voxelF, self.param.voxelP, self.param.matrixF, self.param.matrixP, self.param.reconVoxelF, self.param.reconVoxelP, self.param.reconMatrixF, self.param.reconMatrixP, self.param.pixelBandWidth, self.param.FOVbandwidth, self.param.FWshift]:
-            param.precedence = -1
+        for par in [self.param.voxelF, self.param.voxelP, self.param.matrixF, self.param.matrixP, self.param.reconVoxelF, self.param.reconVoxelP, self.param.reconMatrixF, self.param.reconMatrixP, self.param.pixelBandWidth, self.param.FOVbandwidth, self.param.FWshift]:
+            par.precedence = -1
         if self.parameterStyle == 'Voxelsize and Fat/water shift':
             self.param.voxelF.precedence = 4
             self.param.voxelP.precedence = 4
@@ -917,13 +920,15 @@ class MRIsimulator(param.Parameterized):
     
     
     def updateMaxTI(self):
-        if self.sequence != 'Inversion Recovery': return
+        if self.sequence != 'Inversion Recovery':
+            return
         maxTI = self.TR - self.minTR + self.TI
         self.setParamDiscreteBounds(self.param.TI, TIvalues, minval=40, maxval=maxTI)
     
 
     def resolveConflicts(self):
-        if not self.outbound_params: return
+        if not self.outbound_params:
+            return
         if 'TR' in self.outbound_params:
             print('Warning: Resolving conflict: TR')
             self.outbound_params.remove('TR')
@@ -1931,7 +1936,7 @@ def getApp(darkMode=True, settingsFilestem=''):
     author = '*Written by [Johan Berglund](mailto:johan.berglund@akademiska.se), Ph.D.*'
     try:
         version = '(v {})'.format(toml.load(Path(__file__).parent.parent/'pyproject.toml')['tool']['poetry']['version'])
-    except:
+    except (FileNotFoundError, KeyError):
         version = ''
     settingsParams = pn.panel(simulator.param, parameters=['object', 'fieldStrength', 'parameterStyle'], name='Settings')
     contrastParams = pn.panel(simulator.param, parameters=['FatSat', 'TR', 'TE', 'FA', 'TI'], widgets={'TR': pn.widgets.DiscreteSlider, 'TE': pn.widgets.DiscreteSlider, 'TI': pn.widgets.DiscreteSlider}, name='Contrast')
