@@ -1762,7 +1762,7 @@ class MRIsimulator(param.Parameterized):
             prephaseTime = sum([self.boards[b]['objects'][name]['dur_f'] for (b, name) in [('RF', 'excitation'), ('frequency', 'read prephaser')]])/2
         sequence.moveWaveform(self.boards['frequency']['objects']['read prephaser'], prephaseTime)
         add_to_pipeline(self.sequencePipeline, ['placePhasers', 'placeSpoiler'])
-        add_to_pipeline(self.sequencePlotPipeline, ['renderFrequencyBoard'])
+        add_to_pipeline(self.sequencePlotPipeline, ['renderFrequencyBoard', 'renderRFBoard'])
     
     
     def placePhasers(self):
@@ -1823,8 +1823,6 @@ class MRIsimulator(param.Parameterized):
 
     def renderFrequencyBoard(self):
         self.renderPolygons('frequency')
-        adc_objects = flatten_dicts(self.boards['ADC']['objects'].values())
-        self.boardPlots['frequency']['ADC'] = hv.Rectangles([(obj['time'][0], -100., obj['time'][-1], 100.) for obj in adc_objects])
         add_to_pipeline(self.sequencePlotPipeline, ['calculate_k_trajectory'])
     
 
@@ -1839,6 +1837,9 @@ class MRIsimulator(param.Parameterized):
 
     def renderRFBoard(self):
         self.renderPolygons('RF')
+        adc_objects = flatten_dicts(self.boards['ADC']['objects'].values())
+        self.boardPlots['RF']['ADC'] = hv.Rectangles([(obj['time'][0], -100., obj['time'][-1], 100.) for obj in adc_objects])
+        add_to_pipeline(self.sequencePlotPipeline, ['calculate_k_trajectory'])
     
     
     def get_k_on_interval(self, interval):
