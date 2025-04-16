@@ -456,6 +456,16 @@ class MRIsimulator(param.Parameterized):
             'updateSliceThicknessBounds'
             ]}
         
+        self.acquisitionPipeline = {f: True for f in [
+            'loadPhantom', 
+            'sampleKspace', 
+            'updateSamplingTime', 
+            'modulateKspace', 
+            'simulateNoise', 
+            'updatePDandT1w', 
+            'compileKspace'
+        ]}
+
         self.sequencePlotPipeline = {f: True for f in [
             'renderFrequencyBoard', 
             'renderPhaseBoard', 
@@ -466,13 +476,6 @@ class MRIsimulator(param.Parameterized):
         ]}
         
         self.reconPipeline = {f: True for f in [
-            'loadPhantom', 
-            'sampleKspace', 
-            'updateSamplingTime', 
-            'modulateKspace', 
-            'simulateNoise', 
-            'updatePDandT1w', 
-            'compileKspace', 
             'partialFourierRecon', 
             'apodization', 
             'zerofill', 
@@ -534,10 +537,18 @@ class MRIsimulator(param.Parameterized):
         self.resolveConflicts()
     
 
+    def runAcquisitionPipeline(self):
+        if not any(self.acquisitionPipeline.values()):
+            return
+        self.runSequencePipeline()
+        self.runPipeline(self.acquisitionPipeline)
+    
+
     def runSequencePlotPipeline(self):
         if not any(self.sequencePlotPipeline.values()):
             return
         self.runSequencePipeline()
+        self.runAcquisitionPipeline()
         self.runPipeline(self.sequencePlotPipeline)
     
 
@@ -545,6 +556,7 @@ class MRIsimulator(param.Parameterized):
         if not any(self.reconPipeline.values()):
             return
         self.runSequencePipeline()
+        self.runAcquisitionPipeline()
         self.runPipeline(self.reconPipeline)
     
     
@@ -588,6 +600,8 @@ class MRIsimulator(param.Parameterized):
     @param.depends('object', watch=True)
     def _watch_object(self):
         with param.parameterized.batch_call_watchers(self):
+            for f in self.acquisitionPipeline:
+                self.acquisitionPipeline[f] = True
             for f in self.reconPipeline:
                 self.reconPipeline[f] = True
             minFOV = PHANTOMS[self.object]['FOV']
@@ -634,7 +648,8 @@ class MRIsimulator(param.Parameterized):
             self.voxelF = take_closest(self.param.voxelF.objects, self.FOVF/self.matrixF)
             self.reconVoxelF = take_closest(self.param.reconVoxelF.objects, self.FOVF/self.reconMatrixF)
             self.param.trigger('voxelF', 'reconVoxelF')
-            add_to_pipeline(self.reconPipeline, ['sampleKspace', 'updateSamplingTime', 'modulateKspace', 'simulateNoise', 'compileKspace', 'partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
+            add_to_pipeline(self.acquisitionPipeline, ['sampleKspace', 'updateSamplingTime', 'modulateKspace', 'simulateNoise', 'compileKspace'])
+            add_to_pipeline(self.reconPipeline, ['partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
             add_to_pipeline(self.sequencePipeline, ['setupReadouts', 'updateBWbounds', 'updateMatrixFbounds'])
     
 
@@ -649,7 +664,8 @@ class MRIsimulator(param.Parameterized):
             self.voxelP = take_closest(self.param.voxelP.objects, self.FOVP/self.matrixP)
             self.reconVoxelP = take_closest(self.param.reconVoxelP.objects, self.FOVP/self.reconMatrixP)
             self.param.trigger('voxelP', 'reconVoxelP')
-            add_to_pipeline(self.reconPipeline, ['sampleKspace', 'updateSamplingTime', 'modulateKspace', 'simulateNoise', 'compileKspace', 'partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
+            add_to_pipeline(self.acquisitionPipeline, ['sampleKspace', 'updateSamplingTime', 'modulateKspace', 'simulateNoise', 'compileKspace'])
+            add_to_pipeline(self.reconPipeline, ['partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
             add_to_pipeline(self.sequencePipeline, ['setupPhasers', 'updateMatrixPbounds'])
 
 
@@ -669,7 +685,8 @@ class MRIsimulator(param.Parameterized):
                 self.param.trigger('FOVbandwidth')
             self.updateVoxelFobjects()
             self.voxelF = take_closest(self.param.voxelF.objects, self.FOVF/self.matrixF)
-            add_to_pipeline(self.reconPipeline, ['sampleKspace', 'updateSamplingTime', 'modulateKspace', 'simulateNoise', 'compileKspace', 'partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
+            add_to_pipeline(self.acquisitionPipeline, ['sampleKspace', 'updateSamplingTime', 'modulateKspace', 'simulateNoise', 'compileKspace'])
+            add_to_pipeline(self.reconPipeline, ['partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
             add_to_pipeline(self.sequencePipeline, ['setupReadouts', 'updateBWbounds', 'updateMatrixFbounds', 'updateFOVFbounds'])
             self.param.reconMatrixF.objects = [m for m in reconMatrixValues if m>=self.matrixF]
             self.updateReconVoxelFobjects()
@@ -682,7 +699,8 @@ class MRIsimulator(param.Parameterized):
         with param.parameterized.batch_call_watchers(self):
             self.updateVoxelPobjects()
             self.voxelP = take_closest(self.param.voxelP.objects, self.FOVP/self.matrixP)
-            add_to_pipeline(self.reconPipeline, ['sampleKspace', 'updateSamplingTime', 'modulateKspace', 'simulateNoise', 'compileKspace', 'partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
+            add_to_pipeline(self.acquisitionPipeline, ['sampleKspace', 'updateSamplingTime', 'modulateKspace', 'simulateNoise', 'compileKspace'])
+            add_to_pipeline(self.reconPipeline, ['partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
             add_to_pipeline(self.sequencePipeline, ['setupPhasers', 'updateFOVPbounds', 'updateTurboFactorBounds', 'updateEPIfactorObjects'])
             self.param.reconMatrixP.objects = [m for m in reconMatrixValues if m>=self.matrixP]
             self.updateReconVoxelPobjects()
@@ -720,13 +738,15 @@ class MRIsimulator(param.Parameterized):
 
     @param.depends('sliceThickness', watch=True)
     def _watch_sliceThickness(self):
-        add_to_pipeline(self.reconPipeline, ['sampleKspace', 'updateSamplingTime', 'modulateKspace', 'simulateNoise', 'compileKspace', 'partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
+        add_to_pipeline(self.acquisitionPipeline, ['sampleKspace', 'updateSamplingTime', 'modulateKspace', 'simulateNoise', 'compileKspace'])
+        add_to_pipeline(self.reconPipeline, ['partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
         add_to_pipeline(self.sequencePipeline, ['setupSliceSelection', 'placeFatSat'])
     
     
     @param.depends('frequencyDirection', watch=True)
     def _watch_frequencyDirection(self):
-        add_to_pipeline(self.reconPipeline, ['sampleKspace', 'updateSamplingTime', 'modulateKspace', 'simulateNoise', 'compileKspace', 'partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
+        add_to_pipeline(self.acquisitionPipeline, ['sampleKspace', 'updateSamplingTime', 'modulateKspace', 'simulateNoise', 'compileKspace'])
+        add_to_pipeline(self.reconPipeline, ['partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
         for p in [self.param.FOVF, self.param.FOVP, self.param.matrixF, self.param.matrixP, self.param.reconMatrixF, self.param.reconMatrixP]:
             if ' x' in p.label:
                 p.label = p.label.replace(' x', ' y')
@@ -743,7 +763,8 @@ class MRIsimulator(param.Parameterized):
             self.updateFWshiftObjects()
             self.FWshift = take_closest(self.param.FWshift.objects, pixelBW2shift(self.pixelBandWidth, self.fieldStrength))
             self.param.trigger('FWshift')
-            add_to_pipeline(self.reconPipeline, ['updateSamplingTime', 'modulateKspace', 'simulateNoise', 'updatePDandT1w', 'compileKspace', 'partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
+            add_to_pipeline(self.acquisitionPipeline, ['updateSamplingTime', 'modulateKspace', 'simulateNoise', 'updatePDandT1w', 'compileKspace'])
+            add_to_pipeline(self.reconPipeline, ['partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
             self._watch_FatSat() # since fatsat pulse duration depends on fieldStrength
     
 
@@ -752,7 +773,8 @@ class MRIsimulator(param.Parameterized):
         with param.parameterized.batch_call_watchers(self):
             self.FWshift = take_closest(self.param.FWshift.objects, pixelBW2shift(self.pixelBandWidth, self.fieldStrength))
             self.FOVbandwidth = take_closest(self.param.FOVbandwidth.objects, pixelBW2FOVBW(self.pixelBandWidth, self.matrixF))
-            add_to_pipeline(self.reconPipeline, ['updateSamplingTime', 'modulateKspace', 'simulateNoise', 'compileKspace', 'partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
+            add_to_pipeline(self.acquisitionPipeline, ['updateSamplingTime', 'modulateKspace', 'simulateNoise', 'compileKspace'])
+            add_to_pipeline(self.reconPipeline, ['partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
             add_to_pipeline(self.sequencePipeline, ['setupReadouts', 'updateMatrixFbounds', 'updateFOVFbounds', 'updateMatrixPbounds', 'updateFOVPbounds'])
     
     @param.depends('FWshift', watch=True)
@@ -769,32 +791,37 @@ class MRIsimulator(param.Parameterized):
 
     @param.depends('NSA', watch=True)
     def _watch_NSA(self):
-        add_to_pipeline(self.reconPipeline, ['updateSamplingTime', 'modulateKspace', 'simulateNoise', 'compileKspace', 'partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
+        add_to_pipeline(self.acquisitionPipeline, ['updateSamplingTime', 'modulateKspace', 'simulateNoise', 'compileKspace'])
+        add_to_pipeline(self.reconPipeline, ['partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
 
 
     @param.depends('partialFourier', watch=True)
     def _watch_partialFourier(self):
-        add_to_pipeline(self.reconPipeline, ['sampleKspace', 'updateSamplingTime', 'modulateKspace', 'simulateNoise', 'compileKspace', 'partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
+        add_to_pipeline(self.acquisitionPipeline, ['sampleKspace', 'updateSamplingTime', 'modulateKspace', 'simulateNoise', 'compileKspace'])
+        add_to_pipeline(self.reconPipeline, ['partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
         add_to_pipeline(self.sequencePipeline, ['setupRefocusing', 'setupReadouts', 'setupPhasers', 'updateMinTE', 'updateMinTR', 'updateMaxTE', 'updateMaxTI', 'updateBWbounds', 'updateMatrixFbounds', 'updateMatrixPbounds', 'updateFOVFbounds',  'updateFOVPbounds', 'updateSliceThicknessBounds', 'updateTurboFactorBounds', 'updateEPIfactorObjects'])
 
 
     @param.depends('turboFactor', watch=True)
     def _watch_turboFactor(self):
-        add_to_pipeline(self.reconPipeline, ['sampleKspace', 'updateSamplingTime', 'modulateKspace', 'simulateNoise', 'compileKspace', 'partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
+        add_to_pipeline(self.acquisitionPipeline, ['sampleKspace', 'updateSamplingTime', 'modulateKspace', 'simulateNoise', 'compileKspace'])
+        add_to_pipeline(self.reconPipeline, ['partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
         add_to_pipeline(self.sequencePipeline, ['setupRefocusing', 'setupReadouts', 'setupPhasers', 'updateMinTE', 'updateMinTR', 'updateMaxTE', 'updateMaxTI', 'updateBWbounds', 'updateMatrixFbounds', 'updateMatrixPbounds', 'updateFOVFbounds',  'updateFOVPbounds', 'updateSliceThicknessBounds', 'updateEPIfactorObjects'])
         self.updateEPIfactorObjects()
 
 
     @param.depends('EPIfactor', watch=True)
     def _watch_EPIfactor(self):
-        add_to_pipeline(self.reconPipeline, ['sampleKspace', 'updateSamplingTime', 'modulateKspace', 'simulateNoise', 'compileKspace', 'partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
+        add_to_pipeline(self.acquisitionPipeline, ['sampleKspace', 'updateSamplingTime', 'modulateKspace', 'simulateNoise', 'compileKspace'])
+        add_to_pipeline(self.reconPipeline, ['partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
         add_to_pipeline(self.sequencePipeline, ['setupReadouts', 'setupPhasers', 'updateMinTE', 'updateMinTR', 'updateMaxTE', 'updateMaxTI', 'updateBWbounds', 'updateMatrixFbounds', 'updateMatrixPbounds', 'updateFOVFbounds',  'updateFOVPbounds', 'updateSliceThicknessBounds', 'updateTurboFactorBounds'])
         self.updateTurboFactorBounds()
     
 
     @param.depends('sequence', watch=True)
     def _watch_sequence(self):
-        add_to_pipeline(self.reconPipeline, ['modulateKspace', 'updatePDandT1w', 'compileKspace', 'partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
+        add_to_pipeline(self.acquisitionPipeline, ['modulateKspace', 'updatePDandT1w', 'compileKspace'])
+        add_to_pipeline(self.reconPipeline, ['partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
         add_to_pipeline(self.sequencePipeline, ['setupExcitation', 'setupRefocusing', 'setupInversion', 'setupPhasers', 'placeReadouts', 'placePhasers'])
         self.param.FA.precedence = 1 if self.sequence=='Spoiled Gradient Echo' else -1
         self.param.TI.precedence = 1 if self.sequence=='Inversion Recovery' else -1
@@ -807,32 +834,37 @@ class MRIsimulator(param.Parameterized):
 
     @param.depends('TE', watch=True)
     def _watch_TE(self):
-        add_to_pipeline(self.reconPipeline, ['modulateKspace', 'updatePDandT1w', 'compileKspace', 'partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
+        add_to_pipeline(self.acquisitionPipeline, ['modulateKspace', 'updatePDandT1w', 'compileKspace'])
+        add_to_pipeline(self.reconPipeline, ['partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
         add_to_pipeline(self.sequencePipeline, ['setupPhasers', 'placeRefocusing', 'placeReadouts', 'updateMatrixFbounds', 'updateFOVFbounds', 'updateMatrixPbounds', 'updateFOVPbounds'])
     
 
     @param.depends('TR', watch=True)
     def _watch_TR(self):
-        add_to_pipeline(self.reconPipeline, ['updatePDandT1w', 'compileKspace', 'partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
+        add_to_pipeline(self.acquisitionPipeline, ['updatePDandT1w', 'compileKspace'])
+        add_to_pipeline(self.reconPipeline, ['partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
         add_to_pipeline(self.sequencePipeline, ['updateMaxTE', 'updateMaxTI', 'updateBWbounds', 'updateSliceThicknessBounds'])
         add_to_pipeline(self.sequencePlotPipeline, ['renderTRspan'])
     
 
     @param.depends('TI', watch=True)
     def _watch_TI(self):
-        add_to_pipeline(self.reconPipeline, ['updatePDandT1w', 'compileKspace', 'partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
+        add_to_pipeline(self.acquisitionPipeline, ['updatePDandT1w', 'compileKspace'])
+        add_to_pipeline(self.reconPipeline, ['partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
         add_to_pipeline(self.sequencePipeline, ['placeInversion'])
 
 
     @param.depends('FA', watch=True)
     def _watch_FA(self):
-        add_to_pipeline(self.reconPipeline, ['updatePDandT1w', 'compileKspace', 'partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
+        add_to_pipeline(self.acquisitionPipeline, ['updatePDandT1w', 'compileKspace'])
+        add_to_pipeline(self.reconPipeline, ['partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
         add_to_pipeline(self.sequencePipeline, ['setupExcitation'])
     
     
     @param.depends('FatSat', watch=True)
     def _watch_FatSat(self):
-        add_to_pipeline(self.reconPipeline, ['compileKspace', 'partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
+        add_to_pipeline(self.acquisitionPipeline, ['compileKspace'])
+        add_to_pipeline(self.reconPipeline, ['partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
         add_to_pipeline(self.sequencePipeline, ['setupFatSat', 'updateMaxTE', 'updateBWbounds'])
     
 
@@ -1850,8 +1882,8 @@ class MRIsimulator(param.Parameterized):
     
     @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor', 'showProcessedKspace', 'kspaceExponent', 'homodyne', 'doApodize', 'apodizationAlpha', 'doZerofill')
     def getKspace(self):
-        self.runReconPipeline()
         if self.showProcessedKspace:
+            self.runReconPipeline()
             kAxes = []
             for dim in range(2):
                 kAxes.append(getKaxis(self.oversampledReconMatrix[dim], self.FOV[dim]/self.reconMatrix[dim]))
@@ -1865,6 +1897,7 @@ class MRIsimulator(param.Parameterized):
                 coords={'kx': kAxes[1], 'ky': kAxes[0]}
             )
         else:
+            self.runAcquisitionPipeline()
             ksp = xr.DataArray(
                 np.abs(self.measuredkspace)**self.kspaceExponent, 
                 dims=('ky', 'kx'),
