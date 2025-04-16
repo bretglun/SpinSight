@@ -406,6 +406,7 @@ class MRIsimulator(param.Parameterized):
                         'phase': {'dim': hv.Dimension('phase', label='G phase', unit='mT/m', range=(-30, 30)), 'color': 'cadetblue'}, 
                         'slice': {'dim': hv.Dimension('slice', label='G slice', unit='mT/m', range=(-30, 30)), 'color': 'cadetblue'}, 
                         'RF': {'dim': hv.Dimension('RF', label='RF', unit='μT', range=(-5, 25)), 'color': 'red'},
+                        'signal': {'dim': hv.Dimension('signal', label='signal', unit='a.u.', range=(-1, 1)), 'color': 'orange'},
                         'ADC': {'dim': hv.Dimension('ADC', label='ADC', unit=''), 'color': 'orange'} }
         
         self.boardPlots = {board: {'hline': hv.HLine(0.0, kdims=[self.timeDim, self.boards[board]['dim']]).opts(tools=['xwheel_zoom', 'xpan', 'reset'], default_tools=[], active_tools=['xwheel_zoom', 'xpan'])} for board in self.boards if board != 'ADC'}
@@ -471,6 +472,7 @@ class MRIsimulator(param.Parameterized):
             'renderPhaseBoard', 
             'renderSliceBoard', 
             'renderRFBoard',
+            'renderSignalBoard',
             'renderTRspan',
             'calculate_k_trajectory'
         ]}
@@ -1805,7 +1807,7 @@ class MRIsimulator(param.Parameterized):
             self.boards[board]['object_list'] = object_list
             self.boardPlots[board]['area'] = hv.Area(sequence.accumulateWaveforms(object_list, board), self.timeDim, self.boards[board]['dim']).opts(color=self.boards[board]['color'])
             attributes = [attr for attr in object_list[0].keys() if attr not in ['time', board] and '_f' not in attr]
-            if board in ['frequency', 'phase', 'RF']:
+            if board in ['frequency', 'phase', 'RF', 'signal']:
                 with open(Path(__file__).parent / 'hoverCallback.js', 'r') as file:
                     hoverCallback = CustomJS(args={'hoverIndex': self.hoverIndex, 'board': board}, code=file.read())
             else:
@@ -1816,7 +1818,7 @@ class MRIsimulator(param.Parameterized):
     
     def renderTRspan(self):
         t0 = self.getSeqStart()
-        for board in ['frequency', 'phase', 'slice', 'RF']:
+        for board in ['frequency', 'phase', 'slice', 'RF', 'signal']:
             self.boardPlots[board]['TRspan'] = hv.VSpan(-20000, t0, kdims=[self.timeDim, self.boards[board]['dim']]).opts(color='gray', fill_alpha=.3)
             self.boardPlots[board]['TRspan'] *= hv.VSpan(t0 + self.TR, 20000, kdims=[self.timeDim, self.boards[board]['dim']]).opts(color='gray', fill_alpha=.3)
     
@@ -1837,8 +1839,13 @@ class MRIsimulator(param.Parameterized):
 
     def renderRFBoard(self):
         self.renderPolygons('RF')
+        add_to_pipeline(self.sequencePlotPipeline, ['calculate_k_trajectory'])
+        
+
+    def renderSignalBoard(self):
+        self.renderPolygons('signal')
         adc_objects = flatten_dicts(self.boards['ADC']['objects'].values())
-        self.boardPlots['RF']['ADC'] = hv.Rectangles([(obj['time'][0], -100., obj['time'][-1], 100.) for obj in adc_objects])
+        self.boardPlots['signal']['ADC'] = hv.Rectangles([(obj['time'][0], -100., obj['time'][-1], 100.) for obj in adc_objects])
         add_to_pipeline(self.sequencePlotPipeline, ['calculate_k_trajectory'])
     
     
@@ -1877,7 +1884,8 @@ class MRIsimulator(param.Parameterized):
     @param.depends('sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'partialFourier', 'turboFactor', 'EPIfactor')
     def getSequencePlot(self):
         self.runSequencePlotPipeline()
-        self.seqPlot = hv.Layout(list([hv.Overlay(list(boardPlot.values())).opts(width=1700, height=120, border=0, xaxis='bottom' if n==len(self.boardPlots)-1 else None) for n, boardPlot in enumerate(self.boardPlots.values())])).cols(1).options(toolbar='below')
+        last = len(self.boardPlots)-1
+        self.seqPlot = hv.Layout(list([hv.Overlay(list(boardPlot.values())).opts(width=1700, height=180 if n==last else 120, border=0, xaxis='bottom' if n==last else None) for n, boardPlot in enumerate(self.boardPlots.values())])).cols(1).options(toolbar='below')
         return self.seqPlot
     
     
