@@ -236,11 +236,11 @@ def crop(arr, shape):
     return arr
 
 
-def getT2w(component, decayTime, dephasingTime, B0):
+def getT2w(component, timeAfterExcitation, timeRelativeInphase, B0):
     T2 = TISSUES[component]['T2'][B0] if 'Fat' not in component else FATRESONANCES[component]['T2'][B0]
     T2prim = 35. # ad hoc value [msec]
-    E2 = np.exp(-np.abs(decayTime)/T2)
-    E2prim = np.exp(-np.abs(dephasingTime)/T2prim)
+    E2 = np.exp(-np.abs(timeAfterExcitation)/T2)
+    E2prim = np.exp(-np.abs(timeRelativeInphase)/T2prim)
     return E2 * E2prim
 
 
@@ -1436,29 +1436,28 @@ class MRIsimulator(param.Parameterized):
             spin_echoes[ky] = (rf_echo + 1) * self.readtrain_spacing
             reverse[ky] = self.boards['frequency']['objects']['readouts'][rf_echo][gr_echo]['area_f'] < 0
         samplingTime = np.expand_dims(self.samplingTime, axis=[dim for dim in range(len(self.matrix)) if dim != self.freqDir])
-        TEs = np.expand_dims(TEs, axis=[dim for dim in range(len(self.matrix)) if dim != self.phaseDir])
-        
-        decayTime = samplingTime + TEs
-        dephasingTime = decayTime.copy()
-        if not isGradientEcho(self.sequence):
-            spin_echoes = np.expand_dims(spin_echoes, axis=[dim for dim in range(len(self.matrix)) if dim != self.phaseDir])
-            dephasingTime -= spin_echoes # for spinecho, subtract Hahn echo position from decaytime
+        timeAfterExcitation = samplingTime + np.expand_dims(TEs, axis=[dim for dim in range(len(self.matrix)) if dim != self.phaseDir])
         # EPI rowflip:
-        reverseDephasingTime = np.flip(dephasingTime, axis=self.freqDir)
+        reverseTimeAfterExcitation = np.flip(timeAfterExcitation, axis=self.freqDir)
         reverse = np.expand_dims(reverse, axis=[dim for dim in range(len(self.matrix)) if dim != self.phaseDir])
         reverse = reverse.repeat(len(self.samplingTime), axis=self.freqDir)
-        dephasingTime[reverse] = reverseDephasingTime[reverse]
-
+        timeAfterExcitation[reverse] = reverseTimeAfterExcitation[reverse]
+        
+        timeRelativeInphase = timeAfterExcitation.copy()
+        if not isGradientEcho(self.sequence):
+            spin_echoes = np.expand_dims(spin_echoes, axis=[dim for dim in range(len(self.matrix)) if dim != self.phaseDir])
+            timeRelativeInphase -= spin_echoes # for spinecho, subtract Hahn echo position from timeAfterExcitation
+        
         self.kspaceComps = {}
         for tissue in self.tissues:
-            T2w = getT2w(tissue, decayTime, dephasingTime, self.fieldStrength)
+            T2w = getT2w(tissue, timeAfterExcitation, timeRelativeInphase, self.fieldStrength)
             if TISSUES[tissue]['FF'] == .00:
                 self.kspaceComps[tissue] = self.plainKspaceComps[tissue] * T2w
             else: # fat containing tissues
                 self.kspaceComps[tissue + 'Water'] = self.plainKspaceComps[tissue] * T2w
                 for component, resonance in FATRESONANCES.items():
-                    T2w = getT2w(component, decayTime, dephasingTime, self.fieldStrength)
-                    dephasing = np.exp(2j*np.pi * constants.GYRO * self.fieldStrength * resonance['shift'] * dephasingTime * 1e-3)
+                    T2w = getT2w(component, timeAfterExcitation, timeRelativeInphase, self.fieldStrength)
+                    dephasing = np.exp(2j*np.pi * constants.GYRO * self.fieldStrength * resonance['shift'] * timeRelativeInphase * 1e-3)
                     self.kspaceComps[tissue + component] = self.plainKspaceComps[tissue] * dephasing * T2w
             if tissue==self.phantom['referenceTissue']:
                 self.decayedSignal = self.signal * np.take(np.take(T2w, np.argmin(np.abs(self.kAxes[self.freqDir])), axis=self.freqDir), np.argmin(np.abs(self.kAxes[self.phaseDir])))
