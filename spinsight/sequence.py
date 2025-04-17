@@ -38,7 +38,10 @@ def accumulateWaveforms(waveforms, board):
 def prepareWaveform(waveform, t0, t1, scale=1):
     wf = np.concatenate(([0], np.array(waveform), [0])) * scale
     t = np.concatenate(([t0], np.linspace(t0, t1, len(waveform)), [t1]))
-    return wf, t
+    if t0 < t1:
+        return wf, t
+    else:
+        return np.flip(wf), np.flip(t)
 
 
 def getFWHM(s, t):
@@ -74,6 +77,18 @@ def getRF(flipAngle, dur, name, time=0., shape='hammingSinc'):
             'flip_angle': '{:.0f}°'.format(flipAngle),
             'FWHM_f': getFWHM(am[1:-1], t[1:-1])}
     return rf
+
+
+def getSignal(signal, time, scale=1.0, exponent=1.0, name='sampling'):
+    t0, t1 = time[0], time[-1]
+    am, t = prepareWaveform(signal, t0, t1, scale)
+    am = np.sign(am) * np.abs(am)**exponent
+    signal = { 'signal': am,
+            'time': t,
+            'name': name,
+            'center': '{:.1f} ms'.format((t0+t1)/2),
+            'duration': '{:.1f} ms'.format(abs(t1-t0))}
+    return signal
 
 
 def getGradient(dir, time=0., maxAmp=25., maxSlew=80., totalArea=None, flatArea=None, flatDur=None, name=''):

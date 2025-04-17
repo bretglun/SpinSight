@@ -1436,27 +1436,27 @@ class MRIsimulator(param.Parameterized):
             spin_echoes[ky] = (rf_echo + 1) * self.readtrain_spacing
             reverse[ky] = self.boards['frequency']['objects']['readouts'][rf_echo][gr_echo]['area_f'] < 0
         samplingTime = np.expand_dims(self.samplingTime, axis=[dim for dim in range(len(self.matrix)) if dim != self.freqDir])
-        timeAfterExcitation = samplingTime + np.expand_dims(TEs, axis=[dim for dim in range(len(self.matrix)) if dim != self.phaseDir])
+        self.timeAfterExcitation = samplingTime + np.expand_dims(TEs, axis=[dim for dim in range(len(self.matrix)) if dim != self.phaseDir])
         # EPI rowflip:
-        reverseTimeAfterExcitation = np.flip(timeAfterExcitation, axis=self.freqDir)
+        reverseTimeAfterExcitation = np.flip(self.timeAfterExcitation, axis=self.freqDir)
         reverse = np.expand_dims(reverse, axis=[dim for dim in range(len(self.matrix)) if dim != self.phaseDir])
         reverse = reverse.repeat(len(self.samplingTime), axis=self.freqDir)
-        timeAfterExcitation[reverse] = reverseTimeAfterExcitation[reverse]
+        self.timeAfterExcitation[reverse] = reverseTimeAfterExcitation[reverse]
         
-        timeRelativeInphase = timeAfterExcitation.copy()
+        timeRelativeInphase = self.timeAfterExcitation.copy()
         if not isGradientEcho(self.sequence):
             spin_echoes = np.expand_dims(spin_echoes, axis=[dim for dim in range(len(self.matrix)) if dim != self.phaseDir])
             timeRelativeInphase -= spin_echoes # for spinecho, subtract Hahn echo position from timeAfterExcitation
         
         self.kspaceComps = {}
         for tissue in self.tissues:
-            T2w = getT2w(tissue, timeAfterExcitation, timeRelativeInphase, self.fieldStrength)
+            T2w = getT2w(tissue, self.timeAfterExcitation, timeRelativeInphase, self.fieldStrength)
             if TISSUES[tissue]['FF'] == .00:
                 self.kspaceComps[tissue] = self.plainKspaceComps[tissue] * T2w
             else: # fat containing tissues
                 self.kspaceComps[tissue + 'Water'] = self.plainKspaceComps[tissue] * T2w
                 for component, resonance in FATRESONANCES.items():
-                    T2w = getT2w(component, timeAfterExcitation, timeRelativeInphase, self.fieldStrength)
+                    T2w = getT2w(component, self.timeAfterExcitation, timeRelativeInphase, self.fieldStrength)
                     dephasing = np.exp(2j*np.pi * constants.GYRO * self.fieldStrength * resonance['shift'] * timeRelativeInphase * 1e-3)
                     self.kspaceComps[tissue + component] = self.plainKspaceComps[tissue] * dephasing * T2w
             if tissue==self.phantom['referenceTissue']:
@@ -1509,6 +1509,7 @@ class MRIsimulator(param.Parameterized):
                 self.measuredkspace += self.kspaceComps[component] * self.PDandT1w[tissue] * ratio
         self.updateSNR(self.decayedSignal * np.abs(self.PDandT1w[self.phantom['referenceTissue']]))
         self.updateScantime()
+        add_to_pipeline(self.sequencePlotPipeline, ['renderSignalBoard'])
 
 
     def partialFourierRecon(self):
@@ -1792,6 +1793,22 @@ class MRIsimulator(param.Parameterized):
         add_to_pipeline(self.sequencePlotPipeline, ['renderSliceBoard'])
     
 
+    def addSignals(self):
+        self.boards['signal']['objects']['signals'] = []
+        scale = 1/np.max(np.abs(np.real(self.measuredkspace)))
+        signalExponent = .5
+        shot = 0 # TODO:  choose which shot to display
+        for rf_echo in range(self.turboFactor):
+            signals = []
+            for gr_echo in range(self.EPIfactor):
+                ky = self.pe_table[shot][rf_echo][gr_echo]
+                waveform = np.real(np.take(self.measuredkspace, indices=ky, axis=self.phaseDir))
+                t = np.take(self.timeAfterExcitation, indices=ky, axis=self.phaseDir)
+                signal = sequence.getSignal(waveform, t, scale, signalExponent, name='sampling r{} g{}'.format(rf_echo, gr_echo))
+                signals.append(signal)
+            self.boards['signal']['objects']['signals'].append(signals)
+    
+
     def update_k_line_coords(self, attr, old, hoverIndex):
         if len(hoverIndex['index']) > 0:
             object = self.boards[hoverIndex['board'][0]]['object_list'][hoverIndex['index'][0]]
@@ -1842,6 +1859,7 @@ class MRIsimulator(param.Parameterized):
         
 
     def renderSignalBoard(self):
+        self.addSignals()
         self.renderPolygons('signal')
         adc_objects = flatten_dicts(self.boards['ADC']['objects'].values())
         self.boardPlots['signal']['ADC'] = hv.Rectangles([(obj['time'][0], -100., obj['time'][-1], 100.) for obj in adc_objects])
