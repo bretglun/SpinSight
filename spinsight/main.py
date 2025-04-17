@@ -1570,7 +1570,7 @@ class MRIsimulator(param.Parameterized):
         self.boards['RF']['objects']['refocusing'] = []
         if not isGradientEcho(self.sequence):
             for rf_echo in range(self.turboFactor):
-                self.boards['RF']['objects']['refocusing'].append(sequence.getRF(flipAngle=180., dur=3., shape='hammingSinc',  name='refocusing {}'.format(rf_echo)))
+                self.boards['RF']['objects']['refocusing'].append(sequence.getRF(flipAngle=180., dur=3., shape='hammingSinc',  name='refocusing {}'.format(rf_echo+1 if self.turboFactor>1 else '')))
             add_to_pipeline(self.sequencePipeline, ['placeRefocusing'])
         add_to_pipeline(self.sequencePipeline, ['setupSliceSelection', 'updateMinTE', 'updateMatrixPbounds', 'updateFOVPbounds', 'updateSliceThicknessBounds'])
         add_to_pipeline(self.sequencePlotPipeline, ['renderRFBoard'])
@@ -1646,9 +1646,13 @@ class MRIsimulator(param.Parameterized):
             gr_echoes = []
             samplings = []
             for gr_echo in range(self.EPIfactor):
-                readout = sequence.getGradient('frequency', maxAmp=amp, flatArea=flatArea, name='readout r{} g{}'.format(rf_echo, gr_echo))
+                suffix = ' {}{}{}'.format(
+                    rf_echo+1 if self.turboFactor>1 else '', 
+                    '.' if (self.turboFactor>1 and self.EPIfactor>1) else '',
+                    gr_echo+1 if self.EPIfactor>1 else '')
+                readout = sequence.getGradient('frequency', maxAmp=amp, flatArea=flatArea, name='readout'+suffix)
                 gr_echoes.append(readout)
-                adc = sequence.getADC(dur=readout['flatDur_f'], name='sampling r{} g{}'.format(rf_echo, gr_echo))
+                adc = sequence.getADC(dur=readout['flatDur_f'], name='sampling'+suffix)
                 samplings.append(adc)
             self.boards['frequency']['objects']['readouts'].append(gr_echoes)
             self.boards['ADC']['objects']['samplings'].append(samplings)
@@ -1686,17 +1690,18 @@ class MRIsimulator(param.Parameterized):
 
         for rf_echo in range(self.turboFactor):
             phaserArea = maxPhaserArea + self.pe_table[shot][rf_echo][0] * phase_step_area
-            phaser = sequence.getGradient('phase', totalArea=phaserArea, name='phase encode r{}'.format(rf_echo))
+            suffix = ' {}'.format(rf_echo+1) if self.turboFactor>1 else ''
+            phaser = sequence.getGradient('phase', totalArea=phaserArea, name='phase encode'+suffix)
             self.boards['phase']['objects']['phasers'].append(phaser)
             rephaserArea = -phaserArea
             blips = []
             for gr_echo in range(1, self.EPIfactor):
                 blipArea = phase_step_area * (self.pe_table[shot][rf_echo][gr_echo]-self.pe_table[shot][rf_echo][gr_echo-1])
-                blip = sequence.getGradient('phase', totalArea=blipArea, name='blip r{} g{}'.format(rf_echo, gr_echo))
+                blip = sequence.getGradient('phase', totalArea=blipArea, name='blip')
                 blips.append(blip)
                 rephaserArea -= blipArea
             self.boards['phase']['objects']['blips'].append(blips)
-            rephaser = sequence.getGradient('phase', totalArea=rephaserArea, name='rephaser r{}'.format(rf_echo))
+            rephaser = sequence.getGradient('phase', totalArea=rephaserArea, name='rephaser'+suffix)
             self.boards['phase']['objects']['rephasers'].append(rephaser)
         add_to_pipeline(self.sequencePipeline, ['placePhasers', 'updateMinTE', 'updateBWbounds'])
     
@@ -1804,7 +1809,7 @@ class MRIsimulator(param.Parameterized):
                 ky = self.pe_table[shot][rf_echo][gr_echo]
                 waveform = np.real(np.take(self.measuredkspace, indices=ky, axis=self.phaseDir))
                 t = np.take(self.timeAfterExcitation, indices=ky, axis=self.phaseDir)
-                signal = sequence.getSignal(waveform, t, scale, signalExponent, name='sampling r{} g{}'.format(rf_echo, gr_echo))
+                signal = sequence.getSignal(waveform, t, scale, signalExponent)
                 signals.append(signal)
             self.boards['signal']['objects']['signals'].append(signals)
     
@@ -1945,7 +1950,8 @@ class MRIsimulator(param.Parameterized):
                 coords={'kx': self.kAxes[1], 'ky': self.kAxes[0]}
             )
         ksp.kx.attrs['units'] = ksp.ky.attrs['units'] = '1/mm'
-        self.kspaceimage = hv.Image(ksp, vdims=['magnitude']).opts(xlim=(-.42,.42), ylim=(-.42,.42))
+        lim = 1.12 * max(self.kAxes[1])
+        self.kspaceimage = hv.Image(ksp, vdims=['magnitude']).opts(xlim=(-lim,lim), ylim=(-lim,lim))
         return self.kspaceimage
 
 
