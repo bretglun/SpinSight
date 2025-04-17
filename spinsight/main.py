@@ -407,14 +407,14 @@ class MRIsimulator(param.Parameterized):
                         'slice': {'dim': hv.Dimension('slice', label='G slice', unit='mT/m', range=(-30, 30)), 'color': 'cadetblue'}, 
                         'RF': {'dim': hv.Dimension('RF', label='RF', unit='μT', range=(-5, 25)), 'color': 'red'},
                         'signal': {'dim': hv.Dimension('signal', label='signal', unit='a.u.', range=(-1, 1)), 'color': 'orange'},
-                        'ADC': {'dim': hv.Dimension('ADC', label='ADC', unit=''), 'color': 'orange'} }
+                        'ADC': {'dim': hv.Dimension('ADC', label='ADC', unit=''), 'color': 'peru'} }
         
         self.boardPlots = {board: {'hline': hv.HLine(0.0, kdims=[self.timeDim, self.boards[board]['dim']]).opts(tools=['xwheel_zoom', 'xpan', 'reset'], default_tools=[], active_tools=['xwheel_zoom', 'xpan'])} for board in self.boards if board != 'ADC'}
 
         hv.opts.defaults(hv.opts.Image(width=500, height=500, invert_yaxis=False, toolbar='below', cmap='gray', aspect='equal'))
         hv.opts.defaults(hv.opts.HLine(line_width=1.5, line_color='gray'))
         hv.opts.defaults(hv.opts.VSpan(color='orange', fill_alpha=.1, hover_fill_alpha=.8, default_tools=[]))
-        hv.opts.defaults(hv.opts.Rectangles(color='orange', line_color='orange', fill_alpha=.1, line_alpha=.5, hover_fill_alpha=.8, default_tools=[]))
+        hv.opts.defaults(hv.opts.Rectangles(color=self.boards['ADC']['color'], line_color=self.boards['ADC']['color'], fill_alpha=.1, line_alpha=.3, hover_fill_alpha=.8, default_tools=[]))
         hv.opts.defaults(hv.opts.Box(line_width=3))
         hv.opts.defaults(hv.opts.Area(fill_alpha=.5, line_width=1.5, line_color='gray', default_tools=[]))
         hv.opts.defaults(hv.opts.Polygons(line_width=1.5, fill_alpha=0, line_alpha=0, line_color='gray', selection_line_color='black', hover_fill_alpha=.8, hover_line_alpha=1, selection_fill_alpha=.8, selection_line_alpha=1, nonselection_line_alpha=0, default_tools=[]))
@@ -1817,21 +1817,37 @@ class MRIsimulator(param.Parameterized):
             self.kLine.event(coords=[None])
     
     
-    def renderPolygons(self, board):
+    def getHoverTool(self, board, obj):
+        attributes = [attr for attr in obj.keys() if attr not in ['time', board] and '_f' not in attr]
+        if board in ['frequency', 'phase', 'RF', 'ADC']:
+            with open(Path(__file__).parent / 'hoverCallback.js', 'r') as file:
+                hoverCallback = CustomJS(args={'hoverIndex': self.hoverIndex, 'board': board}, code=file.read())
+        else:
+            hoverCallback = None
+        hover = HoverTool(tooltips=[(attr, '@{}'.format(attr)) for attr in attributes], attachment='below', callback=hoverCallback)
+        return hover, attributes
+    
+
+    def renderPolygons(self, board, hoverTool=True):
         if self.boards[board]['objects']:
             object_list = flatten_dicts(self.boards[board]['objects'].values())
             self.boards[board]['object_list'] = object_list
             self.boardPlots[board]['area'] = hv.Area(sequence.accumulateWaveforms(object_list, board), self.timeDim, self.boards[board]['dim']).opts(color=self.boards[board]['color'])
-            attributes = [attr for attr in object_list[0].keys() if attr not in ['time', board] and '_f' not in attr]
-            if board in ['frequency', 'phase', 'RF', 'signal']:
-                with open(Path(__file__).parent / 'hoverCallback.js', 'r') as file:
-                    hoverCallback = CustomJS(args={'hoverIndex': self.hoverIndex, 'board': board}, code=file.read())
-            else:
-                hoverCallback = None
-            hover = HoverTool(tooltips=[(attr, '@{}'.format(attr)) for attr in attributes], attachment='below', callback=hoverCallback)
-            self.boardPlots[board]['polygons'] = hv.Polygons(object_list, kdims=[self.timeDim, self.boards[board]['dim']], vdims=attributes).opts(tools=[hover], cmap=[self.boards[board]['color']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=(-19000, 19000))])
+            hover, attributes = self.getHoverTool(board, object_list[0])
+            tools = [hover] if hoverTool else []
+            self.boardPlots[board]['polygons'] = hv.Polygons(object_list, kdims=[self.timeDim, self.boards[board]['dim']], vdims=attributes).opts(tools=tools, cmap=[self.boards[board]['color']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=(-19000, 19000))])
     
     
+    def renderADCrectangles(self, hoverTool=True):
+        object_list = flatten_dicts(self.boards['ADC']['objects'].values())
+        self.boards['ADC']['object_list'] = object_list
+        hover, attributes = self.getHoverTool('ADC', object_list[0])
+        tools = [hover] if hoverTool else []
+        for obj in object_list:
+            obj.update({'c1': obj['time'][0], 'c2': -2, 'c3': obj['time'][-1], 'c4': 2})
+        self.boardPlots['signal']['ADC'] = hv.Rectangles(object_list, kdims=['c1', 'c2', 'c3', 'c4'], vdims=attributes).opts(tools=tools)
+    
+
     def renderTRspan(self):
         t0 = self.getSeqStart()
         for board in ['frequency', 'phase', 'slice', 'RF', 'signal']:
@@ -1840,29 +1856,28 @@ class MRIsimulator(param.Parameterized):
     
 
     def renderFrequencyBoard(self):
-        self.renderPolygons('frequency')
+        self.renderPolygons('frequency', hoverTool=True)
         add_to_pipeline(self.sequencePlotPipeline, ['calculate_k_trajectory'])
     
 
     def renderPhaseBoard(self):
-        self.renderPolygons('phase')
+        self.renderPolygons('phase', hoverTool=True)
         add_to_pipeline(self.sequencePlotPipeline, ['calculate_k_trajectory'])
     
 
     def renderSliceBoard(self):
-        self.renderPolygons('slice')
+        self.renderPolygons('slice', hoverTool=True)
 
 
     def renderRFBoard(self):
-        self.renderPolygons('RF')
+        self.renderPolygons('RF', hoverTool=True)
         add_to_pipeline(self.sequencePlotPipeline, ['calculate_k_trajectory'])
         
 
     def renderSignalBoard(self):
         self.addSignals()
-        self.renderPolygons('signal')
-        adc_objects = flatten_dicts(self.boards['ADC']['objects'].values())
-        self.boardPlots['signal']['ADC'] = hv.Rectangles([(obj['time'][0], -100., obj['time'][-1], 100.) for obj in adc_objects])
+        self.renderPolygons('signal', hoverTool=False)
+        self.renderADCrectangles(hoverTool=True)
         add_to_pipeline(self.sequencePlotPipeline, ['calculate_k_trajectory'])
     
     
@@ -1930,7 +1945,7 @@ class MRIsimulator(param.Parameterized):
                 coords={'kx': self.kAxes[1], 'ky': self.kAxes[0]}
             )
         ksp.kx.attrs['units'] = ksp.ky.attrs['units'] = '1/mm'
-        self.kspaceimage = hv.Image(ksp, vdims=['magnitude'])
+        self.kspaceimage = hv.Image(ksp, vdims=['magnitude']).opts(xlim=(-.42,.42), ylim=(-.42,.42))
         return self.kspaceimage
 
 

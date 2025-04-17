@@ -148,7 +148,9 @@ def getADC(dur, name, time=0.):
     adc = {
         'name': name,
         'time': np.array([-dur/2, dur/2]) + time,
+        'center': '{:.2f} ms'.format(time),
         'center_f': time,
+        'duration': '{:.1f} ms'.format(dur),
         'dur_f': dur
     }
     return adc
