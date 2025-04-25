@@ -1025,7 +1025,7 @@ class MRIsimulator(param.Parameterized):
             for _ in range(2): # update readout gap after first pass
                 if (M > 1):
                     # max wrt G slice or G phase:
-                    q = t - max(self.boards['phase']['objects']['phasers'][0]['dur_f'],
+                    q = t - max(self.maxPhaserDuration,
                                 self.boards['slice']['objects']['slice select excitation']['riseTime_f'] + self.boards['slice']['objects']['slice select rephaser']['dur_f'])
                     A = d*s*(q - N*(d+v) + v/2) / (M-1) # eq. 15
                     maxReadoutAreas.append(A)
@@ -1121,8 +1121,7 @@ class MRIsimulator(param.Parameterized):
                 max_readtrain_spacing = max([self.get_readtrain_spacing_linear_order(reverse) for reverse in [True, False]])
             idle_space = max_readtrain_spacing - self.boards['RF']['objects']['refocusing'][0]['dur_f']
             # max limit imposed by phaser:
-            maxPhaserDuration = max([phaser['dur_f'] for phaser in self.boards['phase']['objects']['phasers']])
-            maxReadDurations.append((idle_space - 2 * maxPhaserDuration - self.max_blip_dur * (self.EPIfactor-1))/self.EPIfactor)
+            maxReadDurations.append((idle_space - 2 * self.maxPhaserDuration - self.max_blip_dur * (self.EPIfactor-1))/self.EPIfactor)
             # tr is half the maximum readout gradient duration
             tr = ((idle_space) / self.EPIfactor) / 2
             # max limit imposed by readout rise time:
@@ -1679,6 +1678,9 @@ class MRIsimulator(param.Parameterized):
         phase_step_area = 1e3 / (acq_FOVP * constants.GYRO) # uTs/m
         maxPhaserArea = np.min(self.kAxes[self.phaseDir]) * 1e3 / constants.GYRO   # uTs/m
         
+        maxPhaser = sequence.getGradient('phase', totalArea=maxPhaserArea)
+        self.maxPhaserDuration = maxPhaser['dur_f']
+
         self.max_blip_dur = 0
         if (self.EPIfactor > 1):
             max_blip_area = phase_step_area * self.num_shots * self.turboFactor
@@ -1690,8 +1692,6 @@ class MRIsimulator(param.Parameterized):
        
         self.set_readtrain_spacing()
         self.setup_phase_encoding_table()
-
-        # TODO: create phasers for all shots to enable correct timing calculations
 
         self.boards['phase']['objects']['phasers'] = []
         self.boards['phase']['objects']['rephasers'] = []
