@@ -132,7 +132,7 @@ def getGradientArea(g, t):
 def moveWaveform(wf, time):
     oldTime = wf['center_f']
     wf['time'] += time - oldTime
-    wf['center'] = '{:.2f} ms'.format(time)
+    wf['center'] = '{:.1f} ms'.format(time)
     wf['center_f'] = time
 
 
@@ -141,14 +141,14 @@ def rescaleGradient(g, scale):
         if dir in g:
             g[dir] *= scale
     g['area_f'] *= scale
-    g['area'] = '{:.2f} μTs/m'.format(g['area_f']),
+    g['area'] = '{:.1f} μTs/m'.format(g['area_f']),
 
 
 def getADC(dur, name, time=0.):
     adc = {
         'name': name,
         'time': np.array([-dur/2, dur/2]) + time,
-        'center': '{:.2f} ms'.format(time),
+        'center': '{:.1f} ms'.format(time),
         'center_f': time,
         'duration': '{:.1f} ms'.format(dur),
         'dur_f': dur
