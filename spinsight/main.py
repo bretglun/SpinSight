@@ -1678,8 +1678,7 @@ class MRIsimulator(param.Parameterized):
         phase_step_area = 1e3 / (acq_FOVP * constants.GYRO) # uTs/m
         maxPhaserArea = np.min(self.kAxes[self.phaseDir]) * 1e3 / constants.GYRO   # uTs/m
         
-        maxPhaser = sequence.getGradient('phase', totalArea=maxPhaserArea)
-        self.maxPhaserDuration = maxPhaser['dur_f']
+        self.maxPhaserDuration = sequence.getGradient('phase', totalArea=maxPhaserArea)['dur_f']
 
         self.max_blip_dur = 0
         if (self.EPIfactor > 1):
@@ -1700,7 +1699,8 @@ class MRIsimulator(param.Parameterized):
         for rf_echo in range(self.turboFactor):
             phaserArea = maxPhaserArea + self.pe_table[self.shot-1][rf_echo][0] * phase_step_area
             suffix = ' {}'.format(rf_echo+1) if self.turboFactor>1 else ''
-            phaser = sequence.getGradient('phase', totalArea=phaserArea, name='phase encode'+suffix)
+            phaser = sequence.getGradient('phase', totalArea=maxPhaserArea, name='phase encode'+suffix)
+            sequence.rescaleGradient(phaser, phaserArea/maxPhaserArea)
             self.boards['phase']['objects']['phasers'].append(phaser)
             rephaserArea = -phaserArea
             blips = []
@@ -1710,7 +1710,8 @@ class MRIsimulator(param.Parameterized):
                 blips.append(blip)
                 rephaserArea -= blipArea
             self.boards['phase']['objects']['blips'].append(blips)
-            rephaser = sequence.getGradient('phase', totalArea=rephaserArea, name='rephaser'+suffix)
+            rephaser = sequence.getGradient('phase', totalArea=maxPhaserArea, name='rephaser'+suffix)
+            sequence.rescaleGradient(rephaser, rephaserArea/maxPhaserArea)
             self.boards['phase']['objects']['rephasers'].append(rephaser)
         add_to_pipeline(self.sequencePipeline, ['placePhasers', 'updateMinTE', 'updateBWbounds'])
     
