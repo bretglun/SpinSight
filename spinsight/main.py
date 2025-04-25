@@ -366,6 +366,7 @@ class MRIsimulator(param.Parameterized):
     partialFourier = param.Number(default=1, step=0.01, precedence=5, label='Partial Fourier factor')
     turboFactor = param.Integer(default=1, precedence=6, label='Turbo factor')
     EPIfactor = param.Selector(default=1, precedence=7, label='EPI factor')
+    shot = param.Integer(default=1, label='Displayed shot')
     
     showFOV = param.Boolean(default=False, label='Show FOV')
     noiseGain = param.Number(default=3.)
@@ -521,6 +522,7 @@ class MRIsimulator(param.Parameterized):
         self.param.partialFourier.bounds=(.6, 1)
         self.param.turboFactor.bounds=(1, 64)
         self.param.EPIfactor.objects=EPIfactorValues
+        self.param.shot.bounds=(1, 1)
         self.param.kspaceExponent.bounds=(0.1, 1)
         self.param.apodizationAlpha.bounds=(.01, 1)
 
@@ -818,6 +820,12 @@ class MRIsimulator(param.Parameterized):
         add_to_pipeline(self.reconPipeline, ['partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
         add_to_pipeline(self.sequencePipeline, ['setupReadouts', 'setupPhasers', 'updateMinTE', 'updateMinTR', 'updateMaxTE', 'updateMaxTI', 'updateBWbounds', 'updateMatrixFbounds', 'updateMatrixPbounds', 'updateFOVFbounds',  'updateFOVPbounds', 'updateSliceThicknessBounds', 'updateTurboFactorBounds'])
         self.updateTurboFactorBounds()
+    
+
+    @param.depends('shot', watch=True)
+    def _watch_shot(self):
+        add_to_pipeline(self.sequencePipeline, ['setupPhasers'])
+        add_to_pipeline(self.sequencePlotPipeline, ['renderSignalBoard'])
     
 
     @param.depends('sequence', watch=True)
@@ -1404,6 +1412,8 @@ class MRIsimulator(param.Parameterized):
         else:
             self.num_sym_segm = int(np.round((num_sym_lines / self.num_shots - 1) / 2)) * 2 + 1
             self.central_segments = [self.num_segm - self.num_sym_segm//2 - 1]
+        self.param.shot.bounds=(1, self.num_shots)
+        self.shot = min(self.shot, self.num_shots)
     
 
     def sampleKspace(self):
@@ -1682,21 +1692,20 @@ class MRIsimulator(param.Parameterized):
         self.setup_phase_encoding_table()
 
         # TODO: create phasers for all shots to enable correct timing calculations
-        shot = 0 # TODO: enable selection of shot to show
 
         self.boards['phase']['objects']['phasers'] = []
         self.boards['phase']['objects']['rephasers'] = []
         self.boards['phase']['objects']['blips'] = []
 
         for rf_echo in range(self.turboFactor):
-            phaserArea = maxPhaserArea + self.pe_table[shot][rf_echo][0] * phase_step_area
+            phaserArea = maxPhaserArea + self.pe_table[self.shot-1][rf_echo][0] * phase_step_area
             suffix = ' {}'.format(rf_echo+1) if self.turboFactor>1 else ''
             phaser = sequence.getGradient('phase', totalArea=phaserArea, name='phase encode'+suffix)
             self.boards['phase']['objects']['phasers'].append(phaser)
             rephaserArea = -phaserArea
             blips = []
             for gr_echo in range(1, self.EPIfactor):
-                blipArea = phase_step_area * (self.pe_table[shot][rf_echo][gr_echo]-self.pe_table[shot][rf_echo][gr_echo-1])
+                blipArea = phase_step_area * (self.pe_table[self.shot-1][rf_echo][gr_echo]-self.pe_table[self.shot-1][rf_echo][gr_echo-1])
                 blip = sequence.getGradient('phase', totalArea=blipArea, name='blip')
                 blips.append(blip)
                 rephaserArea -= blipArea
@@ -1802,11 +1811,10 @@ class MRIsimulator(param.Parameterized):
         self.boards['signal']['objects']['signals'] = []
         scale = 1/np.max(np.abs(np.real(self.measuredkspace)))
         signalExponent = .5
-        shot = 0 # TODO:  choose which shot to display
         for rf_echo in range(self.turboFactor):
             signals = []
             for gr_echo in range(self.EPIfactor):
-                ky = self.pe_table[shot][rf_echo][gr_echo]
+                ky = self.pe_table[self.shot-1][rf_echo][gr_echo]
                 waveform = np.real(np.take(self.measuredkspace, indices=ky, axis=self.phaseDir))
                 t = np.take(self.timeAfterExcitation, indices=ky, axis=self.phaseDir)
                 signal = sequence.getSignal(waveform, t, scale, signalExponent)
@@ -1918,7 +1926,7 @@ class MRIsimulator(param.Parameterized):
         self.k_trajectory = {'kx': kx, 'ky': ky, 't': t, 'dt': dt}
     
 
-    @param.depends('sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'partialFourier', 'turboFactor', 'EPIfactor')
+    @param.depends('sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'partialFourier', 'turboFactor', 'EPIfactor', 'shot')
     def getSequencePlot(self):
         self.runSequencePlotPipeline()
         last = len(self.boardPlots)-1
@@ -2033,7 +2041,7 @@ def getApp(darkMode=True, settingsFilestem=''):
                            pn.Row(simulator.param.showProcessedKspace, simulator.param.kspaceExponent), 
                            visible=False)
     dmapMRimage = hv.DynamicMap(simulator.getImage)
-    dmapSequence = pn.Row(hv.DynamicMap(simulator.getSequencePlot), visible=False)
+    dmapSequence = pn.Column(hv.DynamicMap(simulator.getSequencePlot), simulator.param.shot, visible=False)
     loadButton = pn.widgets.Button(name='Load settings', visible=settingsFile.is_file())
     loadButton.on_click(partial(loadButtonCallback, simulator, settingsFile))
     saveButton = pn.widgets.Button(name='Save settings', visible=settingsFile.is_file())
