@@ -290,6 +290,23 @@ typing-extensions = {version = ">=4.6.0", markers = "python_version < \"3.13\""}
 test = ["pytest (>=6)"]
 
 [[package]]
+name = "finufft"
+version = "2.3.1"
+description = "Python interface to FINUFFT"
+optional = false
+python-versions = ">=3.8"
+files = [
+    {file = "finufft-2.3.1-py3-none-macosx_13_0_arm64.whl", hash = "sha256:0ea7ac30c046625b0a46bc4d8d71b09dd936483cce0eb417c30e075913111f59"},
+    {file = "finufft-2.3.1-py3-none-macosx_13_0_x86_64.whl", hash = "sha256:438ccca7e384800bc379510a9d539a77843fbe84c04030b64719807e59236bd6"},
+    {file = "finufft-2.3.1-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:fd2dc98d5962e82cb2b67d2cfa3bdc29d67088936cb7c0a8babf0172e3f91f3e"},
+    {file = "finufft-2.3.1-py3-none-win_amd64.whl", hash = "sha256:083a43fa98cd2cea626d0f003c2e316db8eb4403838e5f262c020a4e2f992f22"},
+    {file = "finufft-2.3.1.tar.gz", hash = "sha256:9f205b959f6f24751c8fd0ccf2a7af8515a5d5f69d5d66dadf4952aa52728e10"},
+]
+
+[package.dependencies]
+numpy = ">=1.12.0"
+
+[[package]]
 name = "holoviews"
 version = "1.20.2"
 description = "A high-level plotting API for the PyData ecosystem built on HoloViews."
@@ -1280,4 +1297,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<3.13"
-content-hash = "cd9c86156f6825d5d31a06151b8e2f2a55dd75f951c65744d2adc898775a82da"
+content-hash = "2f50894445c103e2c1beb640f22e9f42e03815dde583295120ac2807f717956d"

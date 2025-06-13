@@ -4,6 +4,7 @@ import panel as pn
 import param
 import numpy as np
 import math
+import finufft
 import xml.etree.ElementTree as ET
 from pathlib import Path
 import toml
@@ -189,12 +190,22 @@ def kspacePolygon(poly, k):
     return ksp
 
 
-def resampleKspace(phantom, kAxes):
+def resampleKspaceCartesian(phantom, kAxes):
     kspace = {tissue: phantom['kspace'][tissue] for tissue in phantom['kspace']}
     for dim in range(len(kAxes)):
         sinc = np.sinc((np.tile(kAxes[dim], (len(phantom['kAxes'][dim]), 1)) - np.tile(phantom['kAxes'][dim][:, np.newaxis], (1, len(kAxes[dim])))) * phantom['FOV'][dim])
         for tissue in phantom['kspace']:
             kspace[tissue] = np.moveaxis(np.tensordot(kspace[tissue], sinc, axes=(dim, 0)), -1, dim)
+    return kspace
+
+
+def resampleKspace(phantom, kSamples):
+    kspace = {}
+    for tissue in phantom['kspace']:
+        img = np.fft.fftshift(np.fft.ifft2(np.fft.ifftshift(phantom['kspace'][tissue])))
+        kx = kSamples[..., 0].flatten() * 2 * np.pi * phantom['FOV'][0] / phantom['matrix'][0]
+        ky = kSamples[..., 1].flatten() * 2 * np.pi * phantom['FOV'][1] / phantom['matrix'][1]
+        kspace[tissue] = finufft.nufft2d2(kx, ky, img).reshape(kSamples.shape[:-1])
     return kspace
 
 
