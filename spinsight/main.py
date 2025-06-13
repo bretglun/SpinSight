@@ -53,6 +53,8 @@ PHANTOMS = {
 
 DIRECTIONS = {'anterior-posterior': 0, 'left-right': 1}
 
+TRAJECTORIES = ['Cartesian', 'Radial']
+
 
 def pixelBW2shift(pixelBW, B0=1.5):
     ''' Get fat/water chemical shift [pixels] from pixel bandwidth [Hz/pixel] and B0 [T]'''
@@ -355,6 +357,7 @@ class MRIsimulator(param.Parameterized):
     FA = param.Number(default=90.0, precedence=-1, label='Flip angle [°]')
     TI = param.Selector(default=40, precedence=-1, label='TI [msec]')
     
+    trajectory = param.ObjectSelector(default=TRAJECTORIES[0], precedence=1, label='k-space trajectory')
     frequencyDirection = param.ObjectSelector(default=list(DIRECTIONS.keys())[0], precedence=1, label='Frequency encoding direction')
     FOVP = param.Number(default=240, precedence=2, label='FOV x [mm]')
     FOVF = param.Number(default=240, precedence=2, label='FOV y [mm]')
@@ -519,6 +522,7 @@ class MRIsimulator(param.Parameterized):
         self.param.FA.bounds=(1, 90.0)
         self.param.TI.objects=TIvalues
         self.param.frequencyDirection.objects=DIRECTIONS.keys()
+        self.param.trajectory.objects=TRAJECTORIES
         self.param.FOVP.bounds=(100, 600)
         self.param.FOVF.bounds=(100, 600)
         self.param.phaseOversampling.bounds=(0, 100)
@@ -769,6 +773,26 @@ class MRIsimulator(param.Parameterized):
                 p.label = p.label.replace(' y', ' x')
         self.setup_frequency_encoding() # frequency oversampling is adapted to phantom FOV for efficiency
         self.setup_phase_encoding() # frequency oversampling is adapted to phantom FOV for efficiency
+        add_to_pipeline(self.sequencePlotPipeline, ['calculate_k_trajectory'])
+    
+
+    @param.depends('trajectory', watch=True)
+    def _watch_trajectory(self):
+        add_to_pipeline(self.acquisitionPipeline, ['sampleKspace', 'updateSamplingTime', 'modulateKspace', 'simulateNoise', 'compileKspace'])
+        add_to_pipeline(self.reconPipeline, ['partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
+        match(self.trajectory):
+            case 'Cartesian':
+                self.param.matrixF.label = 'Acquisition matrix {}'.format('y' if self.frequencyDirection=='anterior-posterior' else 'x')
+                self.param.matrixP.label = 'Acquisition matrix {}'.format('x' if self.frequencyDirection=='anterior-posterior' else 'y')
+                self.param.frequencyDirection.precedence = 1
+                self.param.phaseOversampling.precedence = 3
+            case 'Radial':
+                self.param.matrixF.label = 'Acquisition matrix radial'
+                self.param.matrixP.label = 'Number of spokes'
+                self.param.frequencyDirection.precedence = -1
+                self.param.phaseOversampling.precedence = -3
+        self.setup_frequency_encoding()
+        self.setup_phase_encoding()
         add_to_pipeline(self.sequencePlotPipeline, ['calculate_k_trajectory'])
 
 
@@ -1427,7 +1451,11 @@ class MRIsimulator(param.Parameterized):
     
 
     def sampleKspace(self):
-        self.plainKspaceComps = resampleKspace(self.phantom, self.kAxes)
+        if self.trajectory=='Cartesian':
+            self.plainKspaceComps = resampleKspaceCartesian(self.phantom, self.kAxes)
+        else:
+            kSamples = np.array(np.meshgrid(self.kAxes[0], self.kAxes[1])).T # TODO: properly
+            self.plainKspaceComps = resampleKspace(self.phantom, kSamples)
         
         # Lorenzian line shape to mimic slice thickness
         blurFactor = .5
@@ -1532,15 +1560,19 @@ class MRIsimulator(param.Parameterized):
         add_to_pipeline(self.sequencePlotPipeline, ['renderSignalBoard'])
 
 
+        self.griddedkspace = self.measuredkspace.copy() # For Cartesian       
+
+
+    
     def partialFourierRecon(self):
         nBlank = self.oversampledMatrix[self.phaseDir] - self.oversampledPartialMatrix
         if (nBlank == 0):
             self.param.homodyne.precedence = -1
-            self.fullkspace = np.copy(self.measuredkspace)
+            self.fullkspace = np.copy(self.griddedkspace)
             return
         self.param.homodyne.precedence = 1
-        shapeUnsampled = tuple(nBlank if dim==self.phaseDir else n for dim, n in enumerate(self.measuredkspace.shape))
-        self.fullkspace = np.append(self.measuredkspace, np.zeros(shapeUnsampled), axis=self.phaseDir) # zerofill
+        shapeUnsampled = tuple(nBlank if dim==self.phaseDir else n for dim, n in enumerate(self.griddedkspace.shape))
+        self.fullkspace = np.append(self.griddedkspace, np.zeros(shapeUnsampled), axis=self.phaseDir) # zerofill
         if self.homodyne:
             self.fullkspace *= homodyneWeights(self.oversampledMatrix[self.phaseDir], nBlank, self.phaseDir) # pre-weighting
             self.fullkspace += np.conjugate(np.flip(self.fullkspace))
@@ -1938,7 +1970,7 @@ class MRIsimulator(param.Parameterized):
         self.k_trajectory = {'kx': kx, 'ky': ky, 't': t, 'dt': dt}
     
 
-    @param.depends('sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'partialFourier', 'turboFactor', 'EPIfactor', 'shot')
+    @param.depends('sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'sliceThickness', 'trajectory', 'frequencyDirection', 'pixelBandWidth', 'partialFourier', 'turboFactor', 'EPIfactor', 'shot')
     def getSequencePlot(self):
         self.runSequencePlotPipeline()
         last = len(self.boardPlots)-1
@@ -1946,7 +1978,7 @@ class MRIsimulator(param.Parameterized):
         return self.seqPlot
     
     
-    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor', 'showProcessedKspace', 'kspaceExponent', 'homodyne', 'doApodize', 'apodizationAlpha', 'doZerofill')
+    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'trajectory', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor', 'showProcessedKspace', 'kspaceExponent', 'homodyne', 'doApodize', 'apodizationAlpha', 'doZerofill')
     def getKspace(self):
         if self.showProcessedKspace:
             self.runReconPipeline()
@@ -1965,7 +1997,7 @@ class MRIsimulator(param.Parameterized):
         else:
             self.runAcquisitionPipeline()
             ksp = xr.DataArray(
-                np.abs(self.measuredkspace)**self.kspaceExponent, 
+                np.abs(self.griddedkspace)**self.kspaceExponent, 
                 dims=('ky', 'kx'),
                 coords={'kx': self.kAxes[1], 'ky': self.kAxes[0]}
             )
@@ -1981,7 +2013,7 @@ class MRIsimulator(param.Parameterized):
         return hv.Box(0, 0, tuple(acqFOV[::-1])).opts(color='lightblue') * hv.Box(0, 0, tuple(self.FOV[::-1])).opts(color='yellow')
 
 
-    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor', 'showFOV', 'homodyne', 'doApodize', 'apodizationAlpha', 'doZerofill')
+    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'trajectory', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor', 'showFOV', 'homodyne', 'doApodize', 'apodizationAlpha', 'doZerofill')
     def getImage(self):
         self.runReconPipeline()
         iAxes = [(np.arange(self.reconMatrix[dim]) - (self.reconMatrix[dim]-1)/2) / self.reconMatrix[dim] * self.FOV[dim] for dim in range(2)]
@@ -2040,7 +2072,7 @@ def getApp(darkMode=True, settingsFilestem=''):
         version = ''
     settingsParams = pn.panel(simulator.param, parameters=['object', 'fieldStrength', 'parameterStyle'], name='Settings')
     contrastParams = pn.panel(simulator.param, parameters=['FatSat', 'TR', 'TE', 'FA', 'TI'], widgets={'TR': pn.widgets.DiscreteSlider, 'TE': pn.widgets.DiscreteSlider, 'TI': pn.widgets.DiscreteSlider}, name='Contrast')
-    geometryParams = pn.panel(simulator.param, parameters=['frequencyDirection', 'FOVF', 'FOVP', 'phaseOversampling', 'voxelF', 'voxelP', 'matrixF', 'matrixP', 'reconVoxelF', 'reconVoxelP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness'], widgets={'matrixF': pn.widgets.DiscreteSlider, 'matrixP': pn.widgets.DiscreteSlider, 'reconMatrixF': pn.widgets.DiscreteSlider, 'reconMatrixP': pn.widgets.DiscreteSlider, 'voxelF': pn.widgets.DiscreteSlider, 'voxelP': pn.widgets.DiscreteSlider, 'reconVoxelF': pn.widgets.DiscreteSlider, 'reconVoxelP': pn.widgets.DiscreteSlider}, name='Geometry')
+    geometryParams = pn.panel(simulator.param, parameters=['trajectory', 'frequencyDirection', 'FOVF', 'FOVP', 'phaseOversampling', 'voxelF', 'voxelP', 'matrixF', 'matrixP', 'reconVoxelF', 'reconVoxelP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness'], widgets={'matrixF': pn.widgets.DiscreteSlider, 'matrixP': pn.widgets.DiscreteSlider, 'reconMatrixF': pn.widgets.DiscreteSlider, 'reconMatrixP': pn.widgets.DiscreteSlider, 'voxelF': pn.widgets.DiscreteSlider, 'voxelP': pn.widgets.DiscreteSlider, 'reconVoxelF': pn.widgets.DiscreteSlider, 'reconVoxelP': pn.widgets.DiscreteSlider}, name='Geometry')
     sequenceParams = pn.panel(simulator.param, parameters=['sequence', 'pixelBandWidth', 'FOVbandwidth', 'FWshift', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor'], widgets={'pixelBandWidth': pn.widgets.DiscreteSlider, 'FOVbandwidth': pn.widgets.DiscreteSlider, 'FWshift': pn.widgets.DiscreteSlider, 'EPIfactor': pn.widgets.DiscreteSlider}, name='Sequence')
     postprocParams = pn.panel(simulator.param, parameters=['homodyne', 'doApodize', 'apodizationAlpha', 'doZerofill'], name='Post-processing')
 
