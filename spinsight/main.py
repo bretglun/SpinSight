@@ -1451,11 +1451,16 @@ class MRIsimulator(param.Parameterized):
     
 
     def sampleKspace(self):
-        if self.trajectory=='Cartesian':
-            self.plainKspaceComps = resampleKspaceCartesian(self.phantom, self.kAxes)
-        else:
-            kSamples = np.array(np.meshgrid(self.kAxes[0], self.kAxes[1])).T # TODO: properly
-            self.plainKspaceComps = resampleKspace(self.phantom, kSamples)
+        match(self.trajectory):
+            case 'Cartesian':
+                self.kSamples = np.array(np.meshgrid(self.kAxes[0], self.kAxes[1])).T
+                self.plainKspaceComps = resampleKspaceCartesian(self.phantom, self.kAxes)
+            case 'Radial':
+                angles = np.linspace(0, np.pi, self.num_shots, endpoint=False)
+                self.kSamples = np.stack((np.outer(self.kAxes[0], np.cos(angles)), 
+                                    np.outer(self.kAxes[0], np.sin(angles))), 
+                                    -1)
+                self.plainKspaceComps = resampleKspace(self.phantom, self.kSamples)
         
         # Lorenzian line shape to mimic slice thickness
         blurFactor = .5
@@ -1559,9 +1564,15 @@ class MRIsimulator(param.Parameterized):
         self.updateScantime()
         add_to_pipeline(self.sequencePlotPipeline, ['renderSignalBoard'])
 
-
-        self.griddedkspace = self.measuredkspace.copy() # For Cartesian       
-
+        # Gridding:
+        match(self.trajectory):
+            case 'Cartesian':
+                self.griddedkspace = self.measuredkspace.copy()
+            case 'Radial':
+                kx = self.kSamples[..., 0].flatten() * 2 * np.pi * self.FOV[0] / self.matrix[0]
+                ky = self.kSamples[..., 1].flatten() * 2 * np.pi * self.FOV[1] / self.matrix[1]
+                img = finufft.nufft2d1(kx, ky, self.measuredkspace.flatten(), (self.oversampledMatrix[0], self.oversampledMatrix[1]))
+                self.griddedkspace = np.fft.fftshift(np.fft.fft2(np.fft.ifftshift(img)))
 
     
     def partialFourierRecon(self):
