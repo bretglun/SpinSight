@@ -4,7 +4,6 @@ import panel as pn
 import param
 import numpy as np
 import math
-import finufft
 import xml.etree.ElementTree as ET
 from pathlib import Path
 import toml
@@ -12,6 +11,7 @@ import re
 import xarray as xr
 from spinsight import constants
 from spinsight import sequence
+from spinsight import gridding
 from bokeh.models import HoverTool, CustomJS, ColumnDataSource
 from functools import partial
 from tqdm import tqdm
@@ -203,11 +203,9 @@ def resampleKspaceCartesian(phantom, kAxes):
 
 def resampleKspace(phantom, kSamples):
     kspace = {}
+    kx, ky = gridding.getKcoords(kSamples, [phantom['FOV'][d]/phantom['matrix'][d] for d in range(2)])
     for tissue in phantom['kspace']:
-        img = np.fft.fftshift(np.fft.ifft2(np.fft.ifftshift(phantom['kspace'][tissue])))
-        kx = kSamples[..., 0].flatten() * 2 * np.pi * phantom['FOV'][0] / phantom['matrix'][0]
-        ky = kSamples[..., 1].flatten() * 2 * np.pi * phantom['FOV'][1] / phantom['matrix'][1]
-        kspace[tissue] = finufft.nufft2d2(kx, ky, img).reshape(kSamples.shape[:-1])
+        kspace[tissue] = gridding.ungrid(phantom['kspace'][tissue], kx, ky, kSamples.shape[:-1])
     return kspace
 
 
@@ -1569,10 +1567,8 @@ class MRIsimulator(param.Parameterized):
             case 'Cartesian':
                 self.griddedkspace = self.measuredkspace.copy()
             case 'Radial':
-                kx = self.kSamples[..., 0].flatten() * 2 * np.pi * self.FOV[0] / self.matrix[0]
-                ky = self.kSamples[..., 1].flatten() * 2 * np.pi * self.FOV[1] / self.matrix[1]
-                img = finufft.nufft2d1(kx, ky, self.measuredkspace.flatten(), (self.oversampledMatrix[0], self.oversampledMatrix[1]))
-                self.griddedkspace = np.fft.fftshift(np.fft.fft2(np.fft.ifftshift(img)))
+                kx, ky = gridding.getKcoords(self.kSamples, [self.FOV[d]/self.matrix[d] for d in range(2)])
+                self.griddedkspace = gridding.grid(self.measuredkspace.flatten(), kx, ky, (self.oversampledMatrix[0], self.oversampledMatrix[1]))
 
     
     def partialFourierRecon(self):
