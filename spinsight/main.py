@@ -1568,7 +1568,9 @@ class MRIsimulator(param.Parameterized):
                 self.griddedkspace = self.measuredkspace.copy()
             case 'Radial':
                 kx, ky = gridding.getKcoords(self.kSamples, [self.FOV[d]/self.matrix[d] for d in range(2)])
-                self.griddedkspace = gridding.grid(self.measuredkspace.flatten(), kx, ky, (self.oversampledMatrix[0], self.oversampledMatrix[1]))
+                gridShape = (self.oversampledMatrix[0], self.oversampledMatrix[1])
+                densityCompensation = gridding.pipeMenon2D(kx, ky, gridShape)
+                self.griddedkspace = gridding.grid(self.measuredkspace.flatten() * densityCompensation, kx, ky, gridShape)
 
     
     def partialFourierRecon(self):
