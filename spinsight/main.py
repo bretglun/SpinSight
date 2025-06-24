@@ -1462,15 +1462,23 @@ class MRIsimulator(param.Parameterized):
             case 'Cartesian':
                 self.num_shots = int(np.ceil(self.matrix[self.phaseDir] * (1 + self.phaseOversampling / 100) * self.partialFourier / self.turboFactor / self.EPIfactor))
             case 'Radial':
-                self.num_shots = int(np.ceil(self.numSpokes / self.turboFactor / self.EPIfactor))
+                self.num_shots = self.numSpokes
         self.num_measured_lines = self.num_shots * self.turboFactor * self.EPIfactor
-        self.oversampledPartialMatrix = self.num_measured_lines # Needs to be modified for parallel imaging
-        # oversampling may be higher than prescribed since num_shots must be integer:
-        self.oversampledMatrix[self.phaseDir] = max(self.oversampledPartialMatrix, int(np.ceil(self.matrix[self.phaseDir] * (1 + self.phaseOversampling / 100))))
-        self.kGridAxes = [getKaxis(self.oversampledMatrix[dim], self.FOV[dim]/self.matrix[dim]) for dim in range(len(self.matrix))]
-        # undersample by partial Fourier:
-        self.kGridAxes[self.phaseDir] = self.kGridAxes[self.phaseDir][:self.oversampledPartialMatrix]
-        assert(len(self.kGridAxes[self.phaseDir]) == self.num_measured_lines)
+        match(self.trajectory):
+            case 'Cartesian':
+                self.oversampledPartialMatrix = self.num_measured_lines # Needs to be modified for parallel imaging
+                # oversampling may be higher than prescribed since num_shots must be integer:
+                self.oversampledMatrix[self.phaseDir] = max(self.oversampledPartialMatrix, int(np.ceil(self.matrix[self.phaseDir] * (1 + self.phaseOversampling / 100))))
+                self.kGridAxes = [getKaxis(self.oversampledMatrix[dim], self.FOV[dim]/self.matrix[dim]) for dim in range(len(self.matrix))]
+                # undersample by partial Fourier:
+                self.kGridAxes[self.phaseDir] = self.kGridAxes[self.phaseDir][:self.oversampledPartialMatrix]
+                assert(len(self.kGridAxes[self.phaseDir]) == self.num_measured_lines)
+            case 'Radial':
+                if hasattr(self, 'phantom') and self.FOV[self.phaseDir] < self.phantom['FOV'][self.phaseDir]:
+                    self.oversampledMatrix[self.phaseDir] = int(np.ceil(self.phantom['FOV'][self.phaseDir] * self.matrix[self.phaseDir] / self.FOV[self.phaseDir]))
+                else:
+                    self.oversampledMatrix[self.phaseDir] = self.matrix[self.phaseDir]
+                self.kGridAxes = [getKaxis(self.oversampledMatrix[dim], self.FOV[dim]/self.matrix[dim]) for dim in range(len(self.matrix))]
 
         self.num_segm = int(self.num_measured_lines / self.num_shots)
         num_sym_lines = 2 * self.num_measured_lines - self.oversampledMatrix[self.phaseDir]
