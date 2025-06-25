@@ -11,7 +11,7 @@ import re
 import xarray as xr
 from spinsight import constants
 from spinsight import sequence
-from spinsight import gridding
+from spinsight import recon
 from bokeh.models import HoverTool, CustomJS, ColumnDataSource
 from functools import partial
 from tqdm import tqdm
@@ -164,16 +164,6 @@ def readSVG(inFile):
     return polygons
 
 
-def getKaxis(matrix, pixelSize, symmetric=True, fftshift=True):
-    kax = np.fft.fftfreq(matrix)
-    if symmetric and not (matrix%2): # half-pixel to make even matrix symmetric
-        kax += 1/(2*matrix)
-    kax /= pixelSize
-    if fftshift:
-        kax = np.fft.fftshift(kax)
-    return kax
-
-
 def kspacePolygon(poly, k):
     # analytical 2D Fourier transform of polygon (see https://cvil.ucsd.edu/wp-content/uploads/2016/09/Realistic-analytical-polyhedral-MRI-phantoms.pdf)
     r = poly['vertices'] # position vectors of vertices Ve
@@ -190,61 +180,6 @@ def kspacePolygon(poly, k):
     notkcenter = np.logical_not(kcenter)
     ksp[notkcenter] *= 1j / (2 * np.pi * np.linalg.norm(k[notkcenter], axis=-1)**2)
     return ksp
-
-
-def resampleKspaceCartesian(phantom, kAxes):
-    kspace = {tissue: phantom['kspace'][tissue] for tissue in phantom['kspace']}
-    for dim in range(len(kAxes)):
-        sinc = np.sinc((np.tile(kAxes[dim], (len(phantom['kAxes'][dim]), 1)) - np.tile(phantom['kAxes'][dim][:, np.newaxis], (1, len(kAxes[dim])))) * phantom['FOV'][dim])
-        for tissue in phantom['kspace']:
-            kspace[tissue] = np.moveaxis(np.tensordot(kspace[tissue], sinc, axes=(dim, 0)), -1, dim)
-    return kspace
-
-
-def resampleKspace(phantom, kSamples):
-    kspace = {}
-    kx, ky = gridding.getKcoords(kSamples, [phantom['FOV'][d]/phantom['matrix'][d] for d in range(2)])
-    for tissue in phantom['kspace']:
-        kspace[tissue] = gridding.ungrid(phantom['kspace'][tissue], kx, ky, kSamples.shape[:-1])
-    return kspace
-
-
-def homodyneWeights(N, nBlank, dim):
-    # create homodyne ramp filter of length N with nBlank unsampled lines
-    W = np.ones((N,))
-    W[nBlank-1:-nBlank+1] = np.linspace(1,0, N-2*(nBlank-1))
-    W[-nBlank:] = 0
-    shape = (N, 1) if dim==0 else (1, N)
-    return W.reshape(shape)
-
-
-def radialTukey(alpha, matrix):
-    kx = np.linspace(-1, 1, matrix[0]+2)[1:-1]
-    ky = np.linspace(-1, 1, matrix[1]+2)[1:-1]
-    kky, kkx = np.meshgrid(ky, kx)
-    k = (1-np.sqrt(kkx**2 + kky**2))/alpha
-    k[k>1] = 1
-    k[k<0] = 0
-    return np.sin(np.pi*k/2)**2
-
-
-def zerofill(kspace, reconMatrix):
-    for dim, n in enumerate(kspace.shape):
-        shape = tuple(reconMatrix[dim] - n if d==0 else 1 for d in range(kspace.ndim))
-        kspace = np.insert(kspace, n-n//2, np.zeros(shape), axis=dim)
-    return kspace
-
-
-def getPixelShiftMatrix(matrix, shift):
-        phase = [np.fft.fftfreq(matrix[dim]) * shift[dim] * 2*np.pi for dim in range(len(matrix))]
-        return np.exp(1j * np.sum(np.stack(np.meshgrid(*phase[::-1])), axis=0))
-
-
-def crop(arr, shape):
-    # Crop array from center according to shape
-    for dim, n in enumerate(arr.shape):
-        arr = arr.take(np.array(range(shape[dim])) + (n-shape[dim])//2, dim)
-    return arr
 
 
 def getT2w(component, timeAfterExcitation, timeRelativeInphase, B0):
@@ -1338,7 +1273,7 @@ class MRIsimulator(param.Parameterized):
     def loadPhantom(self):
         phantomPath = Path(__file__).parent.resolve() / 'phantoms/{p}'.format(p=self.object)
         self.phantom = PHANTOMS[self.object]
-        self.phantom['kAxes'] = [getKaxis(self.phantom['matrix'][dim], self.phantom['FOV'][dim]/self.phantom['matrix'][dim]) for dim in range(len(self.phantom['matrix']))]
+        self.phantom['kAxes'] = [recon.getKaxis(self.phantom['matrix'][dim], self.phantom['FOV'][dim]/self.phantom['matrix'][dim]) for dim in range(len(self.phantom['matrix']))]
 
         npyFiles = list(phantomPath.glob('*.npy'))
         if npyFiles:
@@ -1450,7 +1385,7 @@ class MRIsimulator(param.Parameterized):
         # at least Nyquist sampling wrt phantom if loaded
         if hasattr(self, 'phantom') and self.FOV[self.freqDir] < self.phantom['FOV'][self.freqDir]:
             self.oversampledMatrix[self.freqDir] = int(np.ceil(self.phantom['FOV'][self.freqDir] * self.matrix[self.freqDir] / self.FOV[self.freqDir]))
-        self.kGridAxes[self.freqDir] = getKaxis(self.oversampledMatrix[self.freqDir], self.FOV[self.freqDir]/self.matrix[self.freqDir])
+        self.kGridAxes[self.freqDir] = recon.getKaxis(self.oversampledMatrix[self.freqDir], self.FOV[self.freqDir]/self.matrix[self.freqDir])
     
 
     def setup_phase_encoding(self):
@@ -1469,7 +1404,7 @@ class MRIsimulator(param.Parameterized):
                 self.oversampledPartialMatrix = self.num_measured_lines # Needs to be modified for parallel imaging
                 # oversampling may be higher than prescribed since num_shots must be integer:
                 self.oversampledMatrix[self.phaseDir] = max(self.oversampledPartialMatrix, int(np.ceil(self.matrix[self.phaseDir] * (1 + self.phaseOversampling / 100))))
-                self.kGridAxes = [getKaxis(self.oversampledMatrix[dim], self.FOV[dim]/self.matrix[dim]) for dim in range(len(self.matrix))]
+                self.kGridAxes = [recon.getKaxis(self.oversampledMatrix[dim], self.FOV[dim]/self.matrix[dim]) for dim in range(len(self.matrix))]
                 # undersample by partial Fourier:
                 self.kGridAxes[self.phaseDir] = self.kGridAxes[self.phaseDir][:self.oversampledPartialMatrix]
                 assert(len(self.kGridAxes[self.phaseDir]) == self.num_measured_lines)
@@ -1478,7 +1413,7 @@ class MRIsimulator(param.Parameterized):
                     self.oversampledMatrix[self.phaseDir] = int(np.ceil(self.phantom['FOV'][self.phaseDir] * self.matrix[self.phaseDir] / self.FOV[self.phaseDir]))
                 else:
                     self.oversampledMatrix[self.phaseDir] = self.matrix[self.phaseDir]
-                self.kGridAxes = [getKaxis(self.oversampledMatrix[dim], self.FOV[dim]/self.matrix[dim]) for dim in range(len(self.matrix))]
+                self.kGridAxes = [recon.getKaxis(self.oversampledMatrix[dim], self.FOV[dim]/self.matrix[dim]) for dim in range(len(self.matrix))]
 
         self.num_segm = int(self.num_measured_lines / self.num_shots)
         num_sym_lines = 2 * self.num_measured_lines - self.oversampledMatrix[self.phaseDir]
@@ -1500,14 +1435,14 @@ class MRIsimulator(param.Parameterized):
             case 'Cartesian':
                 self.kReadAxis = self.kGridAxes[self.freqDir]
                 self.kSamples = np.array(np.meshgrid(self.kGridAxes[0], self.kGridAxes[1])).T
-                self.plainKspaceComps = resampleKspaceCartesian(self.phantom, self.kGridAxes)
+                self.plainKspaceComps = recon.resampleKspaceCartesian(self.phantom, self.kGridAxes)
             case 'Radial':
                 angles = np.linspace(0, np.pi, self.num_shots, endpoint=False)
-                self.kReadAxis = getKaxis(int(max(self.matrix)*self.radialFOVoversampling), self.FOV[0]/self.matrix[0]/self.radialResOversampling)
+                self.kReadAxis = recon.getKaxis(int(max(self.matrix)*self.radialFOVoversampling), self.FOV[0]/self.matrix[0]/self.radialResOversampling)
                 self.kSamples = np.stack((np.outer(self.kReadAxis, np.cos(angles)), 
                                     np.outer(self.kReadAxis, np.sin(angles))), 
                                     -1)
-                self.plainKspaceComps = resampleKspace(self.phantom, self.kSamples)
+                self.plainKspaceComps = recon.resampleKspace(self.phantom, self.kSamples)
         
         # Lorenzian line shape to mimic slice thickness
         blurFactor = .5
@@ -1560,7 +1495,7 @@ class MRIsimulator(param.Parameterized):
                     dephasing = np.exp(2j*np.pi * constants.GYRO * self.fieldStrength * resonance['shift'] * timeRelativeInphase * 1e-3)
                     self.kspaceComps[tissue + component] = self.plainKspaceComps[tissue] * dephasing * T2w
             if tissue==self.phantom['referenceTissue']:
-                self.decayedSignal = self.signal * np.take(np.take(T2w, np.argmin(np.abs(self.kGridAxes[self.freqDir])), axis=self.freqDir), np.argmin(np.abs(self.kGridAxes[self.phaseDir])))
+                self.decayedSignal = self.signal * np.take(np.take(T2w, np.argmin(np.abs(self.kGridAxes[self.freqDir])), axis=self.freqDir), np.argmin(np.abs(self.kGridAxes[self.phaseDir]))) # TODO: check for radial
     
     
     def simulateNoise(self):
@@ -1616,10 +1551,10 @@ class MRIsimulator(param.Parameterized):
             case 'Cartesian':
                 self.griddedkspace = self.measuredkspace.copy()
             case 'Radial':
-                kx, ky = gridding.getKcoords(self.kSamples, [self.FOV[d]/self.matrix[d] for d in range(2)])
+                kx, ky = recon.getKcoords(self.kSamples, [self.FOV[d]/self.matrix[d] for d in range(2)])
                 gridShape = (self.oversampledMatrix[0], self.oversampledMatrix[1])
-                densityCompensation = gridding.pipeMenon2D(kx, ky, gridShape, nIter=self.DCiters)
-                self.griddedkspace = gridding.grid(self.measuredkspace.flatten() * densityCompensation, kx, ky, gridShape)
+                densityCompensation = recon.pipeMenon2D(kx, ky, gridShape, nIter=self.DCiters)
+                self.griddedkspace = recon.grid(self.measuredkspace.flatten() * densityCompensation, kx, ky, gridShape)
 
     
     def partialFourierRecon(self):
@@ -1632,7 +1567,7 @@ class MRIsimulator(param.Parameterized):
         shapeUnsampled = tuple(nBlank if dim==self.phaseDir else n for dim, n in enumerate(self.griddedkspace.shape))
         self.fullkspace = np.append(self.griddedkspace, np.zeros(shapeUnsampled), axis=self.phaseDir) # zerofill
         if self.homodyne:
-            self.fullkspace *= homodyneWeights(self.oversampledMatrix[self.phaseDir], nBlank, self.phaseDir) # pre-weighting
+            self.fullkspace *= recon.homodyneWeights(self.oversampledMatrix[self.phaseDir], nBlank, self.phaseDir) # pre-weighting
             self.fullkspace += np.conjugate(np.flip(self.fullkspace))
     
     
@@ -1640,7 +1575,7 @@ class MRIsimulator(param.Parameterized):
         self.apodizedkspace = self.fullkspace.copy()
         if not self.doApodize: 
             return
-        self.apodizedkspace *= radialTukey(self.apodizationAlpha, self.oversampledMatrix)
+        self.apodizedkspace *= recon.radialTukey(self.apodizationAlpha, self.oversampledMatrix)
 
     
     def zerofill(self):
@@ -1650,7 +1585,7 @@ class MRIsimulator(param.Parameterized):
         self.oversampledReconMatrix = self.reconMatrix.copy()
         for dim in range(len(self.oversampledReconMatrix)):
             self.oversampledReconMatrix[dim] = int(np.round(self.reconMatrix[dim] * self.oversampledMatrix[dim] / self.matrix[dim]))
-        self.zerofilledkspace = zerofill(np.fft.ifftshift(self.apodizedkspace), self.oversampledReconMatrix)
+        self.zerofilledkspace = recon.zerofill(self.apodizedkspace, self.oversampledReconMatrix)
     
     
     def reconstruct(self):
@@ -1660,13 +1595,9 @@ class MRIsimulator(param.Parameterized):
                 pixelShifts[dim] += 1/2 # half pixel shift for even matrixsize due to fft
             if (self.oversampledReconMatrix[dim] - self.reconMatrix[dim])%2:
                 pixelShifts[dim] += 1/2 # half pixel shift due to cropping an odd number of pixels in image space
-        halfPixelShift = getPixelShiftMatrix(self.oversampledReconMatrix, pixelShifts)
         sampleShifts = [0. if self.oversampledMatrix[dim]%2 else .5 for dim in range(len(self.oversampledMatrix))]
-        halfSampleShift = getPixelShiftMatrix(self.oversampledReconMatrix, sampleShifts)
-        
-        kspace = self.zerofilledkspace * halfPixelShift
-        self.imageArray = np.fft.ifft2(kspace) * halfSampleShift
-        self.imageArray = crop(np.fft.fftshift(self.imageArray), self.reconMatrix)
+        self.imageArray = recon.IFFT(self.zerofilledkspace, pixelShifts, sampleShifts)
+        self.imageArray = recon.crop(self.imageArray, self.reconMatrix)
     
     
     def setupExcitation(self):
@@ -2042,13 +1973,13 @@ class MRIsimulator(param.Parameterized):
             self.runReconPipeline()
             kAxes = []
             for dim in range(2):
-                kAxes.append(getKaxis(self.oversampledReconMatrix[dim], self.FOV[dim]/self.reconMatrix[dim]))
+                kAxes.append(recon.getKaxis(self.oversampledReconMatrix[dim], self.FOV[dim]/self.reconMatrix[dim]))
                 # half-sample shift axis when odd number of zeroes:
                 if (self.oversampledReconMatrix[dim]-self.oversampledMatrix[dim])%2:
                     shift = self.reconMatrix[dim] / (2 * self.oversampledReconMatrix[dim] * self.FOV[dim])
                     kAxes[-1] += shift * (-1)**(self.oversampledMatrix[dim]%2)
             ksp = xr.DataArray(
-                np.abs(np.fft.fftshift(self.zerofilledkspace))**self.kspaceExponent, 
+                np.abs(self.zerofilledkspace)**self.kspaceExponent, 
                 dims=('ky', 'kx'),
                 coords={'kx': kAxes[1], 'ky': kAxes[0]}
             )
