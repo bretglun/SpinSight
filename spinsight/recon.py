@@ -83,14 +83,24 @@ def getKcoords(kSamples, pixelSize):
 
 
 def ungrid(gridded, kx, ky, shape):
-    img = np.fft.fftshift(np.fft.ifft2(np.fft.ifftshift(gridded)))
+    sampleShifts = [0., 0.]
+    for dim in range(2):
+        if not gridded.shape[dim]%2:
+            sampleShifts[dim] += 1/2
+    halfSampleShift = getPixelShiftMatrix(gridded.shape, sampleShifts)
+    img = np.fft.fftshift(np.fft.ifft2(np.fft.ifftshift(gridded)) * halfSampleShift)
     ungridded = finufft.nufft2d2(kx, ky, img).reshape(shape)
     return ungridded
 
 
 def grid(ungridded, kx, ky, shape):
+    sampleShifts = [0., 0.]
+    for dim in range(2):
+        if not shape[dim]%2:
+            sampleShifts[dim] -= 1/2
+    halfSampleShift = getPixelShiftMatrix(shape, sampleShifts)
     img = finufft.nufft2d1(kx, ky, ungridded, shape)
-    gridded = np.fft.fftshift(np.fft.fft2(np.fft.ifftshift(img)))
+    gridded = np.fft.fftshift(np.fft.fft2(np.fft.ifftshift(img) * halfSampleShift))
     return gridded
 
 
