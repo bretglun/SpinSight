@@ -1589,13 +1589,17 @@ class MRIsimulator(param.Parameterized):
     
     
     def reconstruct(self):
-        pixelShifts = [.0] * len(self.reconMatrix) # pixel shift
+        pixelShifts = [0.] * len(self.reconMatrix)
+        sampleShifts = [0.] * len(self.reconMatrix)
         for dim in range(len(pixelShifts)):
             if not self.oversampledReconMatrix[dim]%2:
                 pixelShifts[dim] += 1/2 # half pixel shift for even matrixsize due to fft
             if (self.oversampledReconMatrix[dim] - self.reconMatrix[dim])%2:
                 pixelShifts[dim] += 1/2 # half pixel shift due to cropping an odd number of pixels in image space
-        sampleShifts = [0. if self.oversampledMatrix[dim]%2 else .5 for dim in range(len(self.oversampledMatrix))]
+            if not self.oversampledMatrix[dim]%2:
+                sampleShifts[dim] += 1/2 # half sample shift for even matrixsize due to fft
+                if (self.oversampledReconMatrix[dim] - self.oversampledMatrix[dim])%2:
+                    sampleShifts[dim] -= 1 # sample shift for odd number of zeroes added
         self.imageArray = recon.IFFT(self.zerofilledkspace, pixelShifts, sampleShifts)
         self.imageArray = recon.crop(self.imageArray, self.reconMatrix)
     
@@ -1977,7 +1981,7 @@ class MRIsimulator(param.Parameterized):
                 # half-sample shift axis when odd number of zeroes:
                 if (self.oversampledReconMatrix[dim]-self.oversampledMatrix[dim])%2:
                     shift = self.reconMatrix[dim] / (2 * self.oversampledReconMatrix[dim] * self.FOV[dim])
-                    kAxes[-1] += shift * (-1)**(self.oversampledMatrix[dim]%2)
+                    kAxes[-1] -= shift
             ksp = xr.DataArray(
                 np.abs(self.zerofilledkspace)**self.kspaceExponent, 
                 dims=('ky', 'kx'),

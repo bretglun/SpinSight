@@ -70,8 +70,8 @@ def radialTukey(alpha, matrix):
 
 def zerofill(kspace, reconMatrix):
     for dim, n in enumerate(kspace.shape):
-        nLeading = reconMatrix[dim]//2 - n//2
-        nTrailing = reconMatrix[dim] - n - nLeading
+        nTrailing = (reconMatrix[dim]-n)//2
+        nLeading = reconMatrix[dim] - n - nTrailing
         kspace = np.insert(kspace, 0, np.zeros((nLeading, 1)), axis=dim)
         kspace = np.insert(kspace, n+nLeading, np.zeros((nTrailing, 1)), axis=dim)
     return kspace
