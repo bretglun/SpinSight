@@ -55,6 +55,8 @@ DIRECTIONS = {'anterior-posterior': 0, 'left-right': 1}
 
 TRAJECTORIES = ['Cartesian', 'Radial']
 
+OPERATORS = {'Magnitude': np.abs, 'Phase': np.angle, 'Real': np.real, 'Imaginary': np.imag}
+
 
 def pixelBW2shift(pixelBW, B0=1.5):
     ''' Get fat/water chemical shift [pixels] from pixel bandwidth [Hz/pixel] and B0 [T]'''
@@ -319,6 +321,7 @@ class MRIsimulator(param.Parameterized):
     EPIfactor = param.Selector(default=1, precedence=7, label='EPI factor')
     shot = param.Integer(default=1, label='Displayed shot')
     
+    imageType = param.ObjectSelector(default='Magnitude', label='Image type')
     showFOV = param.Boolean(default=False, label='Show FOV')
     noiseGain = param.Number(default=3.)
     SNR = param.Number(label='SNR')
@@ -326,6 +329,7 @@ class MRIsimulator(param.Parameterized):
     relativeSNR = param.Number(label='Relative SNR [%]')
     scantime = param.Number(label='Scan time [sec]')
 
+    kspaceType = param.ObjectSelector(default='Magnitude', label='k-space type')
     showProcessedKspace = param.Boolean(default=False, label='Show processed k-space')
     kspaceExponent = param.Number(default=0.2, step=.01, label='k-space exponent')
     homodyne = param.Boolean(default=True, precedence=1, label='Homodyne')
@@ -479,6 +483,8 @@ class MRIsimulator(param.Parameterized):
         self.param.turboFactor.bounds=(1, 64)
         self.param.EPIfactor.objects=EPIfactorValues
         self.param.shot.bounds=(1, 1)
+        self.param.imageType.objects=OPERATORS.keys()
+        self.param.kspaceType.objects=OPERATORS.keys()
         self.param.kspaceExponent.bounds=(0.1, 1)
         self.param.apodizationAlpha.bounds=(.01, 1)
 
@@ -1971,8 +1977,9 @@ class MRIsimulator(param.Parameterized):
         return self.seqPlot
     
     
-    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'numSpokes', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'trajectory', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor', 'showProcessedKspace', 'kspaceExponent', 'homodyne', 'doApodize', 'apodizationAlpha', 'doZerofill', 'DCiters', 'radialResOversampling', 'radialFOVoversampling')
+    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'numSpokes', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'trajectory', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor', 'kspaceType', 'showProcessedKspace', 'kspaceExponent', 'homodyne', 'doApodize', 'apodizationAlpha', 'doZerofill', 'DCiters', 'radialResOversampling', 'radialFOVoversampling')
     def getKspace(self):
+        operator = OPERATORS[self.kspaceType]
         if self.showProcessedKspace:
             self.runReconPipeline()
             kAxes = []
@@ -1983,14 +1990,14 @@ class MRIsimulator(param.Parameterized):
                     shift = self.reconMatrix[dim] / (2 * self.oversampledReconMatrix[dim] * self.FOV[dim])
                     kAxes[-1] -= shift
             ksp = xr.DataArray(
-                np.abs(self.zerofilledkspace)**self.kspaceExponent, 
+                operator(self.zerofilledkspace**self.kspaceExponent), 
                 dims=('ky', 'kx'),
                 coords={'kx': kAxes[1], 'ky': kAxes[0]}
             )
         else:
             self.runAcquisitionPipeline()
             ksp = xr.DataArray(
-                np.abs(self.griddedkspace)**self.kspaceExponent, 
+                operator(self.griddedkspace**self.kspaceExponent), 
                 dims=('ky', 'kx'),
                 coords={'kx': self.kGridAxes[1], 'ky': self.kGridAxes[0]}
             )
@@ -2006,12 +2013,13 @@ class MRIsimulator(param.Parameterized):
         return hv.Box(0, 0, tuple(acqFOV[::-1])).opts(color='lightblue') * hv.Box(0, 0, tuple(self.FOV[::-1])).opts(color='yellow')
 
 
-    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'numSpokes', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'trajectory', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor', 'showFOV', 'homodyne', 'doApodize', 'apodizationAlpha', 'doZerofill', 'DCiters', 'radialResOversampling', 'radialFOVoversampling')
+    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'numSpokes', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'trajectory', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor', 'imageType', 'showFOV', 'homodyne', 'doApodize', 'apodizationAlpha', 'doZerofill', 'DCiters', 'radialResOversampling', 'radialFOVoversampling')
     def getImage(self):
         self.runReconPipeline()
+        operator = OPERATORS[self.imageType]
         iAxes = [(np.arange(self.reconMatrix[dim]) - (self.reconMatrix[dim]-1)/2) / self.reconMatrix[dim] * self.FOV[dim] for dim in range(2)]
         img = xr.DataArray(
-            np.abs(self.imageArray), 
+            operator(self.imageArray), 
             dims=('y', 'x'),
             coords={'x': iAxes[1], 'y': iAxes[0][::-1]}
         )
@@ -2075,6 +2083,7 @@ def getApp(darkMode=True, settingsFilestem=''):
                       infoNumber(name='Bandwidth', format='{value:.0f} Hz/pixel', value=simulator.param.pixelBandWidth, textColor=textColor))
     
     dmapKspace = pn.Column(hv.DynamicMap(simulator.getKspace) * simulator.kLine, 
+                           # simulator.param.kspaceType, 
                            pn.Row(simulator.param.showProcessedKspace, simulator.param.kspaceExponent), 
                            visible=False)
     dmapMRimage = hv.DynamicMap(simulator.getImage)
@@ -2109,6 +2118,7 @@ def getApp(darkMode=True, settingsFilestem=''):
             pn.Column(
                 dmapMRimage, 
                 pn.Column(
+                    # simulator.param.imageType, 
                     pn.Row(resetSNRbutton, simulator.param.showFOV), 
                     infoPane
                 )
