@@ -308,7 +308,7 @@ class MRIsimulator(param.Parameterized):
     reconMatrixF = param.Selector(default=360, precedence=5, label='Reconstruction matrix y')
     sliceThickness = param.Number(default=3, precedence=6, label='Slice thickness [mm]')
     DCiters = param.Integer(default=5, precedence=7, label='Density Compensation Iterations')
-    radialResOversampling = param.Number(default=1.05, step=0.01, precedence=8, label='Radial resolution oversampling factor')
+    radialResOversampling = param.Number(default=1., step=0.01, precedence=8, label='Radial resolution oversampling factor')
     radialFOVoversampling = param.Number(default=2, step=0.01, precedence=9, label='Radial FOV oversampling factor')
     
     sequence = param.ObjectSelector(default=SEQUENCES[0], precedence=1, label='Pulse sequence')
@@ -1561,10 +1561,9 @@ class MRIsimulator(param.Parameterized):
             case 'Cartesian':
                 self.griddedkspace = self.measuredkspace.copy()
             case 'Radial':
-                kx, ky = recon.getKcoords(self.kSamples, [self.FOV[d]/self.matrix[d] for d in range(2)])
                 gridShape = (self.oversampledMatrix[0], self.oversampledMatrix[1])
-                densityCompensation = recon.pipeMenon2D(kx, ky, gridShape, nIter=self.DCiters)
-                self.griddedkspace = recon.grid(self.measuredkspace.flatten() * densityCompensation, kx, ky, gridShape)
+                samples = self.kSamples * self.FOV / self.matrix# * 2 * np.pi
+                self.griddedkspace = recon.grid(self.measuredkspace, gridShape, samples)
 
     
     def partialFourierRecon(self):

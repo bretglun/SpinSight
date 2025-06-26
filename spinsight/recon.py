@@ -1,4 +1,5 @@
 import finufft
+import mrinufft
 import numpy as np
 
 
@@ -15,6 +16,14 @@ def getKaxis(matrix, pixelSize, symmetric=True, fftshift=True):
 def getPixelShiftMatrix(matrix, shift):
         phase = [np.fft.fftfreq(matrix[dim]) * shift[dim] * 2*np.pi for dim in range(len(matrix))]
         return np.exp(1j * np.sum(np.stack(np.meshgrid(*phase[::-1])), axis=0))
+
+
+def FFT(img, pixelShifts, sampleShifts):
+        halfPixelShift = getPixelShiftMatrix(img.shape, pixelShifts)
+        halfSampleShift = getPixelShiftMatrix(img.shape, sampleShifts)
+        kspace = np.fft.fft2(np.fft.ifftshift(img) / halfSampleShift)
+        ksp = np.fft.fftshift(kspace / halfPixelShift)
+        return ksp
 
 
 def IFFT(ksp, pixelShifts, sampleShifts):
@@ -42,10 +51,12 @@ def resampleKspaceCartesian(phantom, kAxes):
 
 
 def resampleKspace(phantom, kSamples):
+    samples = np.array(kSamples * phantom['FOV'] / phantom['matrix'], dtype='float32')
     kspace = {}
-    kx, ky = getKcoords(kSamples, [phantom['FOV'][d]/phantom['matrix'][d] for d in range(2)])
+    gridder = getGridder(samples, phantom['matrix'])
+    norm_factor = np.sqrt(4 * np.prod(phantom['matrix'])) # for mrinufft
     for tissue in phantom['kspace']:
-        kspace[tissue] = ungrid(phantom['kspace'][tissue], kx, ky, kSamples.shape[:-1])
+        kspace[tissue] = ungrid(phantom['kspace'][tissue], gridder=gridder, shape=samples.shape[:-1]) * norm_factor
     return kspace
 
 
@@ -82,25 +93,31 @@ def getKcoords(kSamples, pixelSize):
     return kx, ky
 
 
-def ungrid(gridded, kx, ky, shape):
-    sampleShifts = [0., 0.]
-    for dim in range(2):
-        if not gridded.shape[dim]%2:
-            sampleShifts[dim] += 1/2
-    halfSampleShift = getPixelShiftMatrix(gridded.shape, sampleShifts)
-    img = np.fft.fftshift(np.fft.ifft2(np.fft.ifftshift(gridded)) * halfSampleShift)
-    ungridded = finufft.nufft2d2(kx, ky, img).reshape(shape)
+def getGridder(samples, shape):
+    samples = np.array(samples, dtype='float32')
+    density = mrinufft.density.voronoi(samples)
+    return mrinufft.get_operator('finufft')(samples, density=density, shape=shape)
+
+
+def ungrid(gridded, samples=None, gridder=None, shape=None):
+    if not gridder:
+        gridder = getGridder(samples, gridded.shape)
+    sampleShifts = [0 if gridded.shape[dim]%2 else 1/2 for dim in range(2)]
+    img = IFFT(gridded, [0, 0], sampleShifts)
+    ungridded = gridder.op(img)
+    if samples is not None:
+        return ungridded.reshape(samples.shape[:-1])
+    elif shape is not None:
+        return ungridded.reshape(shape)
     return ungridded
 
 
-def grid(ungridded, kx, ky, shape):
-    sampleShifts = [0., 0.]
-    for dim in range(2):
-        if not shape[dim]%2:
-            sampleShifts[dim] -= 1/2
-    halfSampleShift = getPixelShiftMatrix(shape, sampleShifts)
-    img = finufft.nufft2d1(kx, ky, ungridded, shape)
-    gridded = np.fft.fftshift(np.fft.fft2(np.fft.ifftshift(img) * halfSampleShift))
+def grid(ungridded, shape=None, samples=None, gridder=None):
+    if not gridder:
+        gridder = getGridder(samples, shape)
+    img = gridder.adj_op(ungridded.flatten())
+    sampleShifts = [0 if gridder.shape[dim]%2 else 1/2 for dim in range(2)]
+    gridded = FFT(img, [0, 0], sampleShifts)
     return gridded
 
 
