@@ -605,7 +605,7 @@ class MRIsimulator(param.Parameterized):
     @param.depends('FOVF', watch=True)
     def _watch_FOVF(self):
         with param.parameterized.batch_call_watchers(self):
-            if self.parameterStyle=='Voxelsize and Fat/water shift':
+            if self.parameterStyle=='Voxelsize and Fat/water shift' or self.trajectory=='Radial':
                 self.matrixF = take_closest(self.param.matrixF.objects, self.FOVF/self.voxelF)
                 self.reconMatrixF = take_closest(self.param.reconMatrixF.objects, self.FOVF/self.reconVoxelF)
             self.updateFOVbandwidthObjects()
@@ -622,7 +622,7 @@ class MRIsimulator(param.Parameterized):
     @param.depends('FOVP', watch=True)
     def _watch_FOVP(self):
         with param.parameterized.batch_call_watchers(self):
-            if self.parameterStyle=='Voxelsize and Fat/water shift':
+            if self.parameterStyle=='Voxelsize and Fat/water shift' or self.trajectory=='Radial':
                 self.matrixP = take_closest(self.param.matrixP.objects, self.FOVP/self.voxelP)
                 self.reconMatrixP = take_closest(self.param.reconMatrixP.objects, self.FOVP/self.reconVoxelP)
             self.updateVoxelPobjects()
@@ -666,6 +666,8 @@ class MRIsimulator(param.Parameterized):
             self.updateReconVoxelFobjects()
             self.reconMatrixF = take_closest(self.param.reconMatrixF.objects, self.matrixF * self.recAcqRatioF)
             self.param.trigger('voxelF', 'reconVoxelF')
+            if self.trajectory=='Radial':
+                self.matrixP = take_closest(self.param.matrixP.objects, self.matrixF*self.FOVP/self.FOVF)
     
     
     @param.depends('matrixP', watch=True)
@@ -680,6 +682,8 @@ class MRIsimulator(param.Parameterized):
             self.updateReconVoxelPobjects()
             self.reconMatrixP = take_closest(self.param.reconMatrixP.objects, self.matrixP * self.recAcqRatioP)
             self.param.trigger('voxelP', 'reconVoxelP')
+            if self.trajectory=='Radial':
+                self.matrixF = take_closest(self.param.matrixP.objects, self.matrixP*self.FOVF/self.FOVP)
 
 
     @param.depends('voxelF', watch=True)
