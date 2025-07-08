@@ -1311,13 +1311,11 @@ class MRIsimulator(param.Parameterized):
         # Get shortest spacing for (center of) gradient echo trains
         # Equals center position of gradient echo (train) for gradient echo sequences
         # Equals rf echo spacing for spin echo sequences
-        max_phaser_area = np.min(self.kPhaseAxis) * 1e3 / constants.GYRO   # uTs/m
-        max_phaser_dur = sequence.getGradient('_', totalArea=max_phaser_area)['dur_f']
         if isGradientEcho(self.sequence):
             spacing = (self.boards['RF']['objects']['excitation']['dur_f'] + self.gre_echo_train_dur) / 2 - self.readout_risetime
             spacing += max(
                 self.boards['frequency']['objects']['read prephaser']['dur_f'] + self.readout_risetime,
-                max_phaser_dur,
+                self.maxPhaserDuration,
                 self.boards['slice']['objects']['slice select excitation']['riseTime_f'] + self.boards['slice']['objects']['slice select rephaser']['dur_f']
             )
         else: # spin echo
@@ -1331,7 +1329,7 @@ class MRIsimulator(param.Parameterized):
             rightSide = (self.boards['RF']['objects']['refocusing'][0]['dur_f'] + self.gre_echo_train_dur) / 2 - self.readout_risetime
             rightSide += max(
                 self.readout_risetime,
-                max_phaser_dur,
+                self.maxPhaserDuration,
                 self.boards['slice']['objects']['slice select refocusing'][0]['riseTime_f']
             )
             spacing = max(leftSide, rightSide) * 2
