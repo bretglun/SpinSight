@@ -1725,8 +1725,7 @@ class MRIsimulator(param.Parameterized):
     def setupPhasers(self):
         self.setup_phase_encoding()
 
-        acq_FOVP = self.FOV[self.phaseDir]/self.matrix[self.phaseDir] * len(self.kPhaseAxis)
-        phase_step_area = 1e3 / (acq_FOVP * constants.GYRO) # uTs/m
+        phase_step_area = np.mean(np.diff(self.kPhaseAxis)) * 1e3 / constants.GYRO # uTs/m
         largest_phaser_area = np.min(self.kPhaseAxis) * 1e3 / constants.GYRO   # uTs/m
         
         self.phaser_duration = sequence.getGradient('phase', totalArea=largest_phaser_area)['dur_f']
