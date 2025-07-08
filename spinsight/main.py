@@ -756,6 +756,7 @@ class MRIsimulator(param.Parameterized):
     def _watch_trajectory(self):
         add_to_pipeline(self.acquisitionPipeline, ['sampleKspace', 'updateSamplingTime', 'modulateKspace', 'simulateNoise', 'compileKspace'])
         add_to_pipeline(self.reconPipeline, ['partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
+        add_to_pipeline(self.sequencePipeline, ['setupPhasers', 'updateFOVPbounds', 'updateTurboFactorBounds', 'updateEPIfactorObjects'])
         match(self.trajectory):
             case 'Cartesian':
                 self.param.partialFourier.precedence = 5
@@ -763,11 +764,17 @@ class MRIsimulator(param.Parameterized):
                 self.param.phaseOversampling.precedence = 3
                 self.param.numSpokes.precedence = -3
             case 'Radial':
+                self.partialFourier = 1.
                 self.param.partialFourier.precedence = -5
                 self.param.frequencyDirection.precedence = -1
+                self.phaseOversampling = 0.
                 self.param.phaseOversampling.precedence = -3
                 self.param.numSpokes.precedence = 3
-                self.param.trigger('numSpokes')
+                # set isotropic voxelsize:
+                if (self.FOVF/self.matrixF < self.FOVP/self.matrixP):
+                    self.matrixP = take_closest(self.param.matrixP.objects, self.matrixF*self.FOVP/self.FOVF)
+                else:
+                    self.matrixF = take_closest(self.param.matrixF.objects, self.matrixP*self.FOVF/self.FOVP)
         self.setup_frequency_encoding()
         self.setup_phase_encoding()
         add_to_pipeline(self.sequencePlotPipeline, ['calculate_k_trajectory'])
