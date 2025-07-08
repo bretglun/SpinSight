@@ -448,7 +448,6 @@ class MRIsimulator(param.Parameterized):
 
         self.FOV = [None]*2
         self.matrix = [None]*2
-        self.oversampledMatrix = [None]*2
         self.kGridAxes = [None]*2
         
         self.runSequencePipeline()
@@ -1312,7 +1311,7 @@ class MRIsimulator(param.Parameterized):
         # Get shortest spacing for (center of) gradient echo trains
         # Equals center position of gradient echo (train) for gradient echo sequences
         # Equals rf echo spacing for spin echo sequences
-        max_phaser_area = np.min(self.kGridAxes[self.phaseDir]) * 1e3 / constants.GYRO   # uTs/m
+        max_phaser_area = np.min(self.kPhaseAxis) * 1e3 / constants.GYRO   # uTs/m
         max_phaser_dur = sequence.getGradient('_', totalArea=max_phaser_area)['dur_f']
         if isGradientEcho(self.sequence):
             spacing = (self.boards['RF']['objects']['excitation']['dur_f'] + self.gre_echo_train_dur) / 2 - self.readout_risetime
@@ -1384,49 +1383,56 @@ class MRIsimulator(param.Parameterized):
             self.pe_table = [[[segment * self.num_shots + shot] for segment in segment_order] for shot in range(self.num_shots)]
         else: # EPI and GRASE
             order = -1 if self.reverse_linear_order else 1
-            self.pe_table = [[list(range(rf_echo * self.num_shots + shot, self.num_measured_lines, self.num_shots * self.turboFactor))[::order] for rf_echo in range(self.turboFactor)][::order] for shot in range(self.num_shots)]
+            self.pe_table = [[list(range(rf_echo * self.num_shots + shot, sum(self.lines_to_measure), self.num_shots * self.turboFactor))[::order] for rf_echo in range(self.turboFactor)][::order] for shot in range(self.num_shots)]
     
 
     def setup_frequency_encoding(self):
         self.freqDir = DIRECTIONS[self.frequencyDirection]
         self.FOV[self.freqDir] = self.FOVF
         self.matrix[self.freqDir] = self.matrixF
-        self.oversampledMatrix[self.freqDir] = self.matrixF
-        # at least Nyquist sampling wrt phantom if loaded
-        if hasattr(self, 'phantom') and self.FOV[self.freqDir] < self.phantom['FOV'][self.freqDir]:
-            self.oversampledMatrix[self.freqDir] = int(np.ceil(self.phantom['FOV'][self.freqDir] * self.matrix[self.freqDir] / self.FOV[self.freqDir]))
-        self.kGridAxes[self.freqDir] = recon.getKaxis(self.oversampledMatrix[self.freqDir], self.FOV[self.freqDir]/self.matrix[self.freqDir])
+        voxelSize = self.FOV[self.freqDir]/self.matrix[self.freqDir]
+        match self.trajectory:
+            case 'Cartesian':
+                nSamples = self.matrixF
+                # at least Nyquist sampling wrt phantom if loaded
+                if hasattr(self, 'phantom') and (self.FOV[self.freqDir] < self.phantom['FOV'][self.freqDir]):
+                    nSamples = int(np.ceil(self.phantom['FOV'][self.freqDir] / voxelSize))
+            case 'Radial':
+                FOV = max(self.FOVF, self.FOVP)
+                if hasattr(self, 'phantom'):
+                    FOV = max(max(self.phantom['FOV']), FOV)
+                nSamples = int(np.ceil(FOV / voxelSize * self.radialFOVoversampling))
+                voxelSize /= self.radialResOversampling
+        self.kReadAxis = recon.getKaxis(nSamples, voxelSize)
     
 
     def setup_phase_encoding(self):
         self.phaseDir = 1 - DIRECTIONS[self.frequencyDirection]
         self.FOV[self.phaseDir] = self.FOVP
         self.matrix[self.phaseDir] = self.matrixP
-        
+        voxelSize = self.FOV[self.phaseDir] / self.matrix[self.phaseDir]
+
         match(self.trajectory):
             case 'Cartesian':
                 self.num_shots = int(np.ceil(self.matrix[self.phaseDir] * (1 + self.phaseOversampling / 100) * self.partialFourier / self.turboFactor / self.EPIfactor))
+                num_measured_lines = self.num_shots * self.turboFactor * self.EPIfactor
+                # oversampling may be higher than prescribed since num_shots must be integer:
+                num_lines = max(num_measured_lines, int(np.ceil(self.matrix[self.phaseDir] * (1 + self.phaseOversampling / 100))))
+                self.kAngles = np.zeros(1)
             case 'Radial':
                 self.num_shots = self.numSpokes
-        self.num_measured_lines = self.num_shots * self.turboFactor * self.EPIfactor
-        match(self.trajectory):
-            case 'Cartesian':
-                self.oversampledPartialMatrix = self.num_measured_lines # Needs to be modified for parallel imaging
-                # oversampling may be higher than prescribed since num_shots must be integer:
-                self.oversampledMatrix[self.phaseDir] = max(self.oversampledPartialMatrix, int(np.ceil(self.matrix[self.phaseDir] * (1 + self.phaseOversampling / 100))))
-                self.kGridAxes = [recon.getKaxis(self.oversampledMatrix[dim], self.FOV[dim]/self.matrix[dim]) for dim in range(len(self.matrix))]
-                # undersample by partial Fourier:
-                self.kGridAxes[self.phaseDir] = self.kGridAxes[self.phaseDir][:self.oversampledPartialMatrix]
-                assert(len(self.kGridAxes[self.phaseDir]) == self.num_measured_lines)
-            case 'Radial':
-                if hasattr(self, 'phantom') and self.FOV[self.phaseDir] < self.phantom['FOV'][self.phaseDir]:
-                    self.oversampledMatrix[self.phaseDir] = int(np.ceil(self.phantom['FOV'][self.phaseDir] * self.matrix[self.phaseDir] / self.FOV[self.phaseDir]))
-                else:
-                    self.oversampledMatrix[self.phaseDir] = self.matrix[self.phaseDir]
-                self.kGridAxes = [recon.getKaxis(self.oversampledMatrix[dim], self.FOV[dim]/self.matrix[dim]) for dim in range(len(self.matrix))]
+                num_measured_lines = self.turboFactor * self.EPIfactor # per blade
+                num_lines = num_measured_lines # future: take undersampling into account
+                voxelSize *= num_lines / len(self.kReadAxis) # corresponding to blade width. TODO: correct this!
+                self.kAngles = np.linspace(0, np.pi, self.num_shots, endpoint=False)
+        self.kPhaseAxis = recon.getKaxis(num_lines, voxelSize)
+        self.lines_to_measure = np.ones(num_lines, dtype=bool)
+        # undersample by partial Fourier:
+        self.lines_to_measure[num_measured_lines:] = False
+        assert(sum(self.lines_to_measure) == num_measured_lines)
 
-        self.num_segm = int(self.num_measured_lines / self.num_shots)
-        num_sym_lines = 2 * self.num_measured_lines - self.oversampledMatrix[self.phaseDir]
+        self.num_segm = int(num_measured_lines / self.num_shots)
+        num_sym_lines = 2 * num_measured_lines - num_lines
         # check if center of k-space lies between two segments:
         self.split_center = (num_sym_lines % self.num_shots == 0) and ((num_sym_lines / self.num_shots) % 2 == 0)
         # number of k-space segments symmetric about center:
@@ -1443,14 +1449,17 @@ class MRIsimulator(param.Parameterized):
     def sampleKspace(self):
         match(self.trajectory):
             case 'Cartesian':
-                self.kReadAxis = self.kGridAxes[self.freqDir]
+                self.kGridAxes[self.freqDir] = self.kReadAxis
+                self.kGridAxes[self.phaseDir] = self.kPhaseAxis[self.lines_to_measure]
                 self.kSamples = np.array(np.meshgrid(self.kGridAxes[0], self.kGridAxes[1])).T
                 self.plainKspaceComps = recon.resampleKspaceCartesian(self.phantom, self.kGridAxes)
             case 'Radial':
-                angles = np.linspace(0, np.pi, self.num_shots, endpoint=False)
-                self.kReadAxis = recon.getKaxis(int(max(self.matrix)*self.radialFOVoversampling), self.FOV[0]/self.matrix[0]/self.radialResOversampling)
-                self.kSamples = np.stack((np.outer(self.kReadAxis, np.cos(angles)), 
-                                    np.outer(self.kReadAxis, np.sin(angles))), 
+                for dim in range(2):
+                    voxelSize = self.FOV[dim]/self.matrix[dim]
+                    matrix = int(np.ceil(max(self.FOV[dim], self.phantom['FOV'][dim]) / voxelSize))
+                    self.kGridAxes[dim] = recon.getKaxis(matrix, voxelSize)
+                self.kSamples = np.stack((np.outer(self.kReadAxis, np.cos(self.kAngles)), 
+                                    np.outer(self.kReadAxis, np.sin(self.kAngles))), 
                                     -1)
                 self.plainKspaceComps = recon.resampleKspace(self.phantom, self.kSamples)
         
@@ -1461,7 +1470,7 @@ class MRIsimulator(param.Parameterized):
             self.plainKspaceComps[tissue] *= sliceThicknessFilter
         
         # signal for SNR calculation
-        self.signal = np.sqrt(self.oversampledMatrix[self.freqDir] * self.num_measured_lines) * self.sliceThickness * np.prod(self.FOV)/np.prod(self.matrix)
+        self.signal = np.sqrt(len(self.kReadAxis) * sum(self.lines_to_measure)) * self.sliceThickness * np.prod(self.FOV)/np.prod(self.matrix)
 
 
     def updateSamplingTime(self):
@@ -1505,7 +1514,7 @@ class MRIsimulator(param.Parameterized):
                     dephasing = np.exp(2j*np.pi * constants.GYRO * self.fieldStrength * resonance['shift'] * timeRelativeInphase * 1e-3)
                     self.kspaceComps[tissue + component] = self.plainKspaceComps[tissue] * dephasing * T2w
             if tissue==self.phantom['referenceTissue']:
-                self.decayedSignal = self.signal * np.take(np.take(T2w, np.argmin(np.abs(self.kGridAxes[self.freqDir])), axis=self.freqDir), np.argmin(np.abs(self.kGridAxes[self.phaseDir]))) # TODO: check for radial
+                self.decayedSignal = self.signal * np.take(np.take(T2w, np.argmin(np.abs(self.kReadAxis)), axis=self.freqDir), np.argmin(np.abs(self.kPhaseAxis)))
     
     
     def simulateNoise(self):
@@ -1561,13 +1570,13 @@ class MRIsimulator(param.Parameterized):
             case 'Cartesian':
                 self.griddedkspace = self.measuredkspace.copy()
             case 'Radial':
-                gridShape = (self.oversampledMatrix[0], self.oversampledMatrix[1])
-                samples = self.kSamples * self.FOV / self.matrix# * 2 * np.pi
+                gridShape = tuple(len(self.kGridAxes[dim]) for dim in range(2))
+                samples = self.kSamples * self.FOV / self.matrix
                 self.griddedkspace = recon.grid(self.measuredkspace, gridShape, samples)
 
     
     def partialFourierRecon(self):
-        nBlank = self.oversampledMatrix[self.phaseDir] - self.oversampledPartialMatrix
+        nBlank = len(self.kPhaseAxis) - sum(self.lines_to_measure)
         if (nBlank == 0 or self.trajectory != 'Cartesian'):
             self.param.homodyne.precedence = -1
             self.fullkspace = np.copy(self.griddedkspace)
@@ -1576,7 +1585,7 @@ class MRIsimulator(param.Parameterized):
         shapeUnsampled = tuple(nBlank if dim==self.phaseDir else n for dim, n in enumerate(self.griddedkspace.shape))
         self.fullkspace = np.append(self.griddedkspace, np.zeros(shapeUnsampled), axis=self.phaseDir) # zerofill
         if self.homodyne:
-            self.fullkspace *= recon.homodyneWeights(self.oversampledMatrix[self.phaseDir], nBlank, self.phaseDir) # pre-weighting
+            self.fullkspace *= recon.homodyneWeights(len(self.kPhaseAxis), nBlank, self.phaseDir) # pre-weighting
             self.fullkspace += np.conjugate(np.flip(self.fullkspace))
     
     
@@ -1584,7 +1593,7 @@ class MRIsimulator(param.Parameterized):
         self.apodizedkspace = self.fullkspace.copy()
         if not self.doApodize: 
             return
-        self.apodizedkspace *= recon.radialTukey(self.apodizationAlpha, self.oversampledMatrix)
+        self.apodizedkspace *= recon.radialTukey(self.apodizationAlpha, self.fullkspace.shape)
 
     
     def zerofill(self):
@@ -1593,7 +1602,7 @@ class MRIsimulator(param.Parameterized):
             self.reconMatrix.reverse()
         self.oversampledReconMatrix = self.reconMatrix.copy()
         for dim in range(len(self.oversampledReconMatrix)):
-            self.oversampledReconMatrix[dim] = int(np.round(self.reconMatrix[dim] * self.oversampledMatrix[dim] / self.matrix[dim]))
+            self.oversampledReconMatrix[dim] = int(np.round(self.reconMatrix[dim] * self.fullkspace.shape[dim] / self.matrix[dim]))
         self.zerofilledkspace = recon.zerofill(self.apodizedkspace, self.oversampledReconMatrix)
     
     
@@ -1605,9 +1614,9 @@ class MRIsimulator(param.Parameterized):
                 pixelShifts[dim] += 1/2 # half pixel shift for even matrixsize due to fft
             if (self.oversampledReconMatrix[dim] - self.reconMatrix[dim])%2:
                 pixelShifts[dim] += 1/2 # half pixel shift due to cropping an odd number of pixels in image space
-            if not self.oversampledMatrix[dim]%2:
+            if not self.fullkspace.shape[dim]%2:
                 sampleShifts[dim] += 1/2 # half sample shift for even matrixsize due to fft
-                if (self.oversampledReconMatrix[dim] - self.oversampledMatrix[dim])%2:
+                if (self.oversampledReconMatrix[dim] - self.fullkspace.shape[dim])%2:
                     sampleShifts[dim] -= 1 # sample shift for odd number of zeroes added
         self.imageArray = recon.IFFT(self.zerofilledkspace, pixelShifts, sampleShifts)
         self.imageArray = recon.crop(self.imageArray, self.reconMatrix)
@@ -1719,9 +1728,9 @@ class MRIsimulator(param.Parameterized):
     def setupPhasers(self):
         self.setup_phase_encoding()
 
-        acq_FOVP = self.FOV[self.phaseDir]/self.matrix[self.phaseDir] * self.oversampledMatrix[self.phaseDir]
+        acq_FOVP = self.FOV[self.phaseDir]/self.matrix[self.phaseDir] * len(self.kPhaseAxis)
         phase_step_area = 1e3 / (acq_FOVP * constants.GYRO) # uTs/m
-        maxPhaserArea = np.min(self.kGridAxes[self.phaseDir]) * 1e3 / constants.GYRO   # uTs/m
+        maxPhaserArea = np.min(self.kPhaseAxis) * 1e3 / constants.GYRO   # uTs/m
         
         self.maxPhaserDuration = sequence.getGradient('phase', totalArea=maxPhaserArea)['dur_f']
 
@@ -1745,7 +1754,8 @@ class MRIsimulator(param.Parameterized):
             phaserArea = maxPhaserArea + self.pe_table[self.shot-1][rf_echo][0] * phase_step_area
             suffix = ' {}'.format(rf_echo+1) if self.turboFactor>1 else ''
             phaser = sequence.getGradient('phase', totalArea=maxPhaserArea, name='phase encode'+suffix)
-            sequence.rescaleGradient(phaser, phaserArea/maxPhaserArea)
+            if abs(maxPhaserArea) > 1e-5:
+                sequence.rescaleGradient(phaser, phaserArea/maxPhaserArea)
             self.boards['phase']['objects']['phasers'].append(phaser)
             rephaserArea = -phaserArea
             blips = []
@@ -1756,7 +1766,8 @@ class MRIsimulator(param.Parameterized):
                 rephaserArea -= blipArea
             self.boards['phase']['objects']['blips'].append(blips)
             rephaser = sequence.getGradient('phase', totalArea=maxPhaserArea, name='rephaser'+suffix)
-            sequence.rescaleGradient(rephaser, rephaserArea/maxPhaserArea)
+            if abs(maxPhaserArea) > 1e-5:
+                sequence.rescaleGradient(rephaser, rephaserArea/maxPhaserArea)
             self.boards['phase']['objects']['rephasers'].append(rephaser)
         add_to_pipeline(self.sequencePipeline, ['placePhasers', 'updateMinTE', 'updateBWbounds'])
     
@@ -1989,7 +2000,7 @@ class MRIsimulator(param.Parameterized):
             for dim in range(2):
                 kAxes.append(recon.getKaxis(self.oversampledReconMatrix[dim], self.FOV[dim]/self.reconMatrix[dim]))
                 # half-sample shift axis when odd number of zeroes:
-                if (self.oversampledReconMatrix[dim]-self.oversampledMatrix[dim])%2:
+                if (self.oversampledReconMatrix[dim]-self.fullkspace.shape[dim])%2:
                     shift = self.reconMatrix[dim] / (2 * self.oversampledReconMatrix[dim] * self.FOV[dim])
                     kAxes[-1] -= shift
             ksp = xr.DataArray(
@@ -2012,7 +2023,7 @@ class MRIsimulator(param.Parameterized):
 
     def getFOVbox(self):
         acqFOV = self.FOV.copy()
-        acqFOV[self.phaseDir] *= self.oversampledMatrix[self.phaseDir] / self.matrix[self.phaseDir]
+        acqFOV[self.phaseDir] *= len(self.kPhaseAxis) / self.matrix[self.phaseDir]
         return hv.Box(0, 0, tuple(acqFOV[::-1])).opts(color='lightblue') * hv.Box(0, 0, tuple(self.FOV[::-1])).opts(color='yellow')
 
 
