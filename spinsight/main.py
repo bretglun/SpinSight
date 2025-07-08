@@ -308,7 +308,6 @@ class MRIsimulator(param.Parameterized):
     reconMatrixF = param.Selector(default=360, precedence=5, label='Reconstruction matrix y')
     sliceThickness = param.Number(default=3, precedence=6, label='Slice thickness [mm]')
     DCiters = param.Integer(default=5, precedence=7, label='Density Compensation Iterations')
-    radialResOversampling = param.Number(default=1., step=0.01, precedence=8, label='Radial resolution oversampling factor')
     radialFOVoversampling = param.Number(default=2, step=0.01, precedence=9, label='Radial FOV oversampling factor')
     
     sequence = param.ObjectSelector(default=SEQUENCES[0], precedence=1, label='Pulse sequence')
@@ -473,7 +472,6 @@ class MRIsimulator(param.Parameterized):
         self.param.reconMatrixF.objects=reconMatrixValues
         self.param.sliceThickness.bounds=(0.5, 10)
         self.param.DCiters.bounds=(1, 30)
-        self.param.radialResOversampling.bounds=(1, 1.5)
         self.param.radialFOVoversampling.bounds=(1, 2)
         self.param.sequence.objects=SEQUENCES
         self.param.pixelBandWidth.objects=pBWvalues
@@ -726,12 +724,6 @@ class MRIsimulator(param.Parameterized):
         add_to_pipeline(self.reconPipeline, ['partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
 
 
-    @param.depends('radialResOversampling', watch=True)
-    def _watch_radialResOversampling(self):
-        add_to_pipeline(self.acquisitionPipeline, ['sampleKspace', 'updateSamplingTime', 'modulateKspace', 'simulateNoise', 'compileKspace'])
-        add_to_pipeline(self.reconPipeline, ['partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
-    
-
     @param.depends('radialFOVoversampling', watch=True)
     def _watch_radialFOVoversampling(self):
         add_to_pipeline(self.acquisitionPipeline, ['sampleKspace', 'updateSamplingTime', 'modulateKspace', 'simulateNoise', 'compileKspace'])
@@ -756,7 +748,7 @@ class MRIsimulator(param.Parameterized):
     def _watch_trajectory(self):
         add_to_pipeline(self.acquisitionPipeline, ['sampleKspace', 'updateSamplingTime', 'modulateKspace', 'simulateNoise', 'compileKspace'])
         add_to_pipeline(self.reconPipeline, ['partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
-        add_to_pipeline(self.sequencePipeline, ['setupPhasers', 'updateFOVPbounds', 'updateTurboFactorBounds', 'updateEPIfactorObjects'])
+        add_to_pipeline(self.sequencePipeline, ['setupReadouts', 'setupPhasers', 'updateFOVPbounds', 'updateTurboFactorBounds', 'updateEPIfactorObjects'])
         match(self.trajectory):
             case 'Cartesian':
                 self.param.partialFourier.precedence = 5
@@ -1407,7 +1399,6 @@ class MRIsimulator(param.Parameterized):
                 if hasattr(self, 'phantom'):
                     FOV = max(max(self.phantom['FOV']), FOV)
                 nSamples = int(np.ceil(FOV / voxelSize * self.radialFOVoversampling))
-                voxelSize /= self.radialResOversampling
         self.kReadAxis = recon.getKaxis(nSamples, voxelSize)
     
 
@@ -1706,7 +1697,8 @@ class MRIsimulator(param.Parameterized):
     def setupReadouts(self):
         self.setup_frequency_encoding()
         
-        flatArea = self.matrixF / (self.FOVF/1e3 * constants.GYRO) # uTs/m
+        pixelSize = (len(self.kReadAxis)-1) / len(self.kReadAxis) / (max(self.kReadAxis)-min(self.kReadAxis))
+        flatArea = 1e3 / pixelSize / constants.GYRO # uTs/m
         amp = self.pixelBandWidth * self.matrixF / (self.FOVF * constants.GYRO) # mT/m
         self.boards['frequency']['objects']['readouts'] = []
         self.boards['ADC']['objects']['samplings'] = []
@@ -1996,7 +1988,7 @@ class MRIsimulator(param.Parameterized):
         return self.seqPlot
     
     
-    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'numSpokes', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'trajectory', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor', 'kspaceType', 'showProcessedKspace', 'kspaceExponent', 'homodyne', 'doApodize', 'apodizationAlpha', 'doZerofill', 'DCiters', 'radialResOversampling', 'radialFOVoversampling')
+    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'numSpokes', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'trajectory', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor', 'kspaceType', 'showProcessedKspace', 'kspaceExponent', 'homodyne', 'doApodize', 'apodizationAlpha', 'doZerofill', 'DCiters', 'radialFOVoversampling')
     def getKspace(self):
         operator = OPERATORS[self.kspaceType]
         if self.showProcessedKspace:
@@ -2032,7 +2024,7 @@ class MRIsimulator(param.Parameterized):
         return hv.Box(0, 0, tuple(acqFOV[::-1])).opts(color='lightblue') * hv.Box(0, 0, tuple(self.FOV[::-1])).opts(color='yellow')
 
 
-    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'numSpokes', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'trajectory', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor', 'imageType', 'showFOV', 'homodyne', 'doApodize', 'apodizationAlpha', 'doZerofill', 'DCiters', 'radialResOversampling', 'radialFOVoversampling')
+    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'numSpokes', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'trajectory', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor', 'imageType', 'showFOV', 'homodyne', 'doApodize', 'apodizationAlpha', 'doZerofill', 'DCiters', 'radialFOVoversampling')
     def getImage(self):
         self.runReconPipeline()
         operator = OPERATORS[self.imageType]
