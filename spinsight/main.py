@@ -1037,7 +1037,7 @@ class MRIsimulator(param.Parameterized):
             for _ in range(2): # update readout gap after first pass
                 if (M > 1):
                     # max wrt G slice or G phase:
-                    q = t - max(self.maxPhaserDuration,
+                    q = t - max(self.phaser_duration,
                                 self.boards['slice']['objects']['slice select excitation']['riseTime_f'] + self.boards['slice']['objects']['slice select rephaser']['dur_f'])
                     A = d*s*(q - N*(d+v) + v/2) / (M-1) # eq. 15
                     maxReadoutAreas.append(A)
@@ -1133,7 +1133,7 @@ class MRIsimulator(param.Parameterized):
                 max_readtrain_spacing = max([self.get_readtrain_spacing_linear_order(reverse) for reverse in [True, False]])
             idle_space = max_readtrain_spacing - self.boards['RF']['objects']['refocusing'][0]['dur_f']
             # max limit imposed by phaser:
-            maxReadDurations.append((idle_space - 2 * self.maxPhaserDuration - self.max_blip_dur * (self.EPIfactor-1))/self.EPIfactor)
+            maxReadDurations.append((idle_space - 2 * self.phaser_duration - self.max_blip_dur * (self.EPIfactor-1))/self.EPIfactor)
             # tr is half the maximum readout gradient duration
             tr = ((idle_space) / self.EPIfactor) / 2
             # max limit imposed by readout rise time:
@@ -1315,7 +1315,7 @@ class MRIsimulator(param.Parameterized):
             spacing = (self.boards['RF']['objects']['excitation']['dur_f'] + self.gre_echo_train_dur) / 2 - self.readout_risetime
             spacing += max(
                 self.boards['frequency']['objects']['read prephaser']['dur_f'] + self.readout_risetime,
-                self.maxPhaserDuration,
+                self.phaser_duration,
                 self.boards['slice']['objects']['slice select excitation']['riseTime_f'] + self.boards['slice']['objects']['slice select rephaser']['dur_f']
             )
         else: # spin echo
@@ -1329,7 +1329,7 @@ class MRIsimulator(param.Parameterized):
             rightSide = (self.boards['RF']['objects']['refocusing'][0]['dur_f'] + self.gre_echo_train_dur) / 2 - self.readout_risetime
             rightSide += max(
                 self.readout_risetime,
-                self.maxPhaserDuration,
+                self.phaser_duration,
                 self.boards['slice']['objects']['slice select refocusing'][0]['riseTime_f']
             )
             spacing = max(leftSide, rightSide) * 2
@@ -1728,9 +1728,9 @@ class MRIsimulator(param.Parameterized):
 
         acq_FOVP = self.FOV[self.phaseDir]/self.matrix[self.phaseDir] * len(self.kPhaseAxis)
         phase_step_area = 1e3 / (acq_FOVP * constants.GYRO) # uTs/m
-        maxPhaserArea = np.min(self.kPhaseAxis) * 1e3 / constants.GYRO   # uTs/m
+        largest_phaser_area = np.min(self.kPhaseAxis) * 1e3 / constants.GYRO   # uTs/m
         
-        self.maxPhaserDuration = sequence.getGradient('phase', totalArea=maxPhaserArea)['dur_f']
+        self.phaser_duration = sequence.getGradient('phase', totalArea=largest_phaser_area)['dur_f']
 
         self.max_blip_dur = 0
         if (self.EPIfactor > 1):
@@ -1749,11 +1749,11 @@ class MRIsimulator(param.Parameterized):
         self.boards['phase']['objects']['blips'] = []
 
         for rf_echo in range(self.turboFactor):
-            phaserArea = maxPhaserArea + self.pe_table[self.shot-1][rf_echo][0] * phase_step_area
+            phaserArea = largest_phaser_area + self.pe_table[self.shot-1][rf_echo][0] * phase_step_area
             suffix = ' {}'.format(rf_echo+1) if self.turboFactor>1 else ''
-            phaser = sequence.getGradient('phase', totalArea=maxPhaserArea, name='phase encode'+suffix)
-            if abs(maxPhaserArea) > 1e-5:
-                sequence.rescaleGradient(phaser, phaserArea/maxPhaserArea)
+            phaser = sequence.getGradient('phase', totalArea=largest_phaser_area, name='phase encode'+suffix)
+            if abs(largest_phaser_area) > 1e-5:
+                sequence.rescaleGradient(phaser, phaserArea/largest_phaser_area)
             self.boards['phase']['objects']['phasers'].append(phaser)
             rephaserArea = -phaserArea
             blips = []
@@ -1763,9 +1763,9 @@ class MRIsimulator(param.Parameterized):
                 blips.append(blip)
                 rephaserArea -= blipArea
             self.boards['phase']['objects']['blips'].append(blips)
-            rephaser = sequence.getGradient('phase', totalArea=maxPhaserArea, name='rephaser'+suffix)
-            if abs(maxPhaserArea) > 1e-5:
-                sequence.rescaleGradient(rephaser, rephaserArea/maxPhaserArea)
+            rephaser = sequence.getGradient('phase', totalArea=largest_phaser_area, name='rephaser'+suffix)
+            if abs(largest_phaser_area) > 1e-5:
+                sequence.rescaleGradient(rephaser, rephaserArea/largest_phaser_area)
             self.boards['phase']['objects']['rephasers'].append(rephaser)
         add_to_pipeline(self.sequencePipeline, ['placePhasers', 'updateMinTE', 'updateBWbounds'])
     
