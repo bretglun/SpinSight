@@ -1377,10 +1377,18 @@ class MRIsimulator(param.Parameterized):
     def setup_phase_encoding_table(self):
         if self.EPIfactor == 1: # (turbo) spin echo
             segment_order = get_segment_order(self.turboFactor, self.num_sym_segm, self.centermost_rf_echo)
-            self.pe_table = [[[segment * self.num_shots + shot] for segment in segment_order] for shot in range(self.num_shots)]
+            match self.trajectory:
+                case 'Cartesian':
+                    self.pe_table = [[[segment * self.num_shots + shot] for segment in segment_order] for shot in range(self.num_shots)]
+                case 'Radial':
+                    self.pe_table = [[[segment] for segment in segment_order] for shot in range(self.num_shots)]
         else: # EPI and GRASE
             order = -1 if self.reverse_linear_order else 1
-            self.pe_table = [[list(range(rf_echo * self.num_shots + shot, sum(self.lines_to_measure), self.num_shots * self.turboFactor))[::order] for rf_echo in range(self.turboFactor)][::order] for shot in range(self.num_shots)]
+            match self.trajectory:
+                case 'Cartesian':
+                    self.pe_table = [[list(range(rf_echo * self.num_shots + shot, sum(self.lines_to_measure), self.num_shots * self.turboFactor))[::order] for rf_echo in range(self.turboFactor)][::order] for shot in range(self.num_shots)]
+                case 'Radial':
+                    self.pe_table = [[list(range(rf_echo, sum(self.lines_to_measure), self.turboFactor))[::order] for rf_echo in range(self.turboFactor)][::order] for shot in range(self.num_shots)]
     
 
     def setup_frequency_encoding(self):
@@ -1406,7 +1414,6 @@ class MRIsimulator(param.Parameterized):
         self.phaseDir = 1 - DIRECTIONS[self.frequencyDirection]
         self.FOV[self.phaseDir] = self.FOVP
         self.matrix[self.phaseDir] = self.matrixP
-        voxelSize = self.FOV[self.phaseDir] / self.matrix[self.phaseDir]
 
         match(self.trajectory):
             case 'Cartesian':
@@ -1415,12 +1422,13 @@ class MRIsimulator(param.Parameterized):
                 # oversampling may be higher than prescribed since num_shots must be integer:
                 num_lines = max(num_measured_lines, int(np.ceil(self.matrix[self.phaseDir] * (1 + self.phaseOversampling / 100))))
                 self.kAngles = np.zeros(1)
+                voxelSize = self.FOV[self.phaseDir] / self.matrix[self.phaseDir]
             case 'Radial':
                 self.num_shots = self.numSpokes
                 num_measured_lines = self.turboFactor * self.EPIfactor # per blade
                 num_lines = num_measured_lines # future: take undersampling into account
-                voxelSize *= num_lines / len(self.kReadAxis) # corresponding to blade width. TODO: correct this!
                 self.kAngles = np.linspace(0, np.pi, self.num_shots, endpoint=False)
+                voxelSize = max(self.FOVF, self.FOVP) / num_lines # corresponding to blade width
         self.kPhaseAxis = recon.getKaxis(num_lines, voxelSize)
         self.lines_to_measure = np.ones(num_lines, dtype=bool)
         # undersample by partial Fourier:
@@ -1443,20 +1451,24 @@ class MRIsimulator(param.Parameterized):
     
 
     def sampleKspace(self):
+        kAxes = [None]*2
+        kAxes[self.freqDir] = self.kReadAxis
+        kAxes[self.phaseDir] = self.kPhaseAxis[self.lines_to_measure]
+        kSamples = np.array(np.meshgrid(kAxes[0], kAxes[1])).T
+        # rotate samples for each angle:
+        rotmat = np.array([[np.cos(self.kAngles), -np.sin(self.kAngles)], 
+                           [np.sin(self.kAngles),  np.cos(self.kAngles)]])
+        self.kSamples = np.einsum('ijk,klm->ijml', kSamples, rotmat) # shape=(Nx, Ny, Nangles, 2)
+
         match(self.trajectory):
             case 'Cartesian':
-                self.kGridAxes[self.freqDir] = self.kReadAxis
-                self.kGridAxes[self.phaseDir] = self.kPhaseAxis[self.lines_to_measure]
-                self.kSamples = np.array(np.meshgrid(self.kGridAxes[0], self.kGridAxes[1])).T
-                self.plainKspaceComps = recon.resampleKspaceCartesian(self.phantom, self.kGridAxes)
+                self.kGridAxes = kAxes
+                self.plainKspaceComps = recon.resampleKspaceCartesian(self.phantom, self.kGridAxes, shape=self.kSamples.shape[:-1])
             case 'Radial':
                 for dim in range(2):
                     voxelSize = self.FOV[dim]/self.matrix[dim]
                     matrix = int(np.ceil(max(self.FOV[dim], self.phantom['FOV'][dim]) / voxelSize))
                     self.kGridAxes[dim] = recon.getKaxis(matrix, voxelSize)
-                self.kSamples = np.stack((np.outer(self.kReadAxis, np.cos(self.kAngles)), 
-                                    np.outer(self.kReadAxis, np.sin(self.kAngles))), 
-                                    -1)
                 self.plainKspaceComps = recon.resampleKspace(self.phantom, self.kSamples)
         
         # Lorenzian line shape to mimic slice thickness
@@ -1477,25 +1489,25 @@ class MRIsimulator(param.Parameterized):
 
     def modulateKspace(self):
         pe_table = np.array(self.pe_table)
-        TEs = np.zeros((pe_table.size))
-        spin_echoes = np.zeros((pe_table.size))
-        reverse = np.zeros((pe_table.size), dtype=bool)
-        for ky in range(pe_table.size):
+        TEs = np.zeros((sum(self.lines_to_measure)))
+        spin_echoes = np.zeros((sum(self.lines_to_measure)))
+        reverse = np.zeros((sum(self.lines_to_measure)), dtype=bool)
+        for ky in range(sum(self.lines_to_measure)):
             shot, rf_echo, gr_echo = np.argwhere(pe_table==ky)[0]
             TEs[ky] = self.boards['frequency']['objects']['readouts'][rf_echo][gr_echo]['center_f']
             spin_echoes[ky] = (rf_echo + 1) * self.readtrain_spacing
             reverse[ky] = self.boards['frequency']['objects']['readouts'][rf_echo][gr_echo]['area_f'] < 0
-        samplingTime = np.expand_dims(self.samplingTime, axis=[dim for dim in range(len(self.matrix)) if dim != self.freqDir])
-        self.timeAfterExcitation = samplingTime + np.expand_dims(TEs, axis=[dim for dim in range(len(self.matrix)) if dim != self.phaseDir])
+        samplingTime = np.expand_dims(self.samplingTime, axis=[dim for dim in range(3) if dim != self.freqDir])
+        self.timeAfterExcitation = samplingTime + np.expand_dims(TEs, axis=[dim for dim in range(3) if dim != self.phaseDir])
         # EPI rowflip:
         reverseTimeAfterExcitation = np.flip(self.timeAfterExcitation, axis=self.freqDir)
-        reverse = np.expand_dims(reverse, axis=[dim for dim in range(len(self.matrix)) if dim != self.phaseDir])
+        reverse = np.expand_dims(reverse, axis=[dim for dim in range(3) if dim != self.phaseDir])
         reverse = reverse.repeat(len(self.samplingTime), axis=self.freqDir)
         self.timeAfterExcitation[reverse] = reverseTimeAfterExcitation[reverse]
         
         timeRelativeInphase = self.timeAfterExcitation.copy()
         if not isGradientEcho(self.sequence):
-            spin_echoes = np.expand_dims(spin_echoes, axis=[dim for dim in range(len(self.matrix)) if dim != self.phaseDir])
+            spin_echoes = np.expand_dims(spin_echoes, axis=[dim for dim in range(3) if dim != self.phaseDir])
             timeRelativeInphase -= spin_echoes # for spinecho, subtract Hahn echo position from timeAfterExcitation
         
         self.kspaceComps = {}
@@ -1562,11 +1574,11 @@ class MRIsimulator(param.Parameterized):
         add_to_pipeline(self.sequencePlotPipeline, ['renderSignalBoard'])
 
         # Gridding:
+        gridShape = tuple(len(self.kGridAxes[dim]) for dim in range(2))
         match(self.trajectory):
             case 'Cartesian':
-                self.griddedkspace = self.measuredkspace.copy()
+                self.griddedkspace = self.measuredkspace.reshape(gridShape)
             case 'Radial':
-                gridShape = tuple(len(self.kGridAxes[dim]) for dim in range(2))
                 samples = self.kSamples * self.FOV / self.matrix
                 self.griddedkspace = recon.grid(self.measuredkspace, gridShape, samples)
 
@@ -1864,12 +1876,13 @@ class MRIsimulator(param.Parameterized):
         self.boards['signal']['objects']['signals'] = []
         scale = 1/np.max(np.abs(np.real(self.measuredkspace)))
         signalExponent = .5
+        spoke = self.shot-1 if self.trajectory=='Radial' else 0
         for rf_echo in range(self.turboFactor):
             signals = []
             for gr_echo in range(self.EPIfactor):
                 ky = self.pe_table[self.shot-1][rf_echo][gr_echo]
-                waveform = np.real(np.take(self.measuredkspace, indices=ky, axis=self.phaseDir))
-                t = np.take(self.timeAfterExcitation, indices=ky, axis=self.phaseDir)
+                waveform = np.real(np.take(self.measuredkspace[..., spoke], indices=ky, axis=self.phaseDir))
+                t = np.take(self.timeAfterExcitation[..., spoke if spoke<self.timeAfterExcitation.shape[-1] else 0], indices=ky, axis=self.phaseDir)
                 signal = sequence.getSignal(waveform, t, scale, signalExponent)
                 signals.append(signal)
             self.boards['signal']['objects']['signals'].append(signals)

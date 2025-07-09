@@ -41,12 +41,15 @@ def crop(arr, shape):
     return arr
 
 
-def resampleKspaceCartesian(phantom, kAxes):
+def resampleKspaceCartesian(phantom, kAxes, shape=None):
     kspace = {tissue: phantom['kspace'][tissue] for tissue in phantom['kspace']}
     for dim in range(len(kAxes)):
         sinc = np.sinc((np.tile(kAxes[dim], (len(phantom['kAxes'][dim]), 1)) - np.tile(phantom['kAxes'][dim][:, np.newaxis], (1, len(kAxes[dim])))) * phantom['FOV'][dim])
         for tissue in phantom['kspace']:
             kspace[tissue] = np.moveaxis(np.tensordot(kspace[tissue], sinc, axes=(dim, 0)), -1, dim)
+    if shape is not None:
+        for tissue in phantom['kspace']:
+            kspace[tissue] = kspace[tissue].reshape(shape)
     return kspace
 
 
