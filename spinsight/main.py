@@ -2014,7 +2014,7 @@ class MRIsimulator(param.Parameterized):
         self.k_trajectory = {'kx': kx, 'ky': ky, 't': t, 'dt': dt}
     
 
-    @param.depends('sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'sliceThickness', 'trajectory', 'frequencyDirection', 'pixelBandWidth', 'partialFourier', 'turboFactor', 'EPIfactor', 'shot')
+    @param.depends('sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'num_shots', 'matrixF', 'matrixP', 'sliceThickness', 'trajectory', 'frequencyDirection', 'pixelBandWidth', 'partialFourier', 'turboFactor', 'EPIfactor', 'shot')
     def getSequencePlot(self):
         self.runSequencePlotPipeline()
         last = len(self.boardPlots)-1
