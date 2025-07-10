@@ -328,6 +328,7 @@ class MRIsimulator(param.Parameterized):
     referenceSNR = param.Number(default=1, label='Reference SNR')
     relativeSNR = param.Number(label='Relative SNR [%]')
     scantime = param.Number(label='Scan time [sec]')
+    spokeAngle = param.Number(label='Spoke angle [°]')
 
     kspaceType = param.ObjectSelector(default='Magnitude', label='k-space type')
     showProcessedKspace = param.Boolean(default=False, label='Show processed k-space')
@@ -384,7 +385,7 @@ class MRIsimulator(param.Parameterized):
         for board in self.boards:
             self.boards[board]['objects'] = {}
 
-        self.derivedParams = ['FOVbandwidth', 'FWshift', 'SNR', 'name', 'reconVoxelF', 'reconVoxelP', 'referenceSNR', 'relativeSNR', 'scantime', 'voxelF', 'voxelP']
+        self.derivedParams = ['FOVbandwidth', 'FWshift', 'SNR', 'name', 'numSpokes', 'reconVoxelF', 'reconVoxelP', 'referenceSNR', 'relativeSNR', 'scantime', 'spokeAngle' 'voxelF', 'voxelP']
         
         self.sequencePipeline = {f: True for f in [
             'setupExcitation', 
@@ -845,6 +846,7 @@ class MRIsimulator(param.Parameterized):
 
     @param.depends('shot', watch=True)
     def _watch_shot(self):
+        self.updateSpokeAngle()
         add_to_pipeline(self.sequencePipeline, ['setupPhasers'])
         add_to_pipeline(self.sequencePlotPipeline, ['renderSignalBoard', 'calculate_k_trajectory'])
     
@@ -1463,7 +1465,8 @@ class MRIsimulator(param.Parameterized):
             self.central_segments = [self.num_segm - self.num_sym_segm//2 - 1]
         self.param.shot.bounds=(1, self.num_shots)
         self.shot = min(self.shot, self.num_shots)
-    
+        self.updateSpokeAngle()
+
 
     def sampleKspace(self):
         kAxes = [None]*2
@@ -1565,6 +1568,13 @@ class MRIsimulator(param.Parameterized):
 
     def updateScantime(self):
         self.scantime = self.num_shots * self.NSA * self.TR * 1e-3 # scantime in seconds
+
+
+    def updateSpokeAngle(self):
+        if self.trajectory=='Radial':
+            self.spokeAngle = np.degrees(self.kAngles[self.shot-1])
+        else:
+            self.spokeAngle = 0
 
 
     def compileKspace(self):
@@ -2007,7 +2017,8 @@ class MRIsimulator(param.Parameterized):
                 if self.phaseDir==1:
                     kx, ky = ky, kx
             case 'Radial': # rotate by spoke/blade angle
-                cos, sin = np.cos(self.kAngles[self.shot-1]), np.sin(self.kAngles[self.shot-1])
+                angle = np.radians(self.spokeAngle)
+                cos, sin = np.cos(angle), np.sin(angle)
                 kx, ky = cos * kx - sin * ky, sin * kx + cos * ky
         self.k_trajectory = {'kx': kx, 'ky': ky, 't': t, 'dt': dt}
     
@@ -2124,13 +2135,14 @@ def getApp(darkMode=True, settingsFilestem=''):
                       infoNumber(name='Scan time', format=('{value:.1f} sec'), value=simulator.param.scantime, textColor=textColor),
                       infoNumber(name='Fat/water shift', format='{value:.2f} pixels', value=simulator.param.FWshift, textColor=textColor),
                       infoNumber(name='Bandwidth', format='{value:.0f} Hz/pixel', value=simulator.param.pixelBandWidth, textColor=textColor))
+    shotInfo = infoNumber(name='Angle', format='{value:.0f}°', value=simulator.param.spokeAngle, textColor=textColor)
     
     dmapKspace = pn.Column(hv.DynamicMap(simulator.getKspace) * simulator.kLine, 
                            # simulator.param.kspaceType, 
                            pn.Row(simulator.param.showProcessedKspace, simulator.param.kspaceExponent), 
                            visible=False)
     dmapMRimage = hv.DynamicMap(simulator.getImage)
-    dmapSequence = pn.Column(hv.DynamicMap(simulator.getSequencePlot), simulator.param.shot, visible=False)
+    dmapSequence = pn.Column(hv.DynamicMap(simulator.getSequencePlot), pn.Row(simulator.param.shot, shotInfo), visible=False)
     loadButton = pn.widgets.Button(name='Load settings', visible=settingsFile.is_file())
     loadButton.on_click(partial(loadButtonCallback, simulator, settingsFile))
     saveButton = pn.widgets.Button(name='Save settings', visible=settingsFile.is_file())
