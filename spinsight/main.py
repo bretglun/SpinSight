@@ -298,7 +298,7 @@ class MRIsimulator(param.Parameterized):
     FOVF = param.Number(default=240, precedence=2, label='FOV y [mm]')
     phaseOversampling = param.Number(default=0, step=1., precedence=3, label='Phase oversampling [%]')
     radialFactor = param.Number(default=1., precedence=-3, label='Radial oversampling factor')
-    numSpokes = param.Integer(default=180, precedence=-3, label='Number of spokes')
+    num_shots = param.Integer(precedence=-3, label='Number of shots')
     voxelP = param.Selector(default=1.333, precedence=-4, label='Voxel size x [mm]')
     voxelF = param.Selector(default=1.333, precedence=-4, label='Voxel size y [mm]')
     matrixP = param.Selector(default=180, precedence=4, label='Acquisition matrix x')
@@ -320,7 +320,7 @@ class MRIsimulator(param.Parameterized):
     turboFactor = param.Integer(default=1, precedence=6, label='Turbo factor')
     EPIfactor = param.Selector(default=1, precedence=7, label='EPI factor')
     shot = param.Integer(default=1, label='Displayed shot')
-    
+
     imageType = param.ObjectSelector(default='Magnitude', label='Image type')
     showFOV = param.Boolean(default=False, label='Show FOV')
     noiseGain = param.Number(default=3.)
@@ -385,7 +385,7 @@ class MRIsimulator(param.Parameterized):
         for board in self.boards:
             self.boards[board]['objects'] = {}
 
-        self.derivedParams = ['FOVbandwidth', 'FWshift', 'SNR', 'name', 'numSpokes', 'reconVoxelF', 'reconVoxelP', 'referenceSNR', 'relativeSNR', 'scantime', 'spokeAngle' 'voxelF', 'voxelP']
+        self.derivedParams = ['FOVbandwidth', 'FWshift', 'SNR', 'name', 'num_shots', 'reconVoxelF', 'reconVoxelP', 'referenceSNR', 'relativeSNR', 'scantime', 'spokeAngle' 'voxelF', 'voxelP']
         
         self.sequencePipeline = {f: True for f in [
             'setupExcitation', 
@@ -641,11 +641,11 @@ class MRIsimulator(param.Parameterized):
 
     @param.depends('radialFactor', watch=True)
     def _watch_radialFactor(self):
-        self.updateNumSpokes()
+        self.setup_phase_encoding()
 
 
-    @param.depends('numSpokes', watch=True)
-    def _watch_numSpokes(self):
+    @param.depends('num_shots', watch=True)
+    def _watch_num_shots(self):
         add_to_pipeline(self.acquisitionPipeline, ['sampleKspace', 'modulateKspace', 'simulateNoise', 'compileKspace'])
         add_to_pipeline(self.reconPipeline, ['partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
         add_to_pipeline(self.sequencePipeline, ['setupPhasers', 'updateFOVPbounds', 'updateTurboFactorBounds', 'updateEPIfactorObjects'])
@@ -672,7 +672,6 @@ class MRIsimulator(param.Parameterized):
             self.param.trigger('voxelF', 'reconVoxelF')
             if self.trajectory=='Radial':
                 self.matrixP = take_closest(self.param.matrixP.objects, self.matrixF*self.FOVP/self.FOVF)
-                self.updateNumSpokes()
     
     
     @param.depends('matrixP', watch=True)
@@ -689,7 +688,6 @@ class MRIsimulator(param.Parameterized):
             self.param.trigger('voxelP', 'reconVoxelP')
             if self.trajectory=='Radial':
                 self.matrixF = take_closest(self.param.matrixP.objects, self.matrixP*self.FOVF/self.FOVP)
-                self.updateNumSpokes()
 
 
     @param.depends('voxelF', watch=True)
@@ -832,7 +830,6 @@ class MRIsimulator(param.Parameterized):
         add_to_pipeline(self.reconPipeline, ['partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
         add_to_pipeline(self.sequencePipeline, ['setupRefocusing', 'setupReadouts', 'setupPhasers', 'updateMinTE', 'updateMinTR', 'updateMaxTE', 'updateMaxTI', 'updateBWbounds', 'updateMatrixFbounds', 'updateMatrixPbounds', 'updateFOVFbounds',  'updateFOVPbounds', 'updateSliceThicknessBounds', 'updateEPIfactorObjects'])
         self.updateEPIfactorObjects()
-        self.updateNumSpokes()
 
 
     @param.depends('EPIfactor', watch=True)
@@ -841,7 +838,6 @@ class MRIsimulator(param.Parameterized):
         add_to_pipeline(self.reconPipeline, ['partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
         add_to_pipeline(self.sequencePipeline, ['setupReadouts', 'setupPhasers', 'updateMinTE', 'updateMinTR', 'updateMaxTE', 'updateMaxTI', 'updateBWbounds', 'updateMatrixFbounds', 'updateMatrixPbounds', 'updateFOVFbounds',  'updateFOVPbounds', 'updateSliceThicknessBounds', 'updateTurboFactorBounds'])
         self.updateTurboFactorBounds()
-        self.updateNumSpokes()
     
 
     @param.depends('shot', watch=True)
@@ -1318,11 +1314,6 @@ class MRIsimulator(param.Parameterized):
         self.setup_frequency_encoding() # frequency oversampling is adapted to phantom FOV for efficiency
 
 
-    def updateNumSpokes(self):
-        if self.trajectory=='Radial':
-            self.numSpokes = int(np.ceil(self.radialFactor * max(self.matrixF, self.matrixP) / len(self.kPhaseAxis) * np.pi / 2))
-
-
     def get_min_readtrain_spacing(self):
         # Get shortest spacing for (center of) gradient echo trains
         # Equals center position of gradient echo (train) for gradient echo sequences
@@ -1441,9 +1432,9 @@ class MRIsimulator(param.Parameterized):
                 self.kAngles = np.zeros(1)
                 voxelSize = self.FOV[self.phaseDir] / self.matrix[self.phaseDir]
             case 'Radial':
-                self.num_shots = self.numSpokes
                 num_measured_lines = self.turboFactor * self.EPIfactor # per blade
                 num_lines = num_measured_lines # future: take undersampling into account
+                self.num_shots = int(np.ceil(self.radialFactor * max(self.matrixF, self.matrixP) / num_lines * np.pi / 2))
                 self.kAngles = np.linspace(0, np.pi, self.num_shots, endpoint=False)
                 voxelSize = max(self.FOVF, self.FOVP) / num_lines # corresponding to blade width
         self.kPhaseAxis = recon.getKaxis(num_lines, voxelSize)
@@ -2031,7 +2022,7 @@ class MRIsimulator(param.Parameterized):
         return self.seqPlot
     
     
-    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'numSpokes', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'trajectory', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor', 'kspaceType', 'showProcessedKspace', 'kspaceExponent', 'homodyne', 'doApodize', 'apodizationAlpha', 'doZerofill', 'DCiters', 'radialFOVoversampling')
+    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'num_shots', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'trajectory', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor', 'kspaceType', 'showProcessedKspace', 'kspaceExponent', 'homodyne', 'doApodize', 'apodizationAlpha', 'doZerofill', 'DCiters', 'radialFOVoversampling')
     def getKspace(self):
         operator = OPERATORS[self.kspaceType]
         if self.showProcessedKspace:
@@ -2067,7 +2058,7 @@ class MRIsimulator(param.Parameterized):
         return hv.Box(0, 0, tuple(acqFOV[::-1])).opts(color='lightblue') * hv.Box(0, 0, tuple(self.FOV[::-1])).opts(color='yellow')
 
 
-    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'numSpokes', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'trajectory', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor', 'imageType', 'showFOV', 'homodyne', 'doApodize', 'apodizationAlpha', 'doZerofill', 'DCiters', 'radialFOVoversampling')
+    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'num_shots', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'trajectory', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor', 'imageType', 'showFOV', 'homodyne', 'doApodize', 'apodizationAlpha', 'doZerofill', 'DCiters', 'radialFOVoversampling')
     def getImage(self):
         self.runReconPipeline()
         operator = OPERATORS[self.imageType]
