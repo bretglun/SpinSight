@@ -297,6 +297,7 @@ class MRIsimulator(param.Parameterized):
     FOVP = param.Number(default=240, precedence=2, label='FOV x [mm]')
     FOVF = param.Number(default=240, precedence=2, label='FOV y [mm]')
     phaseOversampling = param.Number(default=0, step=1., precedence=3, label='Phase oversampling [%]')
+    radialFactor = param.Number(default=1., precedence=-3, label='Radial oversampling factor')
     numSpokes = param.Integer(default=180, precedence=-3, label='Number of spokes')
     voxelP = param.Selector(default=1.333, precedence=-4, label='Voxel size x [mm]')
     voxelF = param.Selector(default=1.333, precedence=-4, label='Voxel size y [mm]')
@@ -465,7 +466,7 @@ class MRIsimulator(param.Parameterized):
         self.param.FOVP.bounds=(100, 600)
         self.param.FOVF.bounds=(100, 600)
         self.param.phaseOversampling.bounds=(0, 100)
-        self.param.numSpokes.bounds=(16, 600)
+        self.param.radialFactor.bounds=(0.1, 4.)
         self.param.matrixP.objects=matrixValues
         self.param.matrixF.objects=matrixValues
         self.param.reconMatrixP.objects=reconMatrixValues
@@ -637,6 +638,11 @@ class MRIsimulator(param.Parameterized):
         self._watch_FOVP()
 
 
+    @param.depends('radialFactor', watch=True)
+    def _watch_radialFactor(self):
+        self.updateNumSpokes()
+
+
     @param.depends('numSpokes', watch=True)
     def _watch_numSpokes(self):
         add_to_pipeline(self.acquisitionPipeline, ['sampleKspace', 'modulateKspace', 'simulateNoise', 'compileKspace'])
@@ -665,6 +671,7 @@ class MRIsimulator(param.Parameterized):
             self.param.trigger('voxelF', 'reconVoxelF')
             if self.trajectory=='Radial':
                 self.matrixP = take_closest(self.param.matrixP.objects, self.matrixF*self.FOVP/self.FOVF)
+                self.updateNumSpokes()
     
     
     @param.depends('matrixP', watch=True)
@@ -681,6 +688,7 @@ class MRIsimulator(param.Parameterized):
             self.param.trigger('voxelP', 'reconVoxelP')
             if self.trajectory=='Radial':
                 self.matrixF = take_closest(self.param.matrixP.objects, self.matrixP*self.FOVF/self.FOVP)
+                self.updateNumSpokes()
 
 
     @param.depends('voxelF', watch=True)
@@ -754,14 +762,14 @@ class MRIsimulator(param.Parameterized):
                 self.param.partialFourier.precedence = 5
                 self.param.frequencyDirection.precedence = 1
                 self.param.phaseOversampling.precedence = 3
-                self.param.numSpokes.precedence = -3
+                self.param.radialFactor.precedence = -3
             case 'Radial':
                 self.partialFourier = 1.
                 self.param.partialFourier.precedence = -5
                 self.param.frequencyDirection.precedence = -1
                 self.phaseOversampling = 0.
                 self.param.phaseOversampling.precedence = -3
-                self.param.numSpokes.precedence = 3
+                self.param.radialFactor.precedence = 3
                 # set isotropic voxelsize:
                 if (self.FOVF/self.matrixF < self.FOVP/self.matrixP):
                     self.matrixP = take_closest(self.param.matrixP.objects, self.matrixF*self.FOVP/self.FOVF)
@@ -823,6 +831,7 @@ class MRIsimulator(param.Parameterized):
         add_to_pipeline(self.reconPipeline, ['partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
         add_to_pipeline(self.sequencePipeline, ['setupRefocusing', 'setupReadouts', 'setupPhasers', 'updateMinTE', 'updateMinTR', 'updateMaxTE', 'updateMaxTI', 'updateBWbounds', 'updateMatrixFbounds', 'updateMatrixPbounds', 'updateFOVFbounds',  'updateFOVPbounds', 'updateSliceThicknessBounds', 'updateEPIfactorObjects'])
         self.updateEPIfactorObjects()
+        self.updateNumSpokes()
 
 
     @param.depends('EPIfactor', watch=True)
@@ -831,6 +840,7 @@ class MRIsimulator(param.Parameterized):
         add_to_pipeline(self.reconPipeline, ['partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
         add_to_pipeline(self.sequencePipeline, ['setupReadouts', 'setupPhasers', 'updateMinTE', 'updateMinTR', 'updateMaxTE', 'updateMaxTI', 'updateBWbounds', 'updateMatrixFbounds', 'updateMatrixPbounds', 'updateFOVFbounds',  'updateFOVPbounds', 'updateSliceThicknessBounds', 'updateTurboFactorBounds'])
         self.updateTurboFactorBounds()
+        self.updateNumSpokes()
     
 
     @param.depends('shot', watch=True)
@@ -1304,6 +1314,11 @@ class MRIsimulator(param.Parameterized):
                 np.save(file, self.phantom['kspace'][tissue])
             print('DONE')
         self.setup_frequency_encoding() # frequency oversampling is adapted to phantom FOV for efficiency
+
+
+    def updateNumSpokes(self):
+        if self.trajectory=='Radial':
+            self.numSpokes = int(np.ceil(self.radialFactor * max(self.matrixF, self.matrixP) / len(self.kPhaseAxis) * np.pi / 2))
 
 
     def get_min_readtrain_spacing(self):
@@ -2101,7 +2116,7 @@ def getApp(darkMode=True, settingsFilestem=''):
         version = ''
     settingsParams = pn.panel(simulator.param, parameters=['object', 'fieldStrength', 'parameterStyle'], name='Settings')
     contrastParams = pn.panel(simulator.param, parameters=['FatSat', 'TR', 'TE', 'FA', 'TI'], widgets={'TR': pn.widgets.DiscreteSlider, 'TE': pn.widgets.DiscreteSlider, 'TI': pn.widgets.DiscreteSlider}, name='Contrast')
-    geometryParams = pn.panel(simulator.param, parameters=['trajectory', 'frequencyDirection', 'FOVF', 'FOVP', 'phaseOversampling', 'numSpokes', 'voxelF', 'voxelP', 'matrixF', 'matrixP', 'reconVoxelF', 'reconVoxelP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness'], widgets={'matrixF': pn.widgets.DiscreteSlider, 'matrixP': pn.widgets.DiscreteSlider, 'reconMatrixF': pn.widgets.DiscreteSlider, 'reconMatrixP': pn.widgets.DiscreteSlider, 'voxelF': pn.widgets.DiscreteSlider, 'voxelP': pn.widgets.DiscreteSlider, 'reconVoxelF': pn.widgets.DiscreteSlider, 'reconVoxelP': pn.widgets.DiscreteSlider}, name='Geometry')
+    geometryParams = pn.panel(simulator.param, parameters=['trajectory', 'frequencyDirection', 'FOVF', 'FOVP', 'phaseOversampling', 'radialFactor', 'voxelF', 'voxelP', 'matrixF', 'matrixP', 'reconVoxelF', 'reconVoxelP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness'], widgets={'matrixF': pn.widgets.DiscreteSlider, 'matrixP': pn.widgets.DiscreteSlider, 'reconMatrixF': pn.widgets.DiscreteSlider, 'reconMatrixP': pn.widgets.DiscreteSlider, 'voxelF': pn.widgets.DiscreteSlider, 'voxelP': pn.widgets.DiscreteSlider, 'reconVoxelF': pn.widgets.DiscreteSlider, 'reconVoxelP': pn.widgets.DiscreteSlider}, name='Geometry')
     sequenceParams = pn.panel(simulator.param, parameters=['sequence', 'pixelBandWidth', 'FOVbandwidth', 'FWshift', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor'], widgets={'pixelBandWidth': pn.widgets.DiscreteSlider, 'FOVbandwidth': pn.widgets.DiscreteSlider, 'FWshift': pn.widgets.DiscreteSlider, 'EPIfactor': pn.widgets.DiscreteSlider}, name='Sequence')
     postprocParams = pn.panel(simulator.param, parameters=['homodyne', 'doApodize', 'apodizationAlpha', 'doZerofill'], name='Post-processing')
 
