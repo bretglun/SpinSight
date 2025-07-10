@@ -308,7 +308,6 @@ class MRIsimulator(param.Parameterized):
     reconMatrixP = param.Selector(default=360, precedence=5, label='Reconstruction matrix x')
     reconMatrixF = param.Selector(default=360, precedence=5, label='Reconstruction matrix y')
     sliceThickness = param.Number(default=3, precedence=6, label='Slice thickness [mm]')
-    DCiters = param.Integer(default=5, precedence=7, label='Density Compensation Iterations')
     radialFOVoversampling = param.Number(default=2, step=0.01, precedence=9, label='Radial FOV oversampling factor')
     
     sequence = param.ObjectSelector(default=SEQUENCES[0], precedence=1, label='Pulse sequence')
@@ -473,7 +472,6 @@ class MRIsimulator(param.Parameterized):
         self.param.reconMatrixP.objects=reconMatrixValues
         self.param.reconMatrixF.objects=reconMatrixValues
         self.param.sliceThickness.bounds=(0.5, 10)
-        self.param.DCiters.bounds=(1, 30)
         self.param.radialFOVoversampling.bounds=(1, 2)
         self.param.sequence.objects=SEQUENCES
         self.param.pixelBandWidth.objects=pBWvalues
@@ -723,12 +721,6 @@ class MRIsimulator(param.Parameterized):
         add_to_pipeline(self.acquisitionPipeline, ['sampleKspace', 'updateSamplingTime', 'modulateKspace', 'simulateNoise', 'compileKspace'])
         add_to_pipeline(self.reconPipeline, ['partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
         add_to_pipeline(self.sequencePipeline, ['setupSliceSelection', 'placeFatSat'])
-
-
-    @param.depends('DCiters', watch=True)
-    def _watch_DCiters(self):
-        add_to_pipeline(self.acquisitionPipeline, ['sampleKspace', 'updateSamplingTime', 'modulateKspace', 'simulateNoise', 'compileKspace'])
-        add_to_pipeline(self.reconPipeline, ['partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
 
 
     @param.depends('radialFOVoversampling', watch=True)
@@ -2022,7 +2014,7 @@ class MRIsimulator(param.Parameterized):
         return self.seqPlot
     
     
-    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'num_shots', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'trajectory', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor', 'kspaceType', 'showProcessedKspace', 'kspaceExponent', 'homodyne', 'doApodize', 'apodizationAlpha', 'doZerofill', 'DCiters', 'radialFOVoversampling')
+    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'num_shots', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'trajectory', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor', 'kspaceType', 'showProcessedKspace', 'kspaceExponent', 'homodyne', 'doApodize', 'apodizationAlpha', 'doZerofill', 'radialFOVoversampling')
     def getKspace(self):
         operator = OPERATORS[self.kspaceType]
         if self.showProcessedKspace:
@@ -2058,7 +2050,7 @@ class MRIsimulator(param.Parameterized):
         return hv.Box(0, 0, tuple(acqFOV[::-1])).opts(color='lightblue') * hv.Box(0, 0, tuple(self.FOV[::-1])).opts(color='yellow')
 
 
-    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'num_shots', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'trajectory', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor', 'imageType', 'showFOV', 'homodyne', 'doApodize', 'apodizationAlpha', 'doZerofill', 'DCiters', 'radialFOVoversampling')
+    @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'num_shots', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'trajectory', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor', 'imageType', 'showFOV', 'homodyne', 'doApodize', 'apodizationAlpha', 'doZerofill', 'radialFOVoversampling')
     def getImage(self):
         self.runReconPipeline()
         operator = OPERATORS[self.imageType]
