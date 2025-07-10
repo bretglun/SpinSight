@@ -836,7 +836,7 @@ class MRIsimulator(param.Parameterized):
     @param.depends('shot', watch=True)
     def _watch_shot(self):
         add_to_pipeline(self.sequencePipeline, ['setupPhasers'])
-        add_to_pipeline(self.sequencePlotPipeline, ['renderSignalBoard'])
+        add_to_pipeline(self.sequencePlotPipeline, ['renderSignalBoard', 'calculate_k_trajectory'])
     
 
     @param.depends('sequence', watch=True)
@@ -1392,7 +1392,7 @@ class MRIsimulator(param.Parameterized):
     
 
     def setup_frequency_encoding(self):
-        self.freqDir = DIRECTIONS[self.frequencyDirection]
+        self.freqDir = DIRECTIONS[self.frequencyDirection] if self.trajectory=='Cartesian' else 1
         self.FOV[self.freqDir] = self.FOVF
         self.matrix[self.freqDir] = self.matrixF
         voxelSize = self.FOV[self.freqDir]/self.matrix[self.freqDir]
@@ -1411,7 +1411,7 @@ class MRIsimulator(param.Parameterized):
     
 
     def setup_phase_encoding(self):
-        self.phaseDir = 1 - DIRECTIONS[self.frequencyDirection]
+        self.phaseDir = 1 - DIRECTIONS[self.frequencyDirection] if self.trajectory=='Cartesian' else 0
         self.FOV[self.phaseDir] = self.FOVP
         self.matrix[self.phaseDir] = self.matrixP
 
@@ -1987,8 +1987,13 @@ class MRIsimulator(param.Parameterized):
         t = np.unique(np.concatenate((t, np.arange(0., max(t), dt)))) # merge with time grid
         kx = self.get_k_coords(t, *(self.boardPlots['frequency']['area'][dim] for dim in ['G read', 'time']), refocus_intervals)
         ky = self.get_k_coords(t, *(self.boardPlots['phase']['area'][dim] for dim in ['G phase', 'time']), refocus_intervals)
-        if self.phaseDir==1:
-            kx, ky = ky, kx
+        match self.trajectory:
+            case 'Cartesian':
+                if self.phaseDir==1:
+                    kx, ky = ky, kx
+            case 'Radial': # rotate by spoke/blade angle
+                cos, sin = np.cos(self.kAngles[self.shot-1]), np.sin(self.kAngles[self.shot-1])
+                kx, ky = cos * kx - sin * ky, sin * kx + cos * ky
         self.k_trajectory = {'kx': kx, 'ky': ky, 't': t, 'dt': dt}
     
 
