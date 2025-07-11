@@ -53,7 +53,7 @@ PHANTOMS = {
 
 DIRECTIONS = {'anterior-posterior': 0, 'left-right': 1}
 
-TRAJECTORIES = ['Cartesian', 'Radial']
+TRAJECTORIES = ['Cartesian', 'Radial', 'PROPELLER']
 
 OPERATORS = {'Magnitude': np.abs, 'Phase': np.angle, 'Real': np.real, 'Imaginary': np.imag}
 
@@ -80,6 +80,14 @@ def FOVBW2pixelBW(FOVBW, matrixF):
 
 def isGradientEcho(sequence):
     return 'Gradient Echo' in sequence
+
+
+def isCartesian(trajectory):
+    return trajectory=='Cartesian'
+
+
+def isRadial(trajectory):
+    return trajectory in ['Radial', 'PROPELLER']
 
 
 def polygonArea(coords):
@@ -297,8 +305,9 @@ class MRIsimulator(param.Parameterized):
     FOVP = param.Number(default=240, precedence=2, label='FOV x [mm]')
     FOVF = param.Number(default=240, precedence=2, label='FOV y [mm]')
     phaseOversampling = param.Number(default=0, step=1., precedence=3, label='Phase oversampling [%]')
-    radialFactor = param.Number(default=1., precedence=-3, label='Radial oversampling factor')
-    num_shots = param.Integer(precedence=-3, label='Number of shots')
+    radialFactor = param.Number(default=1., precedence=-3, label='Spoke sampling factor')
+    num_shots = param.Integer(precedence=-3)
+    num_shots_label = param.String('# shots')
     voxelP = param.Selector(default=1.333, precedence=-4, label='Voxel size x [mm]')
     voxelF = param.Selector(default=1.333, precedence=-4, label='Voxel size y [mm]')
     matrixP = param.Selector(default=180, precedence=4, label='Acquisition matrix x')
@@ -462,7 +471,7 @@ class MRIsimulator(param.Parameterized):
         self.param.FA.bounds=(1, 90.0)
         self.param.TI.objects=TIvalues
         self.param.frequencyDirection.objects=DIRECTIONS.keys()
-        self.param.trajectory.objects=TRAJECTORIES
+        self.param.trajectory.objects=TRAJECTORIES[:2]
         self.param.FOVP.bounds=(100, 600)
         self.param.FOVF.bounds=(100, 600)
         self.param.phaseOversampling.bounds=(0, 100)
@@ -602,7 +611,7 @@ class MRIsimulator(param.Parameterized):
     @param.depends('FOVF', watch=True)
     def _watch_FOVF(self):
         with param.parameterized.batch_call_watchers(self):
-            if self.parameterStyle=='Voxelsize and Fat/water shift' or self.trajectory=='Radial':
+            if self.parameterStyle=='Voxelsize and Fat/water shift' or isRadial(self.trajectory):
                 self.matrixF = take_closest(self.param.matrixF.objects, self.FOVF/self.voxelF)
                 self.reconMatrixF = take_closest(self.param.reconMatrixF.objects, self.FOVF/self.reconVoxelF)
             self.updateFOVbandwidthObjects()
@@ -619,7 +628,7 @@ class MRIsimulator(param.Parameterized):
     @param.depends('FOVP', watch=True)
     def _watch_FOVP(self):
         with param.parameterized.batch_call_watchers(self):
-            if self.parameterStyle=='Voxelsize and Fat/water shift' or self.trajectory=='Radial':
+            if self.parameterStyle=='Voxelsize and Fat/water shift' or isRadial(self.trajectory):
                 self.matrixP = take_closest(self.param.matrixP.objects, self.FOVP/self.voxelP)
                 self.reconMatrixP = take_closest(self.param.reconMatrixP.objects, self.FOVP/self.reconVoxelP)
             self.updateVoxelPobjects()
@@ -668,7 +677,7 @@ class MRIsimulator(param.Parameterized):
             self.updateReconVoxelFobjects()
             self.reconMatrixF = take_closest(self.param.reconMatrixF.objects, self.matrixF * self.recAcqRatioF)
             self.param.trigger('voxelF', 'reconVoxelF')
-            if self.trajectory=='Radial':
+            if isRadial(self.trajectory):
                 self.matrixP = take_closest(self.param.matrixP.objects, self.matrixF*self.FOVP/self.FOVF)
     
     
@@ -684,7 +693,7 @@ class MRIsimulator(param.Parameterized):
             self.updateReconVoxelPobjects()
             self.reconMatrixP = take_closest(self.param.reconMatrixP.objects, self.matrixP * self.recAcqRatioP)
             self.param.trigger('voxelP', 'reconVoxelP')
-            if self.trajectory=='Radial':
+            if isRadial(self.trajectory):
                 self.matrixF = take_closest(self.param.matrixP.objects, self.matrixP*self.FOVF/self.FOVP)
 
 
@@ -748,24 +757,24 @@ class MRIsimulator(param.Parameterized):
         add_to_pipeline(self.acquisitionPipeline, ['sampleKspace', 'updateSamplingTime', 'modulateKspace', 'simulateNoise', 'compileKspace'])
         add_to_pipeline(self.reconPipeline, ['partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
         add_to_pipeline(self.sequencePipeline, ['setupReadouts', 'setupPhasers', 'updateFOVPbounds', 'updateTurboFactorBounds', 'updateEPIfactorObjects'])
-        match(self.trajectory):
-            case 'Cartesian':
-                self.param.partialFourier.precedence = 5
-                self.param.frequencyDirection.precedence = 1
-                self.param.phaseOversampling.precedence = 3
-                self.param.radialFactor.precedence = -3
-            case 'Radial':
-                self.partialFourier = 1.
-                self.param.partialFourier.precedence = -5
-                self.param.frequencyDirection.precedence = -1
-                self.phaseOversampling = 0.
-                self.param.phaseOversampling.precedence = -3
-                self.param.radialFactor.precedence = 3
-                # set isotropic voxelsize:
-                if (self.FOVF/self.matrixF < self.FOVP/self.matrixP):
-                    self.matrixP = take_closest(self.param.matrixP.objects, self.matrixF*self.FOVP/self.FOVF)
-                else:
-                    self.matrixF = take_closest(self.param.matrixF.objects, self.matrixP*self.FOVF/self.FOVP)
+        if isRadial(self.trajectory):
+            self.partialFourier = 1.
+            self.param.partialFourier.precedence = -5
+            self.param.frequencyDirection.precedence = -1
+            self.phaseOversampling = 0.
+            self.param.phaseOversampling.precedence = -3
+            self.param.radialFactor.precedence = 3
+            # set isotropic voxelsize:
+            if (self.FOVF/self.matrixF < self.FOVP/self.matrixP):
+                self.matrixP = take_closest(self.param.matrixP.objects, self.matrixF*self.FOVP/self.FOVF)
+            else:
+                self.matrixF = take_closest(self.param.matrixF.objects, self.matrixP*self.FOVF/self.FOVP)
+        else:
+            self.param.partialFourier.precedence = 5
+            self.param.frequencyDirection.precedence = 1
+            self.param.phaseOversampling.precedence = 3
+            self.param.radialFactor.precedence = -3
+        self.updateLabelsByTrajectory()
         self.setup_frequency_encoding()
         self.setup_phase_encoding()
         add_to_pipeline(self.sequencePlotPipeline, ['calculate_k_trajectory'])
@@ -821,6 +830,7 @@ class MRIsimulator(param.Parameterized):
         add_to_pipeline(self.acquisitionPipeline, ['sampleKspace', 'updateSamplingTime', 'modulateKspace', 'simulateNoise', 'compileKspace'])
         add_to_pipeline(self.reconPipeline, ['partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
         add_to_pipeline(self.sequencePipeline, ['setupRefocusing', 'setupReadouts', 'setupPhasers', 'updateMinTE', 'updateMinTR', 'updateMaxTE', 'updateMaxTI', 'updateBWbounds', 'updateMatrixFbounds', 'updateMatrixPbounds', 'updateFOVFbounds',  'updateFOVPbounds', 'updateSliceThicknessBounds', 'updateEPIfactorObjects'])
+        self.updateLabelsByTrajectory()
         self.updateEPIfactorObjects()
 
 
@@ -829,6 +839,7 @@ class MRIsimulator(param.Parameterized):
         add_to_pipeline(self.acquisitionPipeline, ['sampleKspace', 'updateSamplingTime', 'modulateKspace', 'simulateNoise', 'compileKspace'])
         add_to_pipeline(self.reconPipeline, ['partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
         add_to_pipeline(self.sequencePipeline, ['setupReadouts', 'setupPhasers', 'updateMinTE', 'updateMinTR', 'updateMaxTE', 'updateMaxTI', 'updateBWbounds', 'updateMatrixFbounds', 'updateMatrixPbounds', 'updateFOVFbounds',  'updateFOVPbounds', 'updateSliceThicknessBounds', 'updateTurboFactorBounds'])
+        self.updateLabelsByTrajectory()
         self.updateTurboFactorBounds()
     
 
@@ -1094,6 +1105,18 @@ class MRIsimulator(param.Parameterized):
         # max limit imposed by TR:
         maxReadDurLate = ((kcenter_to_read_end - nLateRamps * self.readout_risetime) / nLateReadouts)
         return min(maxReadDurEarly, maxReadDurLate)
+    
+    
+    def updateLabelsByTrajectory(self):
+        shotLabel = 'shot' if not isRadial(self.trajectory) else 'spoke' if (self.EPIfactor * self.turboFactor == 1) else 'blade'
+        self.num_shots_label = '# {}s'.format(shotLabel)
+        self.param.shot.label = 'Displayed {}'.format(shotLabel)
+        self.param.radialFactor.label = '{} sampling factor'.format(shotLabel.capitalize())
+        # Label radial trajectory 'Radial' or 'PROPELLER' depending on nLines per shot
+        traj_indices = [0, 1] if (self.EPIfactor * self.turboFactor == 1) else [0, 2]
+        self.param.trajectory.objects = [TRAJECTORIES[i] for i in traj_indices]
+        if self.trajectory not in self.param.trajectory.objects:
+            self.trajectory = TRAJECTORIES[traj_indices[-1]]
     
 
     def updateBWbounds(self):
@@ -1377,58 +1400,54 @@ class MRIsimulator(param.Parameterized):
     def setup_phase_encoding_table(self):
         if self.EPIfactor == 1: # (turbo) spin echo
             segment_order = get_segment_order(self.turboFactor, self.num_sym_segm, self.centermost_rf_echo)
-            match self.trajectory:
-                case 'Cartesian':
-                    self.pe_table = [[[segment * self.num_shots + shot] for segment in segment_order] for shot in range(self.num_shots)]
-                case 'Radial':
-                    self.pe_table = [[[segment] for segment in segment_order] for shot in range(self.num_shots)]
+            if isRadial(self.trajectory):
+                self.pe_table = [[[segment] for segment in segment_order] for shot in range(self.num_shots)]
+            else:
+                self.pe_table = [[[segment * self.num_shots + shot] for segment in segment_order] for shot in range(self.num_shots)]  
         else: # EPI and GRASE
             order = -1 if self.reverse_linear_order else 1
-            match self.trajectory:
-                case 'Cartesian':
-                    self.pe_table = [[list(range(rf_echo * self.num_shots + shot, sum(self.lines_to_measure), self.num_shots * self.turboFactor))[::order] for rf_echo in range(self.turboFactor)][::order] for shot in range(self.num_shots)]
-                case 'Radial':
-                    self.pe_table = [[list(range(rf_echo, sum(self.lines_to_measure), self.turboFactor))[::order] for rf_echo in range(self.turboFactor)][::order] for shot in range(self.num_shots)]
+            if isRadial(self.trajectory):
+                self.pe_table = [[list(range(rf_echo, sum(self.lines_to_measure), self.turboFactor))[::order] for rf_echo in range(self.turboFactor)][::order] for shot in range(self.num_shots)]
+            else:
+                self.pe_table = [[list(range(rf_echo * self.num_shots + shot, sum(self.lines_to_measure), self.num_shots * self.turboFactor))[::order] for rf_echo in range(self.turboFactor)][::order] for shot in range(self.num_shots)]
     
 
     def setup_frequency_encoding(self):
-        self.freqDir = DIRECTIONS[self.frequencyDirection] if self.trajectory=='Cartesian' else 1
+        self.freqDir = DIRECTIONS[self.frequencyDirection] if isCartesian(self.trajectory) else 1
         self.FOV[self.freqDir] = self.FOVF
         self.matrix[self.freqDir] = self.matrixF
         voxelSize = self.FOV[self.freqDir]/self.matrix[self.freqDir]
-        match self.trajectory:
-            case 'Cartesian':
-                nSamples = self.matrixF
-                # at least Nyquist sampling wrt phantom if loaded
-                if hasattr(self, 'phantom') and (self.FOV[self.freqDir] < self.phantom['FOV'][self.freqDir]):
-                    nSamples = int(np.ceil(self.phantom['FOV'][self.freqDir] / voxelSize))
-            case 'Radial':
-                FOV = max(self.FOVF, self.FOVP)
-                if hasattr(self, 'phantom'):
-                    FOV = max(max(self.phantom['FOV']), FOV)
-                nSamples = int(np.ceil(FOV / voxelSize * self.radialFOVoversampling))
+        if isCartesian(self.trajectory):
+            nSamples = self.matrixF
+            # at least Nyquist sampling wrt phantom if loaded
+            if hasattr(self, 'phantom') and (self.FOV[self.freqDir] < self.phantom['FOV'][self.freqDir]):
+                nSamples = int(np.ceil(self.phantom['FOV'][self.freqDir] / voxelSize))
+        elif isRadial(self.trajectory):
+            FOV = max(self.FOVF, self.FOVP)
+            if hasattr(self, 'phantom'):
+                FOV = max(max(self.phantom['FOV']), FOV)
+            nSamples = int(np.ceil(FOV / voxelSize * self.radialFOVoversampling))
         self.kReadAxis = recon.getKaxis(nSamples, voxelSize)
     
 
     def setup_phase_encoding(self):
-        self.phaseDir = 1 - DIRECTIONS[self.frequencyDirection] if self.trajectory=='Cartesian' else 0
+        self.phaseDir = 1 - DIRECTIONS[self.frequencyDirection] if isCartesian(self.trajectory) else 0
         self.FOV[self.phaseDir] = self.FOVP
         self.matrix[self.phaseDir] = self.matrixP
 
-        match(self.trajectory):
-            case 'Cartesian':
-                self.num_shots = int(np.ceil(self.matrix[self.phaseDir] * (1 + self.phaseOversampling / 100) * self.partialFourier / self.turboFactor / self.EPIfactor))
-                num_measured_lines = self.num_shots * self.turboFactor * self.EPIfactor
-                # oversampling may be higher than prescribed since num_shots must be integer:
-                num_lines = max(num_measured_lines, int(np.ceil(self.matrix[self.phaseDir] * (1 + self.phaseOversampling / 100))))
-                self.kAngles = np.zeros(1)
-                voxelSize = self.FOV[self.phaseDir] / self.matrix[self.phaseDir]
-            case 'Radial':
-                num_measured_lines = self.turboFactor * self.EPIfactor # per blade
-                num_lines = num_measured_lines # future: take undersampling into account
-                self.num_shots = int(np.ceil(self.radialFactor * max(self.matrixF, self.matrixP) / num_lines * np.pi / 2))
-                self.kAngles = np.linspace(0, np.pi, self.num_shots, endpoint=False)
-                voxelSize = max(self.FOVF, self.FOVP) / num_lines # corresponding to blade width
+        if isCartesian(self.trajectory):
+            self.num_shots = int(np.ceil(self.matrix[self.phaseDir] * (1 + self.phaseOversampling / 100) * self.partialFourier / self.turboFactor / self.EPIfactor))
+            num_measured_lines = self.num_shots * self.turboFactor * self.EPIfactor
+            # oversampling may be higher than prescribed since num_shots must be integer:
+            num_lines = max(num_measured_lines, int(np.ceil(self.matrix[self.phaseDir] * (1 + self.phaseOversampling / 100))))
+            self.kAngles = np.zeros(1)
+            voxelSize = self.FOV[self.phaseDir] / self.matrix[self.phaseDir]
+        elif isRadial(self.trajectory):
+            num_measured_lines = self.turboFactor * self.EPIfactor # per blade
+            num_lines = num_measured_lines # future: take undersampling into account
+            self.num_shots = int(np.ceil(self.radialFactor * max(self.matrixF, self.matrixP) / num_lines * np.pi / 2))
+            self.kAngles = np.linspace(0, np.pi, self.num_shots, endpoint=False)
+            voxelSize = max(self.FOVF, self.FOVP) / num_lines # corresponding to blade width
         self.kPhaseAxis = recon.getKaxis(num_lines, voxelSize)
         self.lines_to_measure = np.ones(num_lines, dtype=bool)
         # undersample by partial Fourier:
@@ -1461,16 +1480,15 @@ class MRIsimulator(param.Parameterized):
                            [np.sin(self.kAngles),  np.cos(self.kAngles)]])
         self.kSamples = np.einsum('ijk,klm->ijml', kSamples, rotmat) # shape=(Nx, Ny, Nangles, 2)
 
-        match(self.trajectory):
-            case 'Cartesian':
-                self.kGridAxes = kAxes
-                self.plainKspaceComps = recon.resampleKspaceCartesian(self.phantom, self.kGridAxes, shape=self.kSamples.shape[:-1])
-            case 'Radial':
-                for dim in range(2):
-                    voxelSize = self.FOV[dim]/self.matrix[dim]
-                    matrix = int(np.ceil(max(self.FOV[dim], self.phantom['FOV'][dim]) / voxelSize))
-                    self.kGridAxes[dim] = recon.getKaxis(matrix, voxelSize)
-                self.plainKspaceComps = recon.resampleKspace(self.phantom, self.kSamples)
+        if isCartesian(self.trajectory):
+            self.kGridAxes = kAxes
+            self.plainKspaceComps = recon.resampleKspaceCartesian(self.phantom, self.kGridAxes, shape=self.kSamples.shape[:-1])
+        elif isRadial(self.trajectory):
+            for dim in range(2):
+                voxelSize = self.FOV[dim]/self.matrix[dim]
+                matrix = int(np.ceil(max(self.FOV[dim], self.phantom['FOV'][dim]) / voxelSize))
+                self.kGridAxes[dim] = recon.getKaxis(matrix, voxelSize)
+            self.plainKspaceComps = recon.resampleKspace(self.phantom, self.kSamples)
         
         # Lorenzian line shape to mimic slice thickness
         blurFactor = .5
@@ -1554,7 +1572,7 @@ class MRIsimulator(param.Parameterized):
 
 
     def updateSpokeAngle(self):
-        if self.trajectory=='Radial':
+        if isRadial(self.trajectory):
             self.spokeAngle = np.degrees(self.kAngles[self.shot-1])
         else:
             self.spokeAngle = 0
@@ -1583,17 +1601,16 @@ class MRIsimulator(param.Parameterized):
 
         # Gridding:
         gridShape = tuple(len(self.kGridAxes[dim]) for dim in range(2))
-        match(self.trajectory):
-            case 'Cartesian':
-                self.griddedkspace = self.measuredkspace.reshape(gridShape)
-            case 'Radial':
-                samples = self.kSamples * self.FOV / self.matrix
-                self.griddedkspace = recon.grid(self.measuredkspace, gridShape, samples)
+        if isCartesian(self.trajectory):
+            self.griddedkspace = self.measuredkspace.reshape(gridShape)
+        else:
+            samples = self.kSamples * self.FOV / self.matrix
+            self.griddedkspace = recon.grid(self.measuredkspace, gridShape, samples)
 
     
     def partialFourierRecon(self):
         nBlank = len(self.kPhaseAxis) - sum(self.lines_to_measure)
-        if (nBlank == 0 or self.trajectory != 'Cartesian'):
+        if (nBlank == 0 or not isCartesian(self.trajectory)):
             self.param.homodyne.precedence = -1
             self.fullkspace = np.copy(self.griddedkspace)
             return
@@ -1884,7 +1901,7 @@ class MRIsimulator(param.Parameterized):
         self.boards['signal']['objects']['signals'] = []
         scale = 1/np.max(np.abs(np.real(self.measuredkspace)))
         signalExponent = .5
-        spoke = self.shot-1 if self.trajectory=='Radial' else 0
+        spoke = self.shot-1 if isRadial(self.trajectory) else 0
         for rf_echo in range(self.turboFactor):
             signals = []
             for gr_echo in range(self.EPIfactor):
@@ -1995,14 +2012,13 @@ class MRIsimulator(param.Parameterized):
         t = np.unique(np.concatenate((t, np.arange(0., max(t), dt)))) # merge with time grid
         kx = self.get_k_coords(t, *(self.boardPlots['frequency']['area'][dim] for dim in ['G read', 'time']), refocus_intervals)
         ky = self.get_k_coords(t, *(self.boardPlots['phase']['area'][dim] for dim in ['G phase', 'time']), refocus_intervals)
-        match self.trajectory:
-            case 'Cartesian':
-                if self.phaseDir==1:
-                    kx, ky = ky, kx
-            case 'Radial': # rotate by spoke/blade angle
-                angle = np.radians(self.spokeAngle)
-                cos, sin = np.cos(angle), np.sin(angle)
-                kx, ky = cos * kx - sin * ky, sin * kx + cos * ky
+        if isCartesian(self.trajectory):
+            if self.phaseDir==1:
+                kx, ky = ky, kx
+        elif isRadial(self.trajectory): # rotate by spoke/blade angle
+            angle = np.radians(self.spokeAngle)
+            cos, sin = np.cos(angle), np.sin(angle)
+            kx, ky = cos * kx - sin * ky, sin * kx + cos * ky
         self.k_trajectory = {'kx': kx, 'ky': ky, 't': t, 'dt': dt}
     
 
@@ -2118,15 +2134,18 @@ def getApp(darkMode=True, settingsFilestem=''):
                       infoNumber(name='Scan time', format=('{value:.1f} sec'), value=simulator.param.scantime, textColor=textColor),
                       infoNumber(name='Fat/water shift', format='{value:.2f} pixels', value=simulator.param.FWshift, textColor=textColor),
                       infoNumber(name='Bandwidth', format='{value:.0f} Hz/pixel', value=simulator.param.pixelBandWidth, textColor=textColor))
-    shotInfo = pn.Row(infoNumber(name='Angle', format='{value:.0f}°', value=simulator.param.spokeAngle, textColor=textColor), 
-                      infoNumber(name='Number of shots', format='{value:.0f}', value=simulator.param.num_shots, textColor=textColor))
+    shotAngleInfo = infoNumber(name='Angle', format='{value:.0f}°', value=simulator.param.spokeAngle, textColor=textColor) 
+    numShotsInfo = infoNumber(name='# shots', format='{value:.0f}', value=simulator.param.num_shots, textColor=textColor)
+    def update_num_shots_label(event): 
+        numShotsInfo.name = event.new
+    simulator.param.watch(update_num_shots_label, 'num_shots_label')
     
     dmapKspace = pn.Column(hv.DynamicMap(simulator.getKspace) * simulator.kLine, 
                            # simulator.param.kspaceType, 
                            pn.Row(simulator.param.showProcessedKspace, simulator.param.kspaceExponent), 
                            visible=False)
     dmapMRimage = hv.DynamicMap(simulator.getImage)
-    dmapSequence = pn.Column(hv.DynamicMap(simulator.getSequencePlot), pn.Row(simulator.param.shot, shotInfo), visible=False)
+    dmapSequence = pn.Column(hv.DynamicMap(simulator.getSequencePlot), pn.Row(simulator.param.shot, shotAngleInfo, numShotsInfo), visible=False)
     loadButton = pn.widgets.Button(name='Load settings', visible=settingsFile.is_file())
     loadButton.on_click(partial(loadButtonCallback, simulator, settingsFile))
     saveButton = pn.widgets.Button(name='Save settings', visible=settingsFile.is_file())
