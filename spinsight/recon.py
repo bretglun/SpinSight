@@ -97,6 +97,12 @@ def getKcoords(kSamples, pixelSize):
 
 
 def getGridder(samples, shape):
+    for dim in range(len(shape)):
+        if np.max(np.abs(samples[..., dim])) > .5:
+            # pad matrix to ensure samples are <= .5
+            N = int(np.ceil(np.max(np.abs(samples[..., dim])) * 2 * shape[dim]))
+            samples[..., dim] *= shape[dim] / N
+            shape = tuple(N if d==dim else n for d, n in enumerate(shape))
     samples = np.array(samples, dtype='float32')
     density = mrinufft.density.voronoi(samples)
     return mrinufft.get_operator('finufft')(samples, density=density, shape=shape)
@@ -115,13 +121,15 @@ def ungrid(gridded, samples=None, gridder=None, shape=None):
     return ungridded
 
 
-def grid(ungridded, shape=None, samples=None, gridder=None):
-    if not gridder:
+def grid(ungridded, shape, samples=None, gridder=None):
+    if (samples is None) == (gridder is None):
+        raise ValueError('Use either samples or gridder, not both.')
+    if gridder is None:
         gridder = getGridder(samples, shape)
     img = gridder.adj_op(ungridded.flatten())
     sampleShifts = [0 if gridder.shape[dim]%2 else 1/2 for dim in range(2)]
     gridded = FFT(img, [0, 0], sampleShifts)
-    return gridded
+    return crop(gridded, shape) # crop in case gridder shape was padded
 
 
 def pipeMenon2D(kx, ky, gridShape, nIter=10):
