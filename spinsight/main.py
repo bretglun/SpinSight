@@ -369,6 +369,7 @@ class MRIsimulator(param.Parameterized):
         hv.opts.defaults(hv.opts.VSpan(color='orange', fill_alpha=.1, hover_fill_alpha=.8, default_tools=[]))
         hv.opts.defaults(hv.opts.Rectangles(color=self.boards['ADC']['color'], line_color=self.boards['ADC']['color'], fill_alpha=.1, line_alpha=.3, hover_fill_alpha=.8, default_tools=[]))
         hv.opts.defaults(hv.opts.Box(line_width=3))
+        hv.opts.defaults(hv.opts.Ellipse(line_width=3))
         hv.opts.defaults(hv.opts.Area(fill_alpha=.5, line_width=1.5, line_color='gray', default_tools=[]))
         hv.opts.defaults(hv.opts.Polygons(line_width=1.5, fill_alpha=0, line_alpha=0, line_color='gray', selection_line_color='black', hover_fill_alpha=.8, hover_line_alpha=1, selection_fill_alpha=.8, selection_line_alpha=1, nonselection_line_alpha=0, default_tools=[]))
         hv.opts.defaults(hv.opts.Curve(line_width=5, line_color='peru'))
@@ -2063,9 +2064,15 @@ class MRIsimulator(param.Parameterized):
 
 
     def getFOVbox(self):
-        acqFOV = self.FOV.copy()
-        acqFOV[self.phaseDir] *= len(self.kPhaseAxis) / self.matrix[self.phaseDir]
-        return hv.Box(0, 0, tuple(acqFOV[::-1])).opts(color='lightblue') * hv.Box(0, 0, tuple(self.FOV[::-1])).opts(color='yellow')
+        recFOVshape = hv.Box(0, 0, tuple(self.FOV[::-1])).opts(color='yellow')
+        if self.isRadial():
+            radialFOV = self.FOV[self.freqDir] * len(self.kReadAxis) / self.matrix[self.freqDir]
+            acqFOVshape = hv.Ellipse(0, 0, radialFOV).opts(line_color='lightblue')
+        else:
+            acqFOV = self.FOV.copy()
+            acqFOV[self.phaseDir] *= len(self.kPhaseAxis) / self.matrix[self.phaseDir]
+            acqFOVshape = hv.Box(0, 0, tuple(acqFOV[::-1])).opts(color='lightblue')
+        return acqFOVshape * recFOVshape
 
 
     @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'num_shots', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'trajectory', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor', 'imageType', 'showFOV', 'homodyne', 'doApodize', 'apodizationAlpha', 'doZerofill', 'radialFOVoversampling')
