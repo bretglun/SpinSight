@@ -1436,34 +1436,36 @@ class MRIsimulator(param.Parameterized):
         self.matrix[self.phaseDir] = self.matrixP
 
         if isCartesian(self.trajectory):
+            num_blades = 1
             self.num_shots = int(np.ceil(self.matrix[self.phaseDir] * (1 + self.phaseOversampling / 100) * self.partialFourier / self.turboFactor / self.EPIfactor))
-            num_measured_lines = self.num_shots * self.turboFactor * self.EPIfactor
+            num_measured_lines = int(self.num_shots * self.turboFactor * self.EPIfactor / num_blades)
             # oversampling may be higher than prescribed since num_shots must be integer:
             num_lines = max(num_measured_lines, int(np.ceil(self.matrix[self.phaseDir] * (1 + self.phaseOversampling / 100))))
-            self.kAngles = np.zeros(1)
             voxelSize = self.FOV[self.phaseDir] / self.matrix[self.phaseDir]
         elif isRadial(self.trajectory):
             num_measured_lines = self.turboFactor * self.EPIfactor # per blade
             num_lines = num_measured_lines # future: take undersampling into account
-            self.num_shots = int(np.ceil(self.radialFactor * max(self.matrixF, self.matrixP) / num_lines * np.pi / 2))
-            self.kAngles = np.linspace(0, np.pi, self.num_shots, endpoint=False)
+            num_blades = int(np.ceil(self.radialFactor * max(self.matrixF, self.matrixP) / num_lines * np.pi / 2))
+            self.num_shots = num_blades
             voxelSize = max(self.FOVF, self.FOVP) / num_lines # corresponding to blade width
+        self.kAngles = np.linspace(0, np.pi, num_blades, endpoint=False)
+            
         self.kPhaseAxis = recon.getKaxis(num_lines, voxelSize)
         self.lines_to_measure = np.ones(num_lines, dtype=bool)
         # undersample by partial Fourier:
         self.lines_to_measure[num_measured_lines:] = False
         assert(sum(self.lines_to_measure) == num_measured_lines)
 
-        self.num_segm = int(num_measured_lines / self.num_shots)
+        self.num_segm = int(num_measured_lines * num_blades / self.num_shots)
         num_sym_lines = 2 * num_measured_lines - num_lines
         # check if center of k-space lies between two segments:
         self.split_center = (num_sym_lines % self.num_shots == 0) and ((num_sym_lines / self.num_shots) % 2 == 0)
         # number of k-space segments symmetric about center:
         if self.split_center:
-            self.num_sym_segm = int(num_sym_lines / self.num_shots)
+            self.num_sym_segm = int(num_sym_lines * num_blades / self.num_shots)
             self.central_segments = [self.num_segm - self.num_sym_segm//2 - 1, self.num_segm - self.num_sym_segm//2]
         else:
-            self.num_sym_segm = int(np.round((num_sym_lines / self.num_shots - 1) / 2)) * 2 + 1
+            self.num_sym_segm = int(np.round((num_sym_lines * num_blades / self.num_shots - 1) / 2)) * 2 + 1
             self.central_segments = [self.num_segm - self.num_sym_segm//2 - 1]
         self.param.shot.bounds=(1, self.num_shots)
         self.shot = min(self.shot, self.num_shots)
