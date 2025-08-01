@@ -78,18 +78,6 @@ def FOVBW2pixelBW(FOVBW, matrixF):
     return FOVBW / matrixF * 2e3
 
 
-def isGradientEcho(sequence):
-    return 'Gradient Echo' in sequence
-
-
-def isCartesian(trajectory):
-    return trajectory=='Cartesian'
-
-
-def isRadial(trajectory):
-    return trajectory in ['Radial', 'PROPELLER']
-
-
 def polygonArea(coords):
     return np.sum((coords[0]-np.roll(coords[0], 1)) * (coords[1]+np.roll(coords[1], 1))) / 2
 
@@ -611,7 +599,7 @@ class MRIsimulator(param.Parameterized):
     @param.depends('FOVF', watch=True)
     def _watch_FOVF(self):
         with param.parameterized.batch_call_watchers(self):
-            if self.parameterStyle=='Voxelsize and Fat/water shift' or isRadial(self.trajectory):
+            if self.parameterStyle=='Voxelsize and Fat/water shift' or self.isRadial():
                 self.matrixF = take_closest(self.param.matrixF.objects, self.FOVF/self.voxelF)
                 self.reconMatrixF = take_closest(self.param.reconMatrixF.objects, self.FOVF/self.reconVoxelF)
             self.updateFOVbandwidthObjects()
@@ -628,7 +616,7 @@ class MRIsimulator(param.Parameterized):
     @param.depends('FOVP', watch=True)
     def _watch_FOVP(self):
         with param.parameterized.batch_call_watchers(self):
-            if self.parameterStyle=='Voxelsize and Fat/water shift' or isRadial(self.trajectory):
+            if self.parameterStyle=='Voxelsize and Fat/water shift' or self.isRadial():
                 self.matrixP = take_closest(self.param.matrixP.objects, self.FOVP/self.voxelP)
                 self.reconMatrixP = take_closest(self.param.reconMatrixP.objects, self.FOVP/self.reconVoxelP)
             self.updateVoxelPobjects()
@@ -677,7 +665,7 @@ class MRIsimulator(param.Parameterized):
             self.updateReconVoxelFobjects()
             self.reconMatrixF = take_closest(self.param.reconMatrixF.objects, self.matrixF * self.recAcqRatioF)
             self.param.trigger('voxelF', 'reconVoxelF')
-            if isRadial(self.trajectory):
+            if self.isRadial():
                 self.matrixP = take_closest(self.param.matrixP.objects, self.matrixF*self.FOVP/self.FOVF)
     
     
@@ -693,7 +681,7 @@ class MRIsimulator(param.Parameterized):
             self.updateReconVoxelPobjects()
             self.reconMatrixP = take_closest(self.param.reconMatrixP.objects, self.matrixP * self.recAcqRatioP)
             self.param.trigger('voxelP', 'reconVoxelP')
-            if isRadial(self.trajectory):
+            if self.isRadial():
                 self.matrixF = take_closest(self.param.matrixP.objects, self.matrixP*self.FOVF/self.FOVP)
 
 
@@ -757,7 +745,7 @@ class MRIsimulator(param.Parameterized):
         add_to_pipeline(self.acquisitionPipeline, ['sampleKspace', 'updateSamplingTime', 'modulateKspace', 'simulateNoise', 'compileKspace'])
         add_to_pipeline(self.reconPipeline, ['partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
         add_to_pipeline(self.sequencePipeline, ['setupReadouts', 'setupPhasers', 'updateFOVPbounds', 'updateTurboFactorBounds', 'updateEPIfactorObjects'])
-        if isRadial(self.trajectory):
+        if self.isRadial():
             self.partialFourier = 1.
             self.param.partialFourier.precedence = -5
             self.param.frequencyDirection.precedence = -1
@@ -938,7 +926,19 @@ class MRIsimulator(param.Parameterized):
         if self.doZerofill:
             add_to_pipeline(self.reconPipeline, ['zerofill', 'reconstruct'])
         self.reconVoxelP = take_closest(self.param.reconVoxelP.objects, self.FOVP/self.reconMatrixP)
-    
+
+
+    def isGradientEcho(self):
+        return 'Gradient Echo' in self.sequence
+
+
+    def isCartesian(self):
+        return self.trajectory=='Cartesian'
+
+
+    def isRadial(self):
+        return self.trajectory in ['Radial', 'PROPELLER']
+
 
     def getSeqStart(self):
         if self.sequence == 'Inversion Recovery': 
@@ -1015,7 +1015,7 @@ class MRIsimulator(param.Parameterized):
     
 
     def getMaxPrephaserArea(self, readAmp):
-        if isGradientEcho(self.sequence):
+        if self.isGradientEcho():
             maxPrephaserDur =  self.TE - self.boards['ADC']['objects']['samplings'][0][0]['dur_f']/2 - self.boards['RF']['objects']['excitation']['dur_f']/2 - readAmp/self.maxSlew
         else:
             maxPrephaserDur =  self.TE/2 - self.boards['RF']['objects']['refocusing'][0]['dur_f']/2 - self.boards['RF']['objects']['excitation']['dur_f']/2
@@ -1034,7 +1034,7 @@ class MRIsimulator(param.Parameterized):
         # See paramBounds.tex for formulae
         d = 1e3 / self.pixelBandWidth # readout duration
         s = self.maxSlew
-        if isGradientEcho(self.sequence):
+        if self.isGradientEcho():
             centermost_gr_echoes, centermost_rf_echoes = self.get_centermost_echoes_linear_order(reverse=True)
             if len(centermost_gr_echoes)==1:
                 N = centermost_gr_echoes[0] + 1/2
@@ -1077,7 +1077,7 @@ class MRIsimulator(param.Parameterized):
     
 
     def getMaxPhaserArea(self):
-        if isGradientEcho(self.sequence):
+        if self.isGradientEcho():
             maxPhaserDuration = self.readtrain_spacing - self.boards['RF']['objects']['excitation']['dur_f']/2 - self.gre_echo_train_dur/2 + self.readout_risetime
         else:
             maxPhaserDuration = (self.readtrain_spacing - self.boards['RF']['objects']['refocusing'][0]['dur_f'] - self.gre_echo_train_dur)/2 + self.readout_risetime
@@ -1108,7 +1108,7 @@ class MRIsimulator(param.Parameterized):
     
     
     def updateLabelsByTrajectory(self):
-        shotLabel = 'shot' if not isRadial(self.trajectory) else 'spoke' if (self.EPIfactor * self.turboFactor == 1) else 'blade'
+        shotLabel = 'shot' if not self.isRadial() else 'spoke' if (self.EPIfactor * self.turboFactor == 1) else 'blade'
         self.num_shots_label = '# {}s'.format(shotLabel)
         self.param.shot.label = 'Displayed {}'.format(shotLabel)
         self.param.radialFactor.label = '{} sampling factor'.format(shotLabel.capitalize())
@@ -1127,7 +1127,7 @@ class MRIsimulator(param.Parameterized):
         # min limit imposed by maximum gradient amplitude:
         minReadDurations.append(A / self.maxAmp)
         maxReadDurations = [8.] # msec (corresponds to a pixel BW of 125 Hz)
-        if isGradientEcho(self.sequence):
+        if self.isGradientEcho():
             minPhaserTime = min([self.boards['phase']['objects'][typ][0]['dur_f'] for typ in ['phasers', 'rephasers']])
             readStartToTE = self.TE - self.boards['RF']['objects']['excitation']['dur_f']/2
             readStartToTE -= max(
@@ -1244,7 +1244,7 @@ class MRIsimulator(param.Parameterized):
     def updateSliceThicknessBounds(self):
         minThks = [.5]
         minThks.append(self.boards['RF']['objects']['excitation']['FWHM_f'] / (self.maxAmp * constants.GYRO))
-        if not isGradientEcho(self.sequence):
+        if not self.isGradientEcho():
             minThks.append(self.boards['RF']['objects']['refocusing'][0]['FWHM_f'] / (self.maxAmp * constants.GYRO))
         if self.sequence=='Inversion Recovery':
             minThks.append(self.boards['RF']['objects']['inversion']['FWHM_f'] / (self.maxAmp * constants.GYRO) * self.inversionThkFactor)
@@ -1262,7 +1262,7 @@ class MRIsimulator(param.Parameterized):
         # See paramBounds.tex for formulae
         s = self.maxSlew
         d = self.boards['RF']['objects']['excitation']['dur_f']
-        if isGradientEcho(self.sequence): # Constraint due to slice rephaser
+        if self.isGradientEcho(): # Constraint due to slice rephaser
             t = self.boards['ADC']['objects']['samplings'][0][0]['time'][0]
             h = s * (t - np.sqrt(t**2/2 + d**2/8))
             h = min(h, self.maxAmp)
@@ -1333,7 +1333,7 @@ class MRIsimulator(param.Parameterized):
         # Get shortest spacing for (center of) gradient echo trains
         # Equals center position of gradient echo (train) for gradient echo sequences
         # Equals rf echo spacing for spin echo sequences
-        if isGradientEcho(self.sequence):
+        if self.isGradientEcho():
             spacing = (self.boards['RF']['objects']['excitation']['dur_f'] + self.gre_echo_train_dur) / 2 - self.readout_risetime
             spacing += max(
                 self.boards['frequency']['objects']['read prephaser']['dur_f'] + self.readout_risetime,
@@ -1400,29 +1400,29 @@ class MRIsimulator(param.Parameterized):
     def setup_phase_encoding_table(self):
         if self.EPIfactor == 1: # (turbo) spin echo
             segment_order = get_segment_order(self.turboFactor, self.num_sym_segm, self.centermost_rf_echo)
-            if isRadial(self.trajectory):
+            if self.isRadial():
                 self.pe_table = [[[segment] for segment in segment_order] for shot in range(self.num_shots)]
             else:
                 self.pe_table = [[[segment * self.num_shots + shot] for segment in segment_order] for shot in range(self.num_shots)]  
         else: # EPI and GRASE
             order = -1 if self.reverse_linear_order else 1
-            if isRadial(self.trajectory):
+            if self.isRadial():
                 self.pe_table = [[list(range(rf_echo, sum(self.lines_to_measure), self.turboFactor))[::order] for rf_echo in range(self.turboFactor)][::order] for shot in range(self.num_shots)]
             else:
                 self.pe_table = [[list(range(rf_echo * self.num_shots + shot, sum(self.lines_to_measure), self.num_shots * self.turboFactor))[::order] for rf_echo in range(self.turboFactor)][::order] for shot in range(self.num_shots)]
     
 
     def setup_frequency_encoding(self):
-        self.freqDir = DIRECTIONS[self.frequencyDirection] if isCartesian(self.trajectory) else 1
+        self.freqDir = DIRECTIONS[self.frequencyDirection] if self.isCartesian() else 1
         self.FOV[self.freqDir] = self.FOVF
         self.matrix[self.freqDir] = self.matrixF
         voxelSize = self.FOV[self.freqDir]/self.matrix[self.freqDir]
-        if isCartesian(self.trajectory):
+        if self.isCartesian():
             nSamples = self.matrixF
             # at least Nyquist sampling wrt phantom if loaded
             if hasattr(self, 'phantom') and (self.FOV[self.freqDir] < self.phantom['FOV'][self.freqDir]):
                 nSamples = int(np.ceil(self.phantom['FOV'][self.freqDir] / voxelSize))
-        elif isRadial(self.trajectory):
+        elif self.isRadial():
             FOV = max(self.FOVF, self.FOVP)
             if hasattr(self, 'phantom'):
                 FOV = max(max(self.phantom['FOV']), FOV)
@@ -1431,18 +1431,18 @@ class MRIsimulator(param.Parameterized):
     
 
     def setup_phase_encoding(self):
-        self.phaseDir = 1 - DIRECTIONS[self.frequencyDirection] if isCartesian(self.trajectory) else 0
+        self.phaseDir = 1 - DIRECTIONS[self.frequencyDirection] if self.isCartesian() else 0
         self.FOV[self.phaseDir] = self.FOVP
         self.matrix[self.phaseDir] = self.matrixP
 
-        if isCartesian(self.trajectory):
+        if self.isCartesian():
             num_blades = 1
             self.num_shots = int(np.ceil(self.matrix[self.phaseDir] * (1 + self.phaseOversampling / 100) * self.partialFourier / self.turboFactor / self.EPIfactor))
             num_measured_lines = int(self.num_shots * self.turboFactor * self.EPIfactor / num_blades)
             # oversampling may be higher than prescribed since num_shots must be integer:
             num_lines = max(num_measured_lines, int(np.ceil(self.matrix[self.phaseDir] * (1 + self.phaseOversampling / 100))))
             voxelSize = self.FOV[self.phaseDir] / self.matrix[self.phaseDir]
-        elif isRadial(self.trajectory):
+        elif self.isRadial():
             num_measured_lines = self.turboFactor * self.EPIfactor # per blade
             num_lines = num_measured_lines # future: take undersampling into account
             num_blades = int(np.ceil(self.radialFactor * max(self.matrixF, self.matrixP) / num_lines * np.pi / 2))
@@ -1482,10 +1482,10 @@ class MRIsimulator(param.Parameterized):
                            [np.sin(self.kAngles),  np.cos(self.kAngles)]])
         self.kSamples = np.einsum('ijk,klm->ijml', kSamples, rotmat) # shape=(Nx, Ny, Nangles, 2)
 
-        if isCartesian(self.trajectory):
+        if self.isCartesian():
             self.kGridAxes = kAxes
             self.plainKspaceComps = recon.resampleKspaceCartesian(self.phantom, self.kGridAxes, shape=self.kSamples.shape[:-1])
-        elif isRadial(self.trajectory):
+        elif self.isRadial():
             for dim in range(2):
                 voxelSize = self.FOV[dim]/self.matrix[dim]
                 matrix = int(np.ceil(max(self.FOV[dim], self.phantom['FOV'][dim]) / voxelSize))
@@ -1527,7 +1527,7 @@ class MRIsimulator(param.Parameterized):
         self.timeAfterExcitation[reverse] = reverseTimeAfterExcitation[reverse]
         
         timeRelativeInphase = self.timeAfterExcitation.copy()
-        if not isGradientEcho(self.sequence):
+        if not self.isGradientEcho():
             spin_echoes = np.expand_dims(spin_echoes, axis=[dim for dim in range(3) if dim != self.phaseDir])
             timeRelativeInphase -= spin_echoes # for spinecho, subtract Hahn echo position from timeAfterExcitation
         
@@ -1574,7 +1574,7 @@ class MRIsimulator(param.Parameterized):
 
 
     def updateSpokeAngle(self):
-        if isRadial(self.trajectory):
+        if self.isRadial():
             self.spokeAngle = np.degrees(self.kAngles[self.shot-1])
         else:
             self.spokeAngle = 0
@@ -1603,7 +1603,7 @@ class MRIsimulator(param.Parameterized):
 
         # Gridding:
         gridShape = tuple(len(self.kGridAxes[dim]) for dim in range(2))
-        if isCartesian(self.trajectory):
+        if self.isCartesian():
             self.griddedkspace = self.measuredkspace.reshape(gridShape)
         else:
             samples = self.kSamples * self.FOV / self.matrix
@@ -1612,7 +1612,7 @@ class MRIsimulator(param.Parameterized):
     
     def partialFourierRecon(self):
         nBlank = len(self.kPhaseAxis) - sum(self.lines_to_measure)
-        if (nBlank == 0 or not isCartesian(self.trajectory)):
+        if (nBlank == 0 or not self.isCartesian()):
             self.param.homodyne.precedence = -1
             self.fullkspace = np.copy(self.griddedkspace)
             return
@@ -1658,7 +1658,7 @@ class MRIsimulator(param.Parameterized):
     
     
     def setupExcitation(self):
-        FA = self.FA if isGradientEcho(self.sequence) else 90.
+        FA = self.FA if self.isGradientEcho() else 90.
         self.boards['RF']['objects']['excitation'] = sequence.getRF(flipAngle=FA, time=0., dur=3., shape='hammingSinc',  name='excitation')
         add_to_pipeline(self.sequencePipeline, ['setupSliceSelection', 'setupPhasers', 'placeFatSat', 'updateMinTE', 'updateBWbounds', 'updateMatrixFbounds', 'updateFOVFbounds', 'updateMatrixPbounds', 'updateFOVPbounds', 'updateSliceThicknessBounds'])
         add_to_pipeline(self.sequencePlotPipeline, ['renderRFBoard'])
@@ -1666,7 +1666,7 @@ class MRIsimulator(param.Parameterized):
 
     def setupRefocusing(self):
         self.boards['RF']['objects']['refocusing'] = []
-        if not isGradientEcho(self.sequence):
+        if not self.isGradientEcho():
             for rf_echo in range(self.turboFactor):
                 self.boards['RF']['objects']['refocusing'].append(sequence.getRF(flipAngle=180., dur=3., shape='hammingSinc',  name='refocusing {}'.format(rf_echo+1 if self.turboFactor>1 else '')))
             add_to_pipeline(self.sequencePipeline, ['placeRefocusing'])
@@ -1709,7 +1709,7 @@ class MRIsimulator(param.Parameterized):
         self.boards['slice']['objects']['slice select rephaser'] = sliceSelectRephaser
 
         self.boards['slice']['objects']['slice select refocusing'] = []
-        if not isGradientEcho(self.sequence):
+        if not self.isGradientEcho():
             flatDur = self.boards['RF']['objects']['refocusing'][0]['dur_f']
             amp = self.boards['RF']['objects']['refocusing'][0]['FWHM_f'] / (self.sliceThickness * constants.GYRO)
             self.boards['slice']['objects']['slice select refocusing'] = []
@@ -1819,7 +1819,7 @@ class MRIsimulator(param.Parameterized):
     
     
     def placeRefocusing(self):
-        if not isGradientEcho(self.sequence):
+        if not self.isGradientEcho():
             for rf_echo in range(self.turboFactor):
                 pos = self.get_readtrain_pos(rf_echo) - self.readtrain_spacing/2
                 sequence.moveWaveform(self.boards['RF']['objects']['refocusing'][rf_echo], pos)
@@ -1859,7 +1859,7 @@ class MRIsimulator(param.Parameterized):
                     sequence.moveWaveform(object[rf_echo][gr_echo], pos)
                 if gr_echo%2 and self.boards['frequency']['objects']['readouts'][rf_echo][gr_echo]['area_f'] > 0:
                     sequence.rescaleGradient(self.boards['frequency']['objects']['readouts'][rf_echo][gr_echo], -1)
-        if isGradientEcho(self.sequence):
+        if self.isGradientEcho():
             if self.boards['frequency']['objects']['read prephaser']['area_f'] > 0:
                 sequence.rescaleGradient(self.boards['frequency']['objects']['read prephaser'], -1)
             firstReadout = self.boards['frequency']['objects']['readouts'][0][0]
@@ -1903,7 +1903,7 @@ class MRIsimulator(param.Parameterized):
         self.boards['signal']['objects']['signals'] = []
         scale = 1/np.max(np.abs(np.real(self.measuredkspace)))
         signalExponent = .5
-        spoke = self.shot-1 if isRadial(self.trajectory) else 0
+        spoke = self.shot-1 if self.isRadial() else 0
         for rf_echo in range(self.turboFactor):
             signals = []
             for gr_echo in range(self.EPIfactor):
@@ -2014,10 +2014,10 @@ class MRIsimulator(param.Parameterized):
         t = np.unique(np.concatenate((t, np.arange(0., max(t), dt)))) # merge with time grid
         kx = self.get_k_coords(t, *(self.boardPlots['frequency']['area'][dim] for dim in ['G read', 'time']), refocus_intervals)
         ky = self.get_k_coords(t, *(self.boardPlots['phase']['area'][dim] for dim in ['G phase', 'time']), refocus_intervals)
-        if isCartesian(self.trajectory):
+        if self.isCartesian():
             if self.phaseDir==1:
                 kx, ky = ky, kx
-        elif isRadial(self.trajectory): # rotate by spoke/blade angle
+        elif self.isRadial(): # rotate by spoke/blade angle
             angle = np.radians(self.spokeAngle)
             cos, sin = np.cos(angle), np.sin(angle)
             kx, ky = cos * kx - sin * ky, sin * kx + cos * ky
