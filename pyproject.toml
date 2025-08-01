@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "spinsight"
-version = "1.0.15"
+version = "1.1.0"
 description = "MR image simulator for teaching purposes"
 authors = ["Johan Berglund <johan.berglund@akademiska.se>"]
 license = "GPL-3.0-or-later"
@@ -19,6 +19,8 @@ xarray = "^2023.10.1"
 scipy = "^1.11.4"
 darkdetect = "^0.8.0"
 toml = "^0.10.2"
+finufft = "^2.3.1"
+mri-nufft = "^1.2.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.2"
