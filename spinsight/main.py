@@ -268,6 +268,21 @@ def unique_list(lst):
     return list(dict.fromkeys(lst))
 
 
+def format_scantime(milliseconds):
+        total_seconds = milliseconds / 1000
+        minutes = int(total_seconds // 60)
+        seconds = int(total_seconds % 60)
+
+        if minutes > 0:
+            return f'{minutes} min {seconds} sec'
+        elif seconds >= 10:
+            return f'{seconds} sec'
+        elif seconds > 0:
+            return f'{total_seconds:.1f} sec'
+        else:
+            return f'{int(milliseconds)} msec'
+
+
 TRvalues = unique_list([float('{:.2g}'.format(tr)) for tr in 10.**np.linspace(0, 4, 500)])
 TEvalues = unique_list([float('{:.2g}'.format(te)) for te in 10.**np.linspace(0, 3, 500)])
 TIvalues = unique_list([float('{:.2g}'.format(ti)) for ti in 10.**np.linspace(0, 4, 500)])
@@ -323,7 +338,7 @@ class MRIsimulator(param.Parameterized):
     SNR = param.Number(label='SNR')
     referenceSNR = param.Number(default=1, label='Reference SNR')
     relativeSNR = param.Number(label='Relative SNR [%]')
-    scantime = param.Number(label='Scan time [sec]')
+    scantime = param.String(label='Scan time')
     spokeAngle = param.Number(label='Spoke angle [°]')
 
     kspaceType = param.ObjectSelector(default='Magnitude', label='k-space type')
@@ -1569,9 +1584,10 @@ class MRIsimulator(param.Parameterized):
         self.SNR = signal / self.noiseStd
         self.setRelativeSNR()
     
-
+    
     def updateScantime(self):
-        self.scantime = self.num_shots * self.NSA * self.TR * 1e-3 # scantime in seconds
+        milliseconds = self.num_shots * self.NSA * self.TR
+        self.scantime = format_scantime(milliseconds)
 
 
     def updateSpokeAngle(self):
@@ -2120,6 +2136,10 @@ def infoNumber(name, value, format, textColor):
     return pn.indicators.Number(default_color=textColor, name=name, format=format, font_size='12pt', title_size='12pt', value=value)
 
 
+def infoString(name, value, textColor):
+    return pn.indicators.String(default_color=textColor, name=name, font_size='12pt', title_size='12pt', value=value)
+
+
 def getApp(darkMode=True, settingsFilestem=''):
     pn.config.theme = 'dark' if darkMode else 'default'
     textColor = 'white' if darkMode else 'black' # needed for pn.indicators.Number which doesn't respect pn.config.theme
@@ -2140,7 +2160,7 @@ def getApp(darkMode=True, settingsFilestem=''):
     postprocParams = pn.panel(simulator.param, parameters=['homodyne', 'doApodize', 'apodizationAlpha', 'doZerofill'], name='Post-processing')
 
     infoPane = pn.Row(infoNumber(name='Relative SNR', format='{value:.0f}%', value=simulator.param.relativeSNR, textColor=textColor),
-                      infoNumber(name='Scan time', format=('{value:.1f} sec'), value=simulator.param.scantime, textColor=textColor),
+                      infoString(name='Scan time', value=simulator.param.scantime, textColor=textColor),
                       infoNumber(name='Fat/water shift', format='{value:.2f} pixels', value=simulator.param.FWshift, textColor=textColor),
                       infoNumber(name='Bandwidth', format='{value:.0f} Hz/pixel', value=simulator.param.pixelBandWidth, textColor=textColor))
     shotAngleInfo = infoNumber(name='Angle', format='{value:.0f}°', value=simulator.param.spokeAngle, textColor=textColor) 
