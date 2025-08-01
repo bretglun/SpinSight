@@ -393,7 +393,7 @@ class MRIsimulator(param.Parameterized):
         for board in self.boards:
             self.boards[board]['objects'] = {}
 
-        self.derivedParams = ['FOVbandwidth', 'FWshift', 'SNR', 'name', 'num_shots', 'reconVoxelF', 'reconVoxelP', 'referenceSNR', 'relativeSNR', 'scantime', 'spokeAngle' 'voxelF', 'voxelP']
+        self.derivedParams = ['FOVbandwidth', 'FWshift', 'SNR', 'name', 'num_shots', 'reconVoxelF', 'reconVoxelP', 'referenceSNR', 'relativeSNR', 'scantime', 'spokeAngle', 'voxelF', 'voxelP', 'num_shots_label']
         
         self.sequencePipeline = {f: True for f in [
             'setupExcitation', 
