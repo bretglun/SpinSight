@@ -105,7 +105,7 @@ def getSubpaths(pathString, scale):
             if entry.upper() in supportedCommands:
                 command = entry
             else:
-                raise Exception('Path command not supported: ' + command)
+                raise Exception('Path command not supported: ' + entry)
         else: # no command; x or y coordinate
             if command.upper() == 'H':
                 x, y = entry, 0
@@ -145,13 +145,23 @@ def parseTransform(transformString):
     return translation, rotation, scale
 
 
+def parseStyleString(styleString):
+    return {
+        key.strip(): value.strip()
+        for keyValue in styleString.split(';') if keyValue
+        for key, value in [keyValue.split(':', 1)]
+    }
+
+
 # reads SVG file and returns polygon lists
 def readSVG(inFile):
     polygons = []
     for path in ET.parse(inFile).iter('{http://www.w3.org/2000/svg}path'): 
-        hexcolor = path.attrib['style'][6:12]
+        style = parseStyleString(path.attrib['style'])
+        hexcolor = style['fill'].strip('#')
         if hexcolor not in [v['hexcolor'] for v in TISSUES.values()]:
-            raise Exception('No tissue corresponding to hexcolor {}'.format(hexcolor))
+            print('Warning: No tissue corresponding to hexcolor "{}" for path with id "{}"'.format(hexcolor, path.attrib['id']))
+            continue
         tissue = [tissue for tissue in TISSUES if TISSUES[tissue]['hexcolor']==hexcolor][0]
         translation, rotation, scale = parseTransform(path.attrib['transform'] if 'transform' in path.attrib else '')
         if rotation != 0 or translation != (0, 0):
