@@ -4,14 +4,13 @@ import panel as pn
 import param
 import numpy as np
 import math
-import xml.etree.ElementTree as ET
 from pathlib import Path
 import toml
-import re
 import xarray as xr
 from spinsight import constants
 from spinsight import sequence
 from spinsight import recon
+from spinsight import loadSVG
 from bokeh.models import HoverTool, CustomJS, ColumnDataSource
 from functools import partial
 from tqdm import tqdm
@@ -19,53 +18,14 @@ from tqdm import tqdm
 hv.extension('bokeh')
 
 
-TISSUES = {
-    'gray':       {'PD': 1.0, 'FF': .00, 'T1': {1.5: 1100, 3.0: 1330}, 'T2': {1.5:   95, 3.0:   99}, 'hexcolor': '00ff00'},
-    'white':      {'PD': 0.9, 'FF': .00, 'T1': {1.5:  560, 3.0:  830}, 'T2': {1.5:   72, 3.0:   69}, 'hexcolor': 'd40000'},
-    'CSF':        {'PD': 1.0, 'FF': .00, 'T1': {1.5: 4280, 3.0: 4160}, 'T2': {1.5: 2030, 3.0: 2100}, 'hexcolor': '00ffff'},
-    'adipose':    {'PD': 1.0, 'FF': .95, 'T1': {1.5:  290, 3.0:  370}, 'T2': {1.5:  165, 3.0:  130}, 'hexcolor': 'ffe680'},
-    'bonemarrow': {'PD': 1.0, 'FF': .50, 'T1': {1.5:  856, 3.0:  898}, 'T2': {1.5:   46, 3.0:   34}, 'hexcolor': 'ffff44'}, # relaxation times for water component
-    'liver':      {'PD': 1.0, 'FF': .01, 'T1': {1.5:  586, 3.0:  809}, 'T2': {1.5:   46, 3.0:   34}, 'hexcolor': '800000'},
-    'spleen':     {'PD': 1.0, 'FF': .00, 'T1': {1.5: 1057, 3.0: 1328}, 'T2': {1.5:   79, 3.0:   61}, 'hexcolor': 'ff0000'},
-    'muscle':     {'PD': 1.0, 'FF': .00, 'T1': {1.5:  856, 3.0:  898}, 'T2': {1.5:   27, 3.0:   29}, 'hexcolor': '008000'},
-    'kidneyMed':  {'PD': 1.0, 'FF': .00, 'T1': {1.5: 1412, 3.0: 1545}, 'T2': {1.5:   85, 3.0:   81}, 'hexcolor': 'aa4400'},
-    'kidneyCor':  {'PD': 1.0, 'FF': .00, 'T1': {1.5:  966, 3.0: 1142}, 'T2': {1.5:   87, 3.0:   76}, 'hexcolor': '552200'},
-    'spinalCord': {'PD': 1.0, 'FF': .00, 'T1': {1.5:  745, 3.0:  993}, 'T2': {1.5:   74, 3.0:   78}, 'hexcolor': 'ffff00'},
-    'cortical':   {'PD': .05, 'FF': .00, 'T1': {1.5: 1000, 3.0: 1000}, 'T2': {1.5:    3, 3.0:    1}, 'hexcolor': '808000'},
-    'blood':      {'PD': 1.0, 'FF': .00, 'T1': {1.5: 1441, 3.0: 1932}, 'T2': {1.5:  290, 3.0:  275}, 'hexcolor': 'ffffff'},
-    'stomach':    {'PD': 1.0, 'FF': .00, 'T1': {1.5: 3000, 3.0: 3000}, 'T2': {1.5:  800, 3.0:  800}, 'hexcolor': '1a1a1a'},
-    'perotineum': {'PD': 1.0, 'FF': .00, 'T1': {1.5: 1500, 3.0: 1500}, 'T2': {1.5:   30, 3.0:   30}, 'hexcolor': 'ff8080'},
-}
-
-FATRESONANCES = { 'Fat1':  {'shift': 0.9 - 4.7, 'ratio': .087, 'ratioWithFatSat': .010, 'PD': 1.0, 'T1': {1.5:  290, 3.0:  370}, 'T2': {1.5:  165, 3.0:  130}},
-                  'Fat2':  {'shift': 1.3 - 4.7, 'ratio': .694, 'ratioWithFatSat': .033, 'PD': 1.0, 'T1': {1.5:  290, 3.0:  370}, 'T2': {1.5:  165, 3.0:  130}},
-                  'Fat3':  {'shift': 2.1 - 4.7, 'ratio': .129, 'ratioWithFatSat': .038, 'PD': 1.0, 'T1': {1.5:  290, 3.0:  370}, 'T2': {1.5:  165, 3.0:  130}},
-                  'Fat4':  {'shift': 2.8 - 4.7, 'ratio': .004, 'ratioWithFatSat': .003, 'PD': 1.0, 'T1': {1.5:  290, 3.0:  370}, 'T2': {1.5:  165, 3.0:  130}},
-                  'Fat5':  {'shift': 4.3 - 4.7, 'ratio': .039, 'ratioWithFatSat': .037, 'PD': 1.0, 'T1': {1.5:  290, 3.0:  370}, 'T2': {1.5:  165, 3.0:  130}}, 
-                  'Fat6':  {'shift': 5.3 - 4.7, 'ratio': .047, 'ratioWithFatSat': .045, 'PD': 1.0, 'T1': {1.5:  290, 3.0:  370}, 'T2': {1.5:  165, 3.0:  130}} }
-
-SEQUENCES = ['Spin Echo', 'Spoiled Gradient Echo', 'Inversion Recovery']
-
-PHANTOMS = {
-    'abdomen': {'FOV': (320, 400), 'matrix': (513, 641), 'referenceTissue': 'spleen'}, # odd matrix to ensure kspace center is sampled (not required)
-    'brain': {'FOV': (188, 156), 'matrix': (601, 601), 'referenceTissue': 'gray'} # odd matrix to ensure kspace center is sampled (not required)
-}
-
-DIRECTIONS = {'anterior-posterior': 0, 'left-right': 1}
-
-TRAJECTORIES = ['Cartesian', 'Radial', 'PROPELLER']
-
-OPERATORS = {'Magnitude': np.abs, 'Phase': np.angle, 'Real': np.real, 'Imaginary': np.imag}
-
-
 def pixelBW2shift(pixelBW, B0=1.5):
     ''' Get fat/water chemical shift [pixels] from pixel bandwidth [Hz/pixel] and B0 [T]'''
-    return np.abs(FATRESONANCES['Fat2']['shift'] * constants.GYRO * B0 / pixelBW)
+    return np.abs(constants.FATRESONANCES['Fat2']['shift'] * constants.GYRO * B0 / pixelBW)
 
 
 def shift2pixelBW(shift, B0=1.5):
     ''' Get pixel bandwidth [Hz/pixel] from fat/water chemical shift [pixels] and B0 [T]'''
-    return np.abs(FATRESONANCES['Fat2']['shift'] * constants.GYRO * B0 / shift)
+    return np.abs(constants.FATRESONANCES['Fat2']['shift'] * constants.GYRO * B0 / shift)
 
 
 def pixelBW2FOVBW(pixelBW, matrixF):
@@ -76,100 +36,6 @@ def pixelBW2FOVBW(pixelBW, matrixF):
 def FOVBW2pixelBW(FOVBW, matrixF):
     ''' Get pixel bandwidth [Hz/pixel] from FOV bandwidth [±kHz] and read direction matrix'''
     return FOVBW / matrixF * 2e3
-
-
-def polygonArea(coords):
-    return np.sum((coords[0]-np.roll(coords[0], 1)) * (coords[1]+np.roll(coords[1], 1))) / 2
-
-
-def preparePath(path):
-    if path[0] == path[-1]: 
-        path.pop()
-    return np.array(path).T
-
-
-# Get coords from SVG path defined at https://www.w3.org/TR/SVG/paths.html
-def getSubpaths(pathString, scale):
-    supportedCommands = 'MZLHV'
-    commands = supportedCommands + 'CSQTA'
-
-    subpath, subpaths = [], []
-    command = ''
-    coord = (0, 0)
-    x, y  = None, None
-    for entry in pathString.strip().replace(',', ' ').split():
-        if command.upper() == 'Z': # new subpath
-            subpaths.append(preparePath(subpath))
-            subpath = []
-        if entry.upper() in commands:
-            if entry.upper() in supportedCommands:
-                command = entry
-            else:
-                raise Exception('Path command not supported: ' + entry)
-        else: # no command; x or y coordinate
-            if command.upper() == 'H':
-                x, y = entry, 0
-            elif command.upper() == 'V':
-                x, y = 0, entry
-            elif command.upper() in 'ML':
-                if x is None:
-                    x = entry
-                else:
-                    y = entry
-            if x is not None and y is not None:
-                relativeX = command.islower() or command.upper() == 'V'
-                relativeY = command.islower() or command.upper() == 'H'
-                coord = (float(y) * scale + coord[0] * relativeY, float(x) * scale + coord[1] * relativeX)
-                subpath.append(coord)
-                x, y  = None, None
-    if command.upper() != 'Z':
-        raise Exception('Warning: all paths must be closed')
-    subpaths.append(preparePath(subpath))
-    
-    if sum([polygonArea(subpath) for subpath in subpaths]) < 0:
-        for n in range(len(subpaths)):
-            subpaths[n] = np.flip(subpaths[n], axis=1) # invert polygons to make total area positive
-    return subpaths
-
-
-def parseTransform(transformString):
-    match = re.search(r'translate\((-?\d+.\d+)(px|%), (-?\d+.\d+)(px|%)\)', transformString)
-    translation = (float(match.group(1)), float(match.group(3))) if match else (0, 0)
-
-    match = re.search(r'rotate\((-?\d+.\d+)deg\)', transformString)
-    rotation = float(match.group(1)) if match else 0
-    
-    match = re.search(r'scale\((-?\d+.\d+)\)', transformString)
-    scale = float(match.group(1)) if match else 1
-
-    return translation, rotation, scale
-
-
-def parseStyleString(styleString):
-    return {
-        key.strip(): value.strip()
-        for keyValue in styleString.split(';') if keyValue
-        for key, value in [keyValue.split(':', 1)]
-    }
-
-
-# reads SVG file and returns polygon lists
-def readSVG(inFile):
-    polygons = []
-    for path in ET.parse(inFile).iter('{http://www.w3.org/2000/svg}path'): 
-        style = parseStyleString(path.attrib['style'])
-        hexcolor = style['fill'].strip('#')
-        if hexcolor not in [v['hexcolor'] for v in TISSUES.values()]:
-            print('Warning: No tissue corresponding to hexcolor "{}" for path with id "{}"'.format(hexcolor, path.attrib['id']))
-            continue
-        tissue = [tissue for tissue in TISSUES if TISSUES[tissue]['hexcolor']==hexcolor][0]
-        translation, rotation, scale = parseTransform(path.attrib['transform'] if 'transform' in path.attrib else '')
-        if rotation != 0 or translation != (0, 0):
-            raise NotImplementedError()
-        subpaths = getSubpaths(path.attrib['d'], scale)
-        for subpath in subpaths:
-            polygons.append({'vertices': subpath, 'tissue': tissue})
-    return polygons
 
 
 def kspacePolygon(poly, k):
@@ -184,14 +50,14 @@ def kspacePolygon(poly, k):
     ksp = np.sum(L * np.dot(k, n) * np.sinc(np.dot(k, Lv)) * np.exp(-2j*np.pi * np.dot(k, rc)), axis=-1)
     
     kcenter = np.all(k==0, axis=-1)
-    ksp[kcenter] = polygonArea(r)
+    ksp[kcenter] = loadSVG.polygonArea(r)
     notkcenter = np.logical_not(kcenter)
     ksp[notkcenter] *= 1j / (2 * np.pi * np.linalg.norm(k[notkcenter], axis=-1)**2)
     return ksp
 
 
 def getT2w(component, timeAfterExcitation, timeRelativeInphase, B0):
-    T2 = TISSUES[component]['T2'][B0] if 'Fat' not in component else FATRESONANCES[component]['T2'][B0]
+    T2 = constants.TISSUES[component]['T2'][B0] if 'Fat' not in component else constants.FATRESONANCES[component]['T2'][B0]
     T2prim = 35. # ad hoc value [msec]
     E2 = np.exp(-np.abs(timeAfterExcitation)/T2)
     E2prim = np.exp(-np.abs(timeRelativeInphase)/T2prim)
@@ -199,8 +65,8 @@ def getT2w(component, timeAfterExcitation, timeRelativeInphase, B0):
 
 
 def getPDandT1w(component, seqType, TR, TE, TI, FA, B0):
-    PD = TISSUES[component]['PD'] if 'Fat' not in component else FATRESONANCES[component]['PD']
-    T1 = TISSUES[component]['T1'][B0] if 'Fat' not in component else FATRESONANCES[component]['T1'][B0]
+    PD = constants.TISSUES[component]['PD'] if 'Fat' not in component else constants.FATRESONANCES[component]['PD']
+    T1 = constants.TISSUES[component]['T1'][B0] if 'Fat' not in component else constants.FATRESONANCES[component]['T1'][B0]
 
     E1 = np.exp(-TR/T1)
     if seqType == 'Spin Echo':
@@ -313,8 +179,8 @@ class MRIsimulator(param.Parameterized):
     FA = param.Number(default=90.0, precedence=-1, label='Flip angle [°]')
     TI = param.Selector(default=40, precedence=-1, label='TI [msec]')
     
-    trajectory = param.ObjectSelector(default=TRAJECTORIES[0], precedence=1, label='k-space trajectory')
-    frequencyDirection = param.ObjectSelector(default=list(DIRECTIONS.keys())[0], precedence=1, label='Frequency encoding direction')
+    trajectory = param.ObjectSelector(default=constants.TRAJECTORIES[0], precedence=1, label='k-space trajectory')
+    frequencyDirection = param.ObjectSelector(default=list(constants.DIRECTIONS.keys())[0], precedence=1, label='Frequency encoding direction')
     FOVP = param.Number(default=240, precedence=2, label='FOV x [mm]')
     FOVF = param.Number(default=240, precedence=2, label='FOV y [mm]')
     phaseOversampling = param.Number(default=0, step=1., precedence=3, label='Phase oversampling [%]')
@@ -332,7 +198,7 @@ class MRIsimulator(param.Parameterized):
     sliceThickness = param.Number(default=3, precedence=6, label='Slice thickness [mm]')
     radialFOVoversampling = param.Number(default=2, step=0.01, precedence=9, label='Radial FOV oversampling factor')
     
-    sequence = param.ObjectSelector(default=SEQUENCES[0], precedence=1, label='Pulse sequence')
+    sequence = param.ObjectSelector(default=constants.SEQUENCES[0], precedence=1, label='Pulse sequence')
     pixelBandWidth = param.Selector(default=pBWvalues[249], precedence=2, label='Pixel bandwidth [Hz]')
     FOVbandwidth = param.Selector(default=pixelBW2FOVBW(500, 180), precedence=-2, label='FOV bandwidth [±kHz]')
     FWshift = param.Selector(default=pixelBW2shift(500), precedence=-2, label='Fat/water shift [pixels]')
@@ -477,15 +343,15 @@ class MRIsimulator(param.Parameterized):
 
 
     def init_bounds(self):
-        self.param.object.objects = PHANTOMS.keys()
+        self.param.object.objects = constants.PHANTOMS.keys()
         self.param.fieldStrength.objects=[1.5, 3.0]
         self.param.parameterStyle.objects=['Matrix and Pixel BW', 'Voxelsize and Fat/water shift', 'Matrix and FOV BW']
         self.param.TR.objects=TRvalues
         self.param.TE.objects=TEvalues
         self.param.FA.bounds=(1, 90.0)
         self.param.TI.objects=TIvalues
-        self.param.frequencyDirection.objects=DIRECTIONS.keys()
-        self.param.trajectory.objects=TRAJECTORIES[:2]
+        self.param.frequencyDirection.objects=constants.DIRECTIONS.keys()
+        self.param.trajectory.objects=constants.TRAJECTORIES[:2]
         self.param.FOVP.bounds=(100, 600)
         self.param.FOVF.bounds=(100, 600)
         self.param.phaseOversampling.bounds=(0, 100)
@@ -496,15 +362,15 @@ class MRIsimulator(param.Parameterized):
         self.param.reconMatrixF.objects=reconMatrixValues
         self.param.sliceThickness.bounds=(0.5, 10)
         self.param.radialFOVoversampling.bounds=(1, 2)
-        self.param.sequence.objects=SEQUENCES
+        self.param.sequence.objects=constants.SEQUENCES
         self.param.pixelBandWidth.objects=pBWvalues
         self.param.NSA.bounds=(1, 16)
         self.param.partialFourier.bounds=(.6, 1)
         self.param.turboFactor.bounds=(1, 64)
         self.param.EPIfactor.objects=EPIfactorValues
         self.param.shot.bounds=(1, 1)
-        self.param.imageType.objects=OPERATORS.keys()
-        self.param.kspaceType.objects=OPERATORS.keys()
+        self.param.imageType.objects=constants.OPERATORS.keys()
+        self.param.kspaceType.objects=constants.OPERATORS.keys()
         self.param.kspaceExponent.bounds=(0.1, 1)
         self.param.apodizationAlpha.bounds=(.01, 1)
 
@@ -590,7 +456,7 @@ class MRIsimulator(param.Parameterized):
                 self.acquisitionPipeline[f] = True
             for f in self.reconPipeline:
                 self.reconPipeline[f] = True
-            minFOV = PHANTOMS[self.object]['FOV']
+            minFOV = constants.PHANTOMS[self.object]['FOV']
             if self.frequencyDirection=='left-right':
                 minFOV = minFOV.reverse()
             self.FOVF = max(self.FOVF, minFOV[0])
@@ -1140,9 +1006,9 @@ class MRIsimulator(param.Parameterized):
         self.param.radialFactor.label = '{} sampling factor'.format(shotLabel.capitalize())
         # Label radial trajectory 'Radial' or 'PROPELLER' depending on nLines per shot
         traj_indices = [0, 1] if (self.EPIfactor * self.turboFactor == 1) else [0, 2]
-        self.param.trajectory.objects = [TRAJECTORIES[i] for i in traj_indices]
+        self.param.trajectory.objects = [constants.TRAJECTORIES[i] for i in traj_indices]
         if self.trajectory not in self.param.trajectory.objects:
-            self.trajectory = TRAJECTORIES[traj_indices[-1]]
+            self.trajectory = constants.TRAJECTORIES[traj_indices[-1]]
     
 
     def updateBWbounds(self):
@@ -1329,7 +1195,7 @@ class MRIsimulator(param.Parameterized):
 
     def loadPhantom(self):
         phantomPath = Path(__file__).parent.resolve() / 'phantoms/{p}'.format(p=self.object)
-        self.phantom = PHANTOMS[self.object]
+        self.phantom = constants.PHANTOMS[self.object]
         self.phantom['kAxes'] = [recon.getKaxis(self.phantom['matrix'][dim], self.phantom['FOV'][dim]/self.phantom['matrix'][dim]) for dim in range(len(self.phantom['matrix']))]
 
         npyFiles = list(phantomPath.glob('*.npy'))
@@ -1342,7 +1208,7 @@ class MRIsimulator(param.Parameterized):
                 self.phantom['kspace'][tissue] = np.load(file)
         else:
             print('Preparing k-space for "{}" phantom. This might take a few minutes on first use...'.format(self.object))
-            polys = readSVG(Path(phantomPath / self.object).with_suffix('.svg'))
+            polys = loadSVG.load(Path(phantomPath / self.object).with_suffix('.svg'))
             self.tissues = set([poly['tissue'] for poly in polys])
             self.phantom['kspace'] = {tissue: np.zeros((self.phantom['matrix']), dtype=complex) for tissue in self.tissues}
             k = np.array(np.meshgrid(self.phantom['kAxes'][0], self.phantom['kAxes'][1])).T
@@ -1439,7 +1305,7 @@ class MRIsimulator(param.Parameterized):
     
 
     def setup_frequency_encoding(self):
-        self.freqDir = DIRECTIONS[self.frequencyDirection] if self.isCartesian() else 1
+        self.freqDir = constants.DIRECTIONS[self.frequencyDirection] if self.isCartesian() else 1
         self.FOV[self.freqDir] = self.FOVF
         self.matrix[self.freqDir] = self.matrixF
         voxelSize = self.FOV[self.freqDir]/self.matrix[self.freqDir]
@@ -1457,7 +1323,7 @@ class MRIsimulator(param.Parameterized):
     
 
     def setup_phase_encoding(self):
-        self.phaseDir = 1 - DIRECTIONS[self.frequencyDirection] if self.isCartesian() else 0
+        self.phaseDir = 1 - constants.DIRECTIONS[self.frequencyDirection] if self.isCartesian() else 0
         self.FOV[self.phaseDir] = self.FOVP
         self.matrix[self.phaseDir] = self.matrixP
 
@@ -1560,11 +1426,11 @@ class MRIsimulator(param.Parameterized):
         self.kspaceComps = {}
         for tissue in self.tissues:
             T2w = getT2w(tissue, self.timeAfterExcitation, timeRelativeInphase, self.fieldStrength)
-            if TISSUES[tissue]['FF'] == .00:
+            if constants.TISSUES[tissue]['FF'] == .00:
                 self.kspaceComps[tissue] = self.plainKspaceComps[tissue] * T2w
             else: # fat containing tissues
                 self.kspaceComps[tissue + 'Water'] = self.plainKspaceComps[tissue] * T2w
-                for component, resonance in FATRESONANCES.items():
+                for component, resonance in constants.FATRESONANCES.items():
                     T2w = getT2w(component, self.timeAfterExcitation, timeRelativeInphase, self.fieldStrength)
                     dephasing = np.exp(2j*np.pi * constants.GYRO * self.fieldStrength * resonance['shift'] * timeRelativeInphase * 1e-3)
                     self.kspaceComps[tissue + component] = self.plainKspaceComps[tissue] * dephasing * T2w
@@ -1578,7 +1444,7 @@ class MRIsimulator(param.Parameterized):
 
 
     def updatePDandT1w(self):
-        self.PDandT1w = {component: getPDandT1w(component, self.sequence, self.TR, self.TE, self.TI, self.FA, self.fieldStrength) for component in self.tissues.union(set(FATRESONANCES.keys()))}
+        self.PDandT1w = {component: getPDandT1w(component, self.sequence, self.TR, self.TE, self.TI, self.FA, self.fieldStrength) for component in self.tissues.union(set(constants.FATRESONANCES.keys()))}
 
 
     def setReferenceSNR(self, event=None):
@@ -1613,13 +1479,13 @@ class MRIsimulator(param.Parameterized):
             if 'Fat' in component:
                 tissue = component[:component.find('Fat')]
                 resonance = component[component.find('Fat'):]
-                ratio = FATRESONANCES[resonance]['ratioWithFatSat' if self.FatSat else 'ratio']
-                ratio *= TISSUES[tissue]['FF']
+                ratio = constants.FATRESONANCES[resonance]['ratioWithFatSat' if self.FatSat else 'ratio']
+                ratio *= constants.TISSUES[tissue]['FF']
                 self.measuredkspace += self.kspaceComps[component] * self.PDandT1w[resonance] * ratio
             else:
                 if 'Water' in component:
                     tissue = component[:component.find('Water')]
-                    ratio = 1 - TISSUES[tissue]['FF']    
+                    ratio = 1 - constants.TISSUES[tissue]['FF']    
                 else:
                     tissue = component
                     ratio = 1.0
@@ -2061,7 +1927,7 @@ class MRIsimulator(param.Parameterized):
     
     @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'num_shots', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'trajectory', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor', 'kspaceType', 'showProcessedKspace', 'kspaceExponent', 'homodyne', 'doApodize', 'apodizationAlpha', 'doZerofill', 'radialFOVoversampling')
     def getKspace(self):
-        operator = OPERATORS[self.kspaceType]
+        operator = constants.OPERATORS[self.kspaceType]
         if self.showProcessedKspace:
             self.runReconPipeline()
             kAxes = []
@@ -2104,7 +1970,7 @@ class MRIsimulator(param.Parameterized):
     @param.depends('object', 'fieldStrength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'num_shots', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness', 'trajectory', 'frequencyDirection', 'pixelBandWidth', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor', 'imageType', 'showFOV', 'homodyne', 'doApodize', 'apodizationAlpha', 'doZerofill', 'radialFOVoversampling')
     def getImage(self):
         self.runReconPipeline()
-        operator = OPERATORS[self.imageType]
+        operator = constants.OPERATORS[self.imageType]
         iAxes = [(np.arange(self.reconMatrix[dim]) - (self.reconMatrix[dim]-1)/2) / self.reconMatrix[dim] * self.FOV[dim] for dim in range(2)]
         img = xr.DataArray(
             operator(self.imageArray), 
