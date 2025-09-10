@@ -1209,11 +1209,11 @@ class MRIsimulator(param.Parameterized):
         else:
             print('Preparing k-space for "{}" phantom. This might take a few minutes on first use...'.format(self.object))
             polys = loadSVG.load(Path(phantomPath / self.object).with_suffix('.svg'))
-            self.tissues = set([poly['tissue'] for poly in polys])
+            self.tissues = set(polys.keys())
             self.phantom['kspace'] = {tissue: np.zeros((self.phantom['matrix']), dtype=complex) for tissue in self.tissues}
             k = np.array(np.meshgrid(self.phantom['kAxes'][0], self.phantom['kAxes'][1])).T
-            for poly in tqdm(polys):
-                self.phantom['kspace'][poly['tissue']] += kspacePolygon(poly['vertices'], k)
+            for tissue, poly in tqdm([(tissue, poly) for tissue, polygons in polys.items() for poly in polygons], desc='Polygons'):
+                self.phantom['kspace'][tissue] += kspacePolygon(poly, k)
             for tissue in self.tissues:
                 file = Path(phantomPath / tissue).with_suffix('.npy')
                 np.save(file, self.phantom['kspace'][tissue])

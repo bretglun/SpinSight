@@ -31,7 +31,7 @@ def parseStyleString(styleString):
 
 # reads SVG file and returns polygon lists
 def load(file):
-    polygons = []
+    polygons = {}
     paths, attributes = svgpathtools.svg2paths(file)
     for p, path in enumerate(paths):
         attrib = attributes[p]
@@ -41,18 +41,19 @@ def load(file):
             print('Warning: No tissue corresponding to hexcolor "{}" for path with id "{}"'.format(hexcolor, path.attrib['id']))
             continue
         tissue = [tissue for tissue in constants.TISSUES if constants.TISSUES[tissue]['hexcolor']==hexcolor][0]
+        if tissue not in polygons:
+            polygons[tissue] = []
         translation, rotation, scale = parseTransform(attrib['transform'] if 'transform' in attrib else '')
         if rotation != 0 or translation != (0, 0):
             raise NotImplementedError()
         subpaths = path.continuous_subpaths()
-        subpolygons = []
+        polys = []
         for subpath in subpaths:
             if not subpath.isclosed():
                 raise Exception('All paths in SVG file must be closed')
-            subpolygons.append(np.array([(p[0].imag * scale, p[0].real * scale) for p in subpath]).T)
-        if sum([polygonArea(polygon) for polygon in subpolygons]) < 0:
+            polys.append(np.array([(p[0].imag * scale, p[0].real * scale) for p in subpath]).T)
+        if sum([polygonArea(polygon) for polygon in polys]) < 0:
             # invert polygons to make total area positive
-            subpolygons = [np.flip(poly, axis=1) for poly in subpolygons]
-        for vertices in subpolygons:
-            polygons.append({'vertices': vertices, 'tissue': tissue})
+            polys = [np.flip(poly, axis=1) for poly in polys]
+        polygons[tissue] += polys
     return polygons
