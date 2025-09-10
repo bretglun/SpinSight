@@ -1218,6 +1218,8 @@ class MRIsimulator(param.Parameterized):
                 file = Path(phantomPath / tissue).with_suffix('.npy')
                 np.save(file, self.phantom['kspace'][tissue])
             print('DONE')
+        if self.phantom['referenceTissue'] not in self.tissues:
+            raise Exception('Reference tissue "{}" not found in phantom "{}"'.format(self.phantom['referenceTissue'], self.object))
         self.setup_frequency_encoding() # frequency oversampling is adapted to phantom FOV for efficiency
 
 

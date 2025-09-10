@@ -29,6 +29,21 @@ def parseStyleString(styleString):
     }
 
 
+def get_vertices(continuous_path):
+    if not continuous_path.isclosed():
+        raise Exception('All paths in SVG file must be closed')
+    vertices = []
+    for segment in continuous_path:
+        if isinstance(segment, svgpathtools.path.Line):
+            vertices.append((segment[0].imag, segment[0].real))
+        else:
+            print('Warning: Only SVG line segments are supported, not', type(segment))
+            return None
+    if vertices:
+        return np.array(vertices).T
+    return None
+
+
 # reads SVG file and returns polygon lists
 def load(file):
     polygons = {}
@@ -38,7 +53,7 @@ def load(file):
         style = parseStyleString(attrib['style'])
         hexcolor = style['fill'].strip('#')
         if hexcolor not in [v['hexcolor'] for v in constants.TISSUES.values()]:
-            print('Warning: No tissue corresponding to hexcolor "{}" for path with id "{}"'.format(hexcolor, path.attrib['id']))
+            print('Warning: No tissue corresponding to hexcolor "{}" for path with id "{}"'.format(hexcolor, attrib['id']))
             continue
         tissue = [tissue for tissue in constants.TISSUES if constants.TISSUES[tissue]['hexcolor']==hexcolor][0]
         if tissue not in polygons:
@@ -49,9 +64,9 @@ def load(file):
         subpaths = path.continuous_subpaths()
         polys = []
         for subpath in subpaths:
-            if not subpath.isclosed():
-                raise Exception('All paths in SVG file must be closed')
-            polys.append(np.array([(p[0].imag * scale, p[0].real * scale) for p in subpath]).T)
+            vertices = get_vertices(subpath)
+            if vertices is not None:
+                polys.append(vertices * scale)
         if sum([polygonArea(polygon) for polygon in polys]) < 0:
             # invert polygons to make total area positive
             polys = [np.flip(poly, axis=1) for poly in polys]
