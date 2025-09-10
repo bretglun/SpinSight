@@ -40,7 +40,7 @@ def FOVBW2pixelBW(FOVBW, matrixF):
 
 def kspacePolygon(poly, k):
     # analytical 2D Fourier transform of polygon (see https://cvil.ucsd.edu/wp-content/uploads/2016/09/Realistic-analytical-polyhedral-MRI-phantoms.pdf)
-    r = poly['vertices'] # position vectors of vertices Ve
+    r = poly # position vectors of vertices Ve
     Lv = np.roll(r, -1, axis=1) - r # edge vectors
     L = np.linalg.norm(Lv, axis=0) # edge lengths
     t = Lv/L # edge unit vectors
@@ -1213,7 +1213,7 @@ class MRIsimulator(param.Parameterized):
             self.phantom['kspace'] = {tissue: np.zeros((self.phantom['matrix']), dtype=complex) for tissue in self.tissues}
             k = np.array(np.meshgrid(self.phantom['kAxes'][0], self.phantom['kAxes'][1])).T
             for poly in tqdm(polys):
-                self.phantom['kspace'][poly['tissue']] += kspacePolygon(poly, k)
+                self.phantom['kspace'][poly['tissue']] += kspacePolygon(poly['vertices'], k)
             for tissue in self.tissues:
                 file = Path(phantomPath / tissue).with_suffix('.npy')
                 np.save(file, self.phantom['kspace'][tissue])

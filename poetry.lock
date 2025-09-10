@@ -1421,6 +1421,33 @@ files = [
 ]
 
 [[package]]
+name = "svgpathtools"
+version = "1.7.1"
+description = "A collection of tools for manipulating and analyzing SVG Path objects and Bezier curves."
+optional = false
+python-versions = ">=3.8"
+files = [
+    {file = "svgpathtools-1.7.1-py2.py3-none-any.whl", hash = "sha256:3cbb8ba0e8d200f9639034608d9c55b68efbc1bef99ea99559a3e7cb024fb738"},
+    {file = "svgpathtools-1.7.1.tar.gz", hash = "sha256:beaef20fd78164aa5f0a7d4fd164ef20cb0d3d015cdec50c8c168e9d6547f041"},
+]
+
+[package.dependencies]
+numpy = "*"
+scipy = "*"
+svgwrite = "*"
+
+[[package]]
+name = "svgwrite"
+version = "1.4.3"
+description = "A Python library to create SVG drawings."
+optional = false
+python-versions = ">=3.6"
+files = [
+    {file = "svgwrite-1.4.3-py3-none-any.whl", hash = "sha256:bb6b2b5450f1edbfa597d924f9ac2dd099e625562e492021d7dd614f65f8a22d"},
+    {file = "svgwrite-1.4.3.zip", hash = "sha256:a8fbdfd4443302a6619a7f76bc937fc683daf2628d9b737c891ec08b8ce524c3"},
+]
+
+[[package]]
 name = "toml"
 version = "0.10.2"
 description = "Python Library for Tom's Obvious, Minimal Language"
@@ -1615,4 +1642,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<3.13"
-content-hash = "09ad581542a827b6f6c4bd2b80460b6e263592b9203af61699e7acca97ef57d5"
+content-hash = "40d41d261041bf06fed6e1372b4edfc32314a3b810a20edbe4e279d6e485c4eb"

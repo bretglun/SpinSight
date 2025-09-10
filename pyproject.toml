@@ -21,6 +21,7 @@ darkdetect = "^0.8.0"
 toml = "^0.10.2"
 finufft = "^2.3.1"
 mri-nufft = "^1.2.1"
+svgpathtools = "^1.7.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.2"
