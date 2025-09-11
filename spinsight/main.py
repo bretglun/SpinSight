@@ -14,6 +14,7 @@ from spinsight import loadSVG
 from bokeh.models import HoverTool, CustomJS, ColumnDataSource
 from functools import partial
 from tqdm import tqdm
+import warnings
 
 hv.extension('bokeh')
 
@@ -425,10 +426,10 @@ class MRIsimulator(param.Parameterized):
     def setParamBounds(self, param, minval, maxval):
         curval = getattr(self, param.name)
         if curval < minval:
-            print('Warning: trying to set {} bounds above current value ({} > {})'.format(param.name, minval, curval))
+            warnings.warn('trying to set {} bounds above current value ({} > {})'.format(param.name, minval, curval))
             minval = curval
         if curval > maxval:
-            print('Warning: trying to set {} bounds below current value ({} < {})'.format(param.name, maxval, curval))
+            warnings.warn('trying to set {} bounds below current value ({} < {})'.format(param.name, maxval, curval))
             maxval = curval
         param.bounds = (minval, maxval)
     
@@ -440,7 +441,7 @@ class MRIsimulator(param.Parameterized):
         if maxval is not None:
             values = [val for val in values if not val > maxval]
         if curval not in values:
-            print('Warning: {} current value {} is outside its new bounds [{}, {}]'.format(param.name, curval, minval, maxval))
+            warnings.warn('{} current value {} is outside its new bounds [{}, {}]'.format(param.name, curval, minval, maxval))
             values = [curval] # necessary to avoid empty bounds
             self.outbound_params.add(param.name)
         elif param.name in self.outbound_params:
@@ -886,7 +887,7 @@ class MRIsimulator(param.Parameterized):
         if not self.outbound_params:
             return
         if 'TR' in self.outbound_params:
-            print('Warning: Resolving conflict: TR')
+            warnings.warn('Resolving conflict: TR')
             self.outbound_params.remove('TR')
             tr = self.TR
             self.param.TR.objects = TRvalues
@@ -894,16 +895,16 @@ class MRIsimulator(param.Parameterized):
             self.TR = TRvalues[-1] # max TR
             self.TR = take_closest(self.param.TR.objects, tr) # Set back TR within (new) bounds
         if 'TI' in self.outbound_params:
-            print('Warning: Resolving conflict: TI')
+            warnings.warn('Resolving conflict: TI')
             self.outbound_params.remove('TI')
             self.TI = take_closest(self.param.TI.objects, self.TI) # Set back TI within (new) bounds
         if 'TE' in self.outbound_params:
-            print('Warning: Resolving conflict: TE')
+            warnings.warn('Resolving conflict: TE')
             self.outbound_params.remove('TE')
             self.param.TE.objects = TEvalues
             self.TE = take_closest([t for t in TEvalues if t>=self.minTE], self.TE)
         elif self.outbound_params:
-            print('Warning: Unresolved conflict:', self.outbound_params)
+            warnings.warn('Unresolved conflict:', self.outbound_params)
     
 
     def getMaxPrephaserArea(self, readAmp):

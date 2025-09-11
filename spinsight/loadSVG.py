@@ -2,6 +2,7 @@ from spinsight import constants
 import numpy as np
 import svgpathtools
 import re
+import warnings
 
 
 def polygonArea(coords):
@@ -37,7 +38,7 @@ def get_vertices(continuous_path):
         if isinstance(segment, svgpathtools.path.Line):
             vertices.append((segment[0].imag, segment[0].real))
         else:
-            print('Warning: Only SVG line segments are supported, not', type(segment))
+            warnings.warn('Only SVG line segments are supported, not {}'.format(type(segment)))
             return None
     if vertices:
         return np.array(vertices).T
@@ -53,7 +54,7 @@ def load(file):
         style = parseStyleString(attrib['style'])
         hexcolor = style['fill'].strip('#')
         if hexcolor not in [v['hexcolor'] for v in constants.TISSUES.values()]:
-            print('Warning: No tissue corresponding to hexcolor "{}" for path with id "{}"'.format(hexcolor, attrib['id']))
+            warnings.warn('No tissue corresponding to hexcolor "{}" for path with id "{}"'.format(hexcolor, attrib['id']))
             continue
         tissue = [tissue for tissue in constants.TISSUES if constants.TISSUES[tissue]['hexcolor']==hexcolor][0]
         if tissue not in polygons:
