@@ -1199,28 +1199,24 @@ class MRIsimulator(param.Parameterized):
         self.phantom = constants.PHANTOMS[self.object]
         self.phantom['kAxes'] = [recon.getKaxis(self.phantom['matrix'][dim], self.phantom['FOV'][dim]/self.phantom['matrix'][dim]) for dim in range(len(self.phantom['matrix']))]
 
-        npyFiles = list(phantomPath.glob('*.npy'))
-        if npyFiles:
-            self.tissues = set()
-            self.phantom['kspace'] = {}
-            for file in npyFiles:
-                tissue = file.stem
-                self.tissues.add(tissue)
-                self.phantom['kspace'][tissue] = np.load(file)
-        else:
-            print('Preparing k-space for "{}" phantom. This might take a few minutes on first use...'.format(self.object))
-            polys = loadSVG.load(Path(phantomPath / self.object).with_suffix('.svg'))
-            self.tissues = set(polys.keys())
-            self.phantom['kspace'] = {tissue: np.zeros((self.phantom['matrix']), dtype=complex) for tissue in self.tissues}
-            k = np.array(np.meshgrid(self.phantom['kAxes'][0], self.phantom['kAxes'][1])).T
-            for tissue, poly in tqdm([(tissue, poly) for tissue, polygons in polys.items() for poly in polygons], desc='Polygons'):
-                self.phantom['kspace'][tissue] += kspacePolygon(poly, k)
-            for tissue in self.tissues:
-                file = Path(phantomPath / tissue).with_suffix('.npy')
-                np.save(file, self.phantom['kspace'][tissue])
-            print('DONE')
+        print('Preparing k-space for "{}" phantom (might take a few minutes on first use)'.format(self.object))
+        polys = loadSVG.load(Path(phantomPath / self.object).with_suffix('.svg'))
+        self.tissues = set(polys.keys())
         if self.phantom['referenceTissue'] not in self.tissues:
             raise Exception('Reference tissue "{}" not found in phantom "{}"'.format(self.phantom['referenceTissue'], self.object))
+        self.phantom['kspace'] = {}
+        for tissue in tqdm(self.tissues, desc='Tissues'):
+            file = Path(phantomPath / tissue).with_suffix('.npy')
+            if file.is_file():
+                ksp = np.load(file)
+                if ksp.shape == self.phantom['matrix']:
+                    self.phantom['kspace'][tissue] = ksp
+            if tissue not in self.phantom['kspace']:
+                self.phantom['kspace'][tissue] = np.zeros((self.phantom['matrix']), dtype=complex)
+                k = np.array(np.meshgrid(self.phantom['kAxes'][0], self.phantom['kAxes'][1])).T
+                for poly in tqdm(polys[tissue], desc='"{}" polygons'.format(tissue), leave=False):
+                    self.phantom['kspace'][tissue] += kspacePolygon(poly, k)
+                np.save(file, self.phantom['kspace'][tissue])
         self.setup_frequency_encoding() # frequency oversampling is adapted to phantom FOV for efficiency
 
 
