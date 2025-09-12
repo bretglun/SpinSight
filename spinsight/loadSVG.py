@@ -1,5 +1,6 @@
 from spinsight import constants
 import numpy as np
+import xml.etree.ElementTree as ET
 import svgpathtools
 import re
 import warnings
@@ -22,14 +23,6 @@ def parseTransform(transformString):
     return translation, rotation, scale
 
 
-def parseStyleString(styleString):
-    return {
-        key.strip(): value.strip()
-        for keyValue in styleString.split(';') if keyValue
-        for key, value in [keyValue.split(':', 1)]
-    }
-
-
 def get_vertices(continuous_path):
     if not continuous_path.isclosed():
         raise Exception('All paths in SVG file must be closed')
@@ -45,14 +38,39 @@ def get_vertices(continuous_path):
     return None
 
 
+def parse_style_string(str):
+    return dict(attr.strip().split(':') for attr in str.strip(r' ;\t\n').split(';'))
+
+
+def get_hexcolor(attrib, styles):
+    if 'style' in attrib:
+        style = parse_style_string(attrib['style'])
+    elif 'class' in attrib and attrib['class'] in styles:
+        style = styles[attrib['class']]
+    else:
+        return None
+    if 'fill' in style:
+        return style['fill'].strip('#')
+    return None
+
+
+def get_styles(file):
+    styles = {}
+    style_element = ET.parse(file).getroot().find('{http://www.w3.org/2000/svg}style')
+    if style_element is not None:
+        for class_name, style_string in re.findall(r'\.(\w+)\s*\{([^}]*)\}', style_element.text):
+            styles[class_name] = parse_style_string(style_string)
+    return styles
+
+
 # reads SVG file and returns polygon lists
 def load(file):
-    polygons = {}
+    styles = get_styles(file)
     paths, attributes = svgpathtools.svg2paths(file)
+    polygons = {}
     for p, path in enumerate(paths):
         attrib = attributes[p]
-        style = parseStyleString(attrib['style'])
-        hexcolor = style['fill'].strip('#')
+        hexcolor = get_hexcolor(attrib, styles)
         if hexcolor not in [v['hexcolor'] for v in constants.TISSUES.values()]:
             warnings.warn('No tissue corresponding to hexcolor "{}" for path with id "{}"'.format(hexcolor, attrib['id']))
             continue
