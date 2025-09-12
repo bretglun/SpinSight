@@ -1,0 +1,4 @@
+file = "brain.svg"
+FOV = [188, 156] # compact support in mm for y and x dir
+matrix = [601, 601] # odd matrix to ensure kspace center is sampled (not required)
+referenceTissue = 'gray' # for SNR calculations

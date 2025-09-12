@@ -14,6 +14,13 @@ spinsight
 ```
 This serves SpinSight on the local host, so that the simulator can be run by navigating to [localhost](http://localhost) in the web browser. The same command line tool can be used to deploy the simulator on a local network, or on a web server (run `spinsight -h` for help). Be aware that several minutes are required upon loading a phantom for the first time.  
 
+Phantom construction
+--------------------
+To create a new phantom, add a directory with the phantom name under [spinsight/phantoms](./spinsight/phantoms). This directory shall contain specifications in a `.toml` file with the same name (see [brain.toml](./spinsight/phantoms/brain/brain.toml) for reference). The specified `.svg` file must meet the following specifications:
+* All paths must be closed
+* All paths must have a fill color matching a hexcolor defined in the `TISSUES` dict in [constants.py](./spinsight/constants.py) (this defines the tissue).
+* Only polygons are supported (not Bézier curves etc)
+
 Dependencies
 ------------
 See [pyproject.toml](./pyproject.toml) under heading **[tool.poetry.dependencies]**. 

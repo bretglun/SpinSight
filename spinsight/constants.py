@@ -30,11 +30,6 @@ FATRESONANCES = { 'Fat1':  {'shift': 0.9 - 4.7, 'ratio': .087, 'ratioWithFatSat'
 
 SEQUENCES = ['Spin Echo', 'Spoiled Gradient Echo', 'Inversion Recovery']
 
-PHANTOMS = {
-    'abdomen': {'FOV': (320, 400), 'matrix': (513, 641), 'referenceTissue': 'spleen'}, # odd matrix to ensure kspace center is sampled (not required)
-    'brain': {'FOV': (188, 156), 'matrix': (601, 601), 'referenceTissue': 'gray'} # odd matrix to ensure kspace center is sampled (not required)
-}
-
 DIRECTIONS = {'anterior-posterior': 0, 'left-right': 1}
 
 TRAJECTORIES = ['Cartesian', 'Radial', 'PROPELLER']

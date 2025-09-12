@@ -1,0 +1,4 @@
+file = "abdomen.svg"
+FOV = [320, 400] # compact support in mm for y and x dir
+matrix = [513, 641] # odd matrix to ensure kspace center is sampled (not required)
+referenceTissue = 'spleen' # for SNR calculations

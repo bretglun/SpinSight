@@ -57,6 +57,25 @@ def kspacePolygon(poly, k):
     return ksp
 
 
+def load_phantom_toml(name):
+    path = Path(__file__).parent.resolve() / 'phantoms' / name
+    with open(Path(path / name).with_suffix('.toml'), 'r') as f:
+        phantom = toml.load(f)
+    phantom['path'] = path
+    phantom['file'] = Path(path / phantom['file'])
+    phantom['matrix'] = tuple(phantom['matrix'])    
+    return phantom
+
+
+def get_phantom_list():
+    phantoms = []
+    phantom_path = Path(__file__).parent.resolve() / 'phantoms'
+    for dir in phantom_path.iterdir():
+        if dir.is_dir() and Path(dir / dir.name).with_suffix('.toml').is_file():
+            phantoms.append(dir.name)
+    return phantoms
+
+
 def getT2w(component, timeAfterExcitation, timeRelativeInphase, B0):
     T2 = constants.TISSUES[component]['T2'][B0] if 'Fat' not in component else constants.FATRESONANCES[component]['T2'][B0]
     T2prim = 35. # ad hoc value [msec]
@@ -331,6 +350,7 @@ class MRIsimulator(param.Parameterized):
             'setReferenceSNR'
         ]}
 
+        self._watch_object()
         self._watch_reconMatrixF()
         self._watch_reconMatrixP()
         self._watch_matrixF()
@@ -344,7 +364,7 @@ class MRIsimulator(param.Parameterized):
 
 
     def init_bounds(self):
-        self.param.object.objects = constants.PHANTOMS.keys()
+        self.param.object.objects = get_phantom_list()
         self.param.fieldStrength.objects=[1.5, 3.0]
         self.param.parameterStyle.objects=['Matrix and Pixel BW', 'Voxelsize and Fat/water shift', 'Matrix and FOV BW']
         self.param.TR.objects=TRvalues
@@ -452,12 +472,13 @@ class MRIsimulator(param.Parameterized):
 
     @param.depends('object', watch=True)
     def _watch_object(self):
+        self.phantom = load_phantom_toml(self.object)
         with param.parameterized.batch_call_watchers(self):
             for f in self.acquisitionPipeline:
                 self.acquisitionPipeline[f] = True
             for f in self.reconPipeline:
                 self.reconPipeline[f] = True
-            minFOV = constants.PHANTOMS[self.object]['FOV']
+            minFOV = self.phantom['FOV']
             if self.frequencyDirection=='left-right':
                 minFOV = minFOV.reverse()
             self.FOVF = max(self.FOVF, minFOV[0])
@@ -1195,18 +1216,15 @@ class MRIsimulator(param.Parameterized):
 
 
     def loadPhantom(self):
-        phantomPath = Path(__file__).parent.resolve() / 'phantoms/{p}'.format(p=self.object)
-        self.phantom = constants.PHANTOMS[self.object]
-        self.phantom['kAxes'] = [recon.getKaxis(self.phantom['matrix'][dim], self.phantom['FOV'][dim]/self.phantom['matrix'][dim]) for dim in range(len(self.phantom['matrix']))]
-
         print('Preparing k-space for "{}" phantom (might take a few minutes on first use)'.format(self.object))
-        polys = loadSVG.load(Path(phantomPath / self.object).with_suffix('.svg'))
+        self.phantom['kAxes'] = [recon.getKaxis(self.phantom['matrix'][dim], self.phantom['FOV'][dim]/self.phantom['matrix'][dim]) for dim in range(len(self.phantom['matrix']))]
+        polys = loadSVG.load(self.phantom['file'])
         self.tissues = set(polys.keys())
         if self.phantom['referenceTissue'] not in self.tissues:
             raise Exception('Reference tissue "{}" not found in phantom "{}"'.format(self.phantom['referenceTissue'], self.object))
         self.phantom['kspace'] = {}
         for tissue in tqdm(self.tissues, desc='Tissues'):
-            file = Path(phantomPath / tissue).with_suffix('.npy')
+            file = Path(self.phantom['path'] / tissue).with_suffix('.npy')
             if file.is_file():
                 ksp = np.load(file)
                 if ksp.shape == self.phantom['matrix']:
