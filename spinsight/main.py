@@ -84,6 +84,7 @@ def load_phantom_toml(name):
     path = Path(__file__).parent.resolve() / 'phantoms' / name
     with open(Path(path / name).with_suffix('.toml'), 'r') as f:
         phantom = toml.load(f)
+    phantom['name'] = name
     phantom['path'] = path
     phantom['file'] = Path(path / phantom['file'])
     phantom['matrix'] = tuple(phantom['matrix'])    
@@ -495,6 +496,8 @@ class MRIsimulator(param.Parameterized):
 
     @param.depends('object', watch=True)
     def _watch_object(self):
+        if hasattr(self, 'phantom') and self.phantom['name']==self.object:
+            return
         self.phantom = load_phantom_toml(self.object)
         with param.parameterized.batch_call_watchers(self):
             for f in self.acquisitionPipeline:
