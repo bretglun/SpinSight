@@ -1,0 +1,4 @@
+file = "Shepp-Logan_shapes.toml"
+FOV = [200, 200] # compact support in mm for y and x dir
+matrix = [601, 601] # odd matrix to ensure kspace center is sampled (not required)
+referenceTissue = 'SL_gray' # for SNR calculations
