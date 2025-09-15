@@ -11,7 +11,7 @@ import xarray as xr
 from spinsight import constants
 from spinsight import sequence
 from spinsight import recon
-from spinsight import loadSVG
+from spinsight import load_phantom
 from bokeh.models import HoverTool, CustomJS, ColumnDataSource
 from functools import partial
 from tqdm import tqdm
@@ -52,7 +52,7 @@ def kspace_for_polygon(poly, k):
     ksp = np.sum(L * np.dot(k, n) * np.sinc(np.dot(k, Lv)) * np.exp(-2j*np.pi * np.dot(k, rc)), axis=-1)
     
     kcenter = np.all(k==0, axis=-1)
-    ksp[kcenter] = loadSVG.polygonArea(r)
+    ksp[kcenter] = load_phantom.polygonArea(r)
     notkcenter = np.logical_not(kcenter)
     ksp[notkcenter] *= 1j / (2 * np.pi * np.linalg.norm(k[notkcenter], axis=-1)**2)
     return ksp
@@ -1240,7 +1240,7 @@ class MRIsimulator(param.Parameterized):
     def loadPhantom(self):
         print('Preparing k-space for "{}" phantom (might take a few minutes on first use)'.format(self.object))
         self.phantom['kAxes'] = [recon.getKaxis(self.phantom['matrix'][dim], self.phantom['FOV'][dim]/self.phantom['matrix'][dim]) for dim in range(len(self.phantom['matrix']))]
-        shapes = loadSVG.load(self.phantom['file'])
+        shapes = load_phantom.load(self.phantom['file'])
         self.tissues = set(shapes.keys())
         if self.phantom['referenceTissue'] not in self.tissues:
             raise Exception('Reference tissue "{}" not found in phantom "{}"'.format(self.phantom['referenceTissue'], self.object))
