@@ -4,6 +4,7 @@ import panel as pn
 import param
 import numpy as np
 import math
+import scipy
 from pathlib import Path
 import toml
 import xarray as xr
@@ -39,7 +40,7 @@ def FOVBW2pixelBW(FOVBW, matrixF):
     return FOVBW / matrixF * 2e3
 
 
-def kspacePolygon(poly, k):
+def kspace_for_polygon(poly, k):
     # analytical 2D Fourier transform of polygon (see https://cvil.ucsd.edu/wp-content/uploads/2016/09/Realistic-analytical-polyhedral-MRI-phantoms.pdf)
     r = poly # position vectors of vertices Ve
     Lv = np.roll(r, -1, axis=1) - r # edge vectors
@@ -55,6 +56,27 @@ def kspacePolygon(poly, k):
     notkcenter = np.logical_not(kcenter)
     ksp[notkcenter] *= 1j / (2 * np.pi * np.linalg.norm(k[notkcenter], axis=-1)**2)
     return ksp
+
+
+def rotation_matrix(theta):
+    cos, sin = np.cos(theta), np.sin(theta)
+    return np.array([[cos, -sin], [sin, cos]])
+
+
+def kspace_for_ellipse(ellipse, k):
+    # scaled and rotated radius vector:
+    r = np.linalg.norm(k @ rotation_matrix(np.radians(ellipse['angle'])) @ np.diag(ellipse['radius']), axis=-1)
+    ksp = np.ones(k.shape[:-1], dtype=complex)
+    ksp[r!=0] *= scipy.special.j1(2 * np.pi * r[r!=0]) / r[r!=0] # Bessel function of first kind, first order
+    ksp *= np.prod(ellipse['radius']) # scale intensity
+    ksp *= np.exp(-2j*np.pi * np.dot(k, ellipse['pos'])) # translate
+    if ellipse['negative']:
+        return -ksp
+    return ksp
+
+
+def kspace_for_shape(shape, k):
+    return {'polygon': kspace_for_polygon, 'ellipse': kspace_for_ellipse}[shape[0]](shape[1], k)
 
 
 def load_phantom_toml(name):
@@ -1218,8 +1240,8 @@ class MRIsimulator(param.Parameterized):
     def loadPhantom(self):
         print('Preparing k-space for "{}" phantom (might take a few minutes on first use)'.format(self.object))
         self.phantom['kAxes'] = [recon.getKaxis(self.phantom['matrix'][dim], self.phantom['FOV'][dim]/self.phantom['matrix'][dim]) for dim in range(len(self.phantom['matrix']))]
-        polys = loadSVG.load(self.phantom['file'])
-        self.tissues = set(polys.keys())
+        shapes = loadSVG.load(self.phantom['file'])
+        self.tissues = set(shapes.keys())
         if self.phantom['referenceTissue'] not in self.tissues:
             raise Exception('Reference tissue "{}" not found in phantom "{}"'.format(self.phantom['referenceTissue'], self.object))
         self.phantom['kspace'] = {}
@@ -1232,8 +1254,8 @@ class MRIsimulator(param.Parameterized):
             if tissue not in self.phantom['kspace']:
                 self.phantom['kspace'][tissue] = np.zeros((self.phantom['matrix']), dtype=complex)
                 k = np.array(np.meshgrid(self.phantom['kAxes'][0], self.phantom['kAxes'][1])).T
-                for poly in tqdm(polys[tissue], desc='"{}" polygons'.format(tissue), leave=False):
-                    self.phantom['kspace'][tissue] += kspacePolygon(poly, k)
+                for shape in tqdm(shapes[tissue], desc='"{}" shapes'.format(tissue), leave=False):
+                    self.phantom['kspace'][tissue] += kspace_for_shape(shape, k)
                 np.save(file, self.phantom['kspace'][tissue])
         self.setup_frequency_encoding() # frequency oversampling is adapted to phantom FOV for efficiency
 

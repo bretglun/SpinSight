@@ -67,16 +67,15 @@ def get_styles(file):
 def load(file):
     styles = get_styles(file)
     paths, attributes = svgpathtools.svg2paths(file)
-    polygons = {}
-    for p, path in enumerate(paths):
-        attrib = attributes[p]
+    shapes = {}
+    for path, attrib in zip(paths, attributes):
         hexcolor = get_hexcolor(attrib, styles)
         if hexcolor not in [v['hexcolor'] for v in constants.TISSUES.values()]:
             warnings.warn('No tissue corresponding to hexcolor "{}" for path with id "{}"'.format(hexcolor, attrib['id']))
             continue
         tissue = [tissue for tissue in constants.TISSUES if constants.TISSUES[tissue]['hexcolor']==hexcolor][0]
-        if tissue not in polygons:
-            polygons[tissue] = []
+        if tissue not in shapes:
+            shapes[tissue] = []
         translation, rotation, scale = parseTransform(attrib['transform'] if 'transform' in attrib else '')
         if rotation != 0 or translation != (0, 0):
             raise NotImplementedError()
@@ -85,9 +84,9 @@ def load(file):
         for subpath in subpaths:
             vertices = get_vertices(subpath)
             if vertices is not None:
-                polys.append(vertices * scale)
-        if sum([polygonArea(polygon) for polygon in polys]) < 0:
+                polys.append(('polygon', vertices * scale))
+        if sum([polygonArea(poly[1]) for poly in polys]) < 0:
             # invert polygons to make total area positive
-            polys = [np.flip(poly, axis=1) for poly in polys]
-        polygons[tissue] += polys
-    return polygons
+            polys = [(poly[0], np.flip(poly[1], axis=1)) for poly in polys]
+        shapes[tissue] += polys
+    return shapes
