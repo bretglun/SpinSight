@@ -66,8 +66,9 @@ def rotation_matrix(theta):
 def kspace_for_ellipse(ellipse, k):
     # scaled and rotated radius vector:
     r = np.linalg.norm(k @ rotation_matrix(np.radians(ellipse['angle'])) @ np.diag(ellipse['radius']), axis=-1)
-    ksp = np.ones(k.shape[:-1], dtype=complex)
-    ksp[r!=0] *= scipy.special.j1(2 * np.pi * r[r!=0]) / r[r!=0] # Bessel function of first kind, first order
+    ksp = np.empty(k.shape[:-1], dtype=complex)
+    ksp[r!=0] = scipy.special.j1(2 * np.pi * r[r!=0]) / r[r!=0] # Bessel function of first kind, first order
+    ksp[r==0] = np.pi
     ksp *= np.prod(ellipse['radius']) # scale intensity
     ksp *= np.exp(-2j*np.pi * np.dot(k, ellipse['pos'])) # translate
     if ellipse['negative']:
