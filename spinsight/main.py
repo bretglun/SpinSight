@@ -42,7 +42,7 @@ def FOVBW2pixelBW(FOVBW, matrixF):
 
 def kspace_for_polygon(poly, k):
     # analytical 2D Fourier transform of polygon (see https://cvil.ucsd.edu/wp-content/uploads/2016/09/Realistic-analytical-polyhedral-MRI-phantoms.pdf)
-    r = poly # position vectors of vertices Ve
+    r = poly['vertices'] # position vectors of vertices Ve
     Lv = np.roll(r, -1, axis=1) - r # edge vectors
     L = np.linalg.norm(Lv, axis=0) # edge lengths
     t = Lv/L # edge unit vectors
@@ -77,7 +77,7 @@ def kspace_for_ellipse(ellipse, k):
 
 
 def kspace_for_shape(shape, k):
-    return {'polygon': kspace_for_polygon, 'ellipse': kspace_for_ellipse}[shape[0]](shape[1], k)
+    return {'polygon': kspace_for_polygon, 'ellipse': kspace_for_ellipse}[shape['type']](shape, k)
 
 
 def load_phantom_toml(name):

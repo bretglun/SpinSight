@@ -4,6 +4,7 @@ import xml.etree.ElementTree as ET
 import svgpathtools
 import re
 import warnings
+import toml
 
 
 def polygonArea(coords):
@@ -64,16 +65,17 @@ def get_styles(file):
 
 
 # reads SVG file and returns polygon lists
-def load(file):
+def load_svg(file):
+    hexcolors = [v['hexcolor'] for v in constants.TISSUES.values() if 'hexcolor' in v]
     styles = get_styles(file)
     paths, attributes = svgpathtools.svg2paths(file)
     shapes = {}
     for path, attrib in zip(paths, attributes):
         hexcolor = get_hexcolor(attrib, styles)
-        if hexcolor not in [v['hexcolor'] for v in constants.TISSUES.values()]:
+        if hexcolor not in hexcolors:
             warnings.warn('No tissue corresponding to hexcolor "{}" for path with id "{}"'.format(hexcolor, attrib['id']))
             continue
-        tissue = [tissue for tissue in constants.TISSUES if constants.TISSUES[tissue]['hexcolor']==hexcolor][0]
+        tissue = [tissue for tissue, spec in constants.TISSUES.items() if 'hexcolor' in spec and spec['hexcolor']==hexcolor][0]
         if tissue not in shapes:
             shapes[tissue] = []
         translation, rotation, scale = parseTransform(attrib['transform'] if 'transform' in attrib else '')
@@ -84,9 +86,24 @@ def load(file):
         for subpath in subpaths:
             vertices = get_vertices(subpath)
             if vertices is not None:
-                polys.append(('polygon', vertices * scale))
-        if sum([polygonArea(poly[1]) for poly in polys]) < 0:
+                polys.append({'type': 'polygon', 'vertices': vertices * scale})
+        if sum([polygonArea(poly['vertices']) for poly in polys]) < 0:
             # invert polygons to make total area positive
-            polys = [(poly[0], np.flip(poly[1], axis=1)) for poly in polys]
+            for poly in polys:
+                poly['vertices'] = np.flip(poly['vertices'], axis=1)
         shapes[tissue] += polys
     return shapes
+
+
+def load_toml(file):
+    with open(file, 'r') as f:
+        shapes = toml.load(f)
+    for ellipse in (shape for lst in shapes.values() for shape in lst):
+        if ellipse['type']=='ellipse':
+            for attr in ['pos', 'radius']:
+                ellipse[attr] = ellipse[attr][::-1]
+    return shapes
+
+
+def load(file):
+    return {'.svg': load_svg, '.toml': load_toml}[file.suffix](file)
