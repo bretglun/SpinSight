@@ -21,6 +21,8 @@ To create a new phantom, add a directory with the phantom name under [spinsight/
 * All paths must have a fill color matching a hexcolor defined in the `TISSUES` dict in [constants.py](./spinsight/constants.py) (this defines the tissue).
 * Only polygons are supported (not Bézier curves etc)
 
+Alternatively a second `.toml` file can be specified with a list of shapes (see [Shepp-Logan_shapes.toml](./spinsight/phantoms/Shepp-Logan/Shepp-Logan_shapes.toml) for reference).
+
 Dependencies
 ------------
 See [pyproject.toml](./pyproject.toml) under heading **[tool.poetry.dependencies]**. 
