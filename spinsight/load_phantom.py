@@ -11,19 +11,6 @@ def polygonArea(coords):
     return np.sum((coords[0]-np.roll(coords[0], 1)) * (coords[1]+np.roll(coords[1], 1))) / 2
 
 
-def parseTransform(transformString):
-    match = re.search(r'translate\((-?\d+.\d+)(px|%), (-?\d+.\d+)(px|%)\)', transformString)
-    translation = (float(match.group(1)), float(match.group(3))) if match else (0, 0)
-
-    match = re.search(r'rotate\((-?\d+.\d+)deg\)', transformString)
-    rotation = float(match.group(1)) if match else 0
-    
-    match = re.search(r'scale\((-?\d+.\d+)\)', transformString)
-    scale = float(match.group(1)) if match else 1
-
-    return translation, rotation, scale
-
-
 def get_vertices(continuous_path):
     if not continuous_path.isclosed():
         raise Exception('All paths in SVG file must be closed')
@@ -64,6 +51,10 @@ def get_styles(file):
     return styles
 
 
+def transform_coordinates(coords, transform):
+    return np.dot(transform, np.vstack([coords, np.ones((1, coords.shape[1]))]))[:2, :]
+
+
 # reads SVG file and returns polygon lists
 def load_svg(file):
     hexcolors = [v['hexcolor'] for v in constants.TISSUES.values() if 'hexcolor' in v]
@@ -78,15 +69,13 @@ def load_svg(file):
         tissue = [tissue for tissue, spec in constants.TISSUES.items() if 'hexcolor' in spec and spec['hexcolor']==hexcolor][0]
         if tissue not in shapes:
             shapes[tissue] = []
-        translation, rotation, scale = parseTransform(attrib['transform'] if 'transform' in attrib else '')
-        if rotation != 0 or translation != (0, 0):
-            raise NotImplementedError()
+        transform = svgpathtools.parser.parse_transform(attrib['transform'] if 'transform' in attrib else '')
         subpaths = path.continuous_subpaths()
         polys = []
         for subpath in subpaths:
             vertices = get_vertices(subpath)
             if vertices is not None:
-                polys.append({'type': 'polygon', 'vertices': vertices * scale})
+                polys.append({'type': 'polygon', 'vertices': transform_coordinates(vertices, transform)})
         if sum([polygonArea(poly['vertices']) for poly in polys]) < 0:
             # invert polygons to make total area positive
             for poly in polys:
