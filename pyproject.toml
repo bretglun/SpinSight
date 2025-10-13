@@ -1,5 +1,6 @@
 [tool.poetry]
 name = "spinsight"
+homepage = "https://github.com/bretglun/spinsight"
 version = "1.1.4"
 description = "MR image simulator for teaching purposes"
 authors = ["Johan Berglund <johan.berglund@akademiska.se>"]
@@ -25,9 +26,6 @@ svgpathtools = "^1.7.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.2"
-
-[project.urls]
-Repository = "https://github.com/bretglun/spinsight"
 
 [build-system]
 requires = ["poetry-core"]
