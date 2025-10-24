@@ -2069,7 +2069,7 @@ def getApp(darkMode=True, settingsFilestem=''):
     title = '# SpinSight MRI simulator'
     author = '*Written by [Johan Berglund](mailto:johan.berglund@akademiska.se), Ph.D.*'
     try:
-        version = '(v {})'.format(toml.load(Path(__file__).parent.parent/'pyproject.toml')['tool']['poetry']['version'])
+        version = '(v {})'.format(toml.load(Path(__file__).parent.parent/'pyproject.toml')['project']['version'])
     except (FileNotFoundError, KeyError):
         version = ''
     settingsParams = pn.panel(simulator.param, parameters=['object', 'fieldStrength', 'parameterStyle'], name='Settings')

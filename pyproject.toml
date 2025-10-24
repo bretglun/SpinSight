@@ -1,31 +1,36 @@
-[tool.poetry]
+[project]
 name = "spinsight"
 homepage = "https://github.com/bretglun/spinsight"
-version = "1.1.5"
+version = "1.1.6"
 description = "MR image simulator for teaching purposes"
-authors = ["Johan Berglund <johan.berglund@akademiska.se>"]
+authors = [
+    {name = "Johan Berglund", email = "berglund.hpj@gmail.com"}
+]
 license = "GPL-3.0-or-later"
 readme = "README.md"
+requires-python = ">=3.10"
 
-[tool.poetry.scripts]
+dependencies = [
+    "holoviews (>=1.18.0)",
+    "panel (>=1.3.7)",
+    "param (>=2.0.0)",
+    "numpy (>=1.26.3)",
+    "xarray (>=2023.10.1)",
+    "scipy (>=1.11.4)",
+    "darkdetect (>=0.8.0)",
+    "toml (>=0.10.2)",
+    "finufft (>=2.3.1)",
+    "mri-nufft (>=1.2.1)",
+    "svgpathtools (>=1.7.1)",
+]
+
+[project.scripts]
 spinsight = "spinsight.deploy:CLI"
 
-[tool.poetry.dependencies]
-python = ">=3.10"
-holoviews = "^1.18.0"
-panel = "^1.3.7"
-param = "^2.0.0"
-numpy = "^1.26.3"
-xarray = "^2023.10.1"
-scipy = "^1.11.4"
-darkdetect = "^0.8.0"
-toml = "^0.10.2"
-finufft = "^2.3.1"
-mri-nufft = "^1.2.1"
-svgpathtools = "^1.7.1"
-
-[tool.poetry.group.dev.dependencies]
-pytest = "^8.3.2"
+[project.optional-dependencies]
+dev = [
+    "pytest (>=8.3.2)",
+]
 
 [build-system]
 requires = ["poetry-core"]
