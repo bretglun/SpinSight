@@ -1439,8 +1439,10 @@ class MRIsimulator(param.Parameterized):
 
     def updateSamplingTime(self):
         # time of sample along (positive) readout relative to (k-space) center
-        self.samplingTime = self.kReadAxis * self.FOV[self.freqDir] / self.matrix[self.freqDir] / self.pixelBandWidth * 1e3 # msec
-        self.noiseStd = self.noiseGain / np.sqrt(np.diff(self.samplingTime[:2])[0] * self.NSA) / self.fieldStrength
+        halfReadDuration = .5e3 / self.pixelBandWidth # msec
+        self.samplingTime = np.linspace(-halfReadDuration, halfReadDuration, len(self.kReadAxis))
+        dwellTime = np.diff(self.samplingTime[:2])[0]
+        self.noiseStd = self.noiseGain / np.sqrt(dwellTime * self.NSA) / self.fieldStrength
     
 
     def modulateKspace(self):
