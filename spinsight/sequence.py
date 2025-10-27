@@ -91,7 +91,7 @@ def getSignal(signal, time, scale=1.0, exponent=1.0, name='sampling'):
     return signal
 
 
-def getGradient(dir, time=0., maxAmp=25., maxSlew=80., totalArea=None, flatArea=None, flatDur=None, name=''):
+def getGradient(dir, time=0., maxAmp=25., maxSlew=80., totalArea=None, flatArea=None, flatDur=None, waveform=None, name=''):
     assert(sum([x is not None for x in [totalArea, flatArea, flatDur]])==1)
     if totalArea is not None:
         slewArea = maxAmp**2 / maxSlew
@@ -103,9 +103,10 @@ def getGradient(dir, time=0., maxAmp=25., maxSlew=80., totalArea=None, flatArea=
     if flatArea is not None:
         flatDur = abs(flatArea / maxAmp)
         maxAmp = abs(maxAmp) * np.sign(flatArea)
-    riseTime = abs(maxAmp)/maxSlew
-    amp = np.array([0., maxAmp, maxAmp, 0.])
-    t = np.cumsum(np.array([0., riseTime, flatDur, riseTime]))
+    amp = np.array(waveform) if waveform is not None else np.array([maxAmp, maxAmp])
+    riseTime = max(abs(amp[0]), abs(amp[-1]))/maxSlew
+    t = np.cumsum(np.array([0., riseTime] + [flatDur/(len(amp)-1)]*(len(amp)-1) + [riseTime]))
+    amp = np.pad(amp, (1, 1), mode='constant', constant_values=0)    
     dur = t[-1]-t[0]
     t += time - dur/2
     area = getGradientArea(amp, t)
