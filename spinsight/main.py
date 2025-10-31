@@ -120,7 +120,7 @@ def getPDandT1w(component, seqType, TR, TE, TI, FA, B0):
     elif seqType == 'Inversion Recovery':
         return PD * (1 - 2 * np.exp(-TI/T1) + E1)
     else:
-        raise Exception('Unknown sequence type: {}'.format(seqType))
+        raise Exception(f'Unknown sequence type: {seqType}')
 
 
 def get_segment_order(N, Nsym, c):
@@ -203,10 +203,10 @@ def format_scantime(milliseconds):
             return f'{int(milliseconds)} msec'
 
 
-TRvalues = unique_list([float('{:.2g}'.format(tr)) for tr in 10.**np.linspace(0, 4, 500)])
-TEvalues = unique_list([float('{:.2g}'.format(te)) for te in 10.**np.linspace(0, 3, 500)])
-TIvalues = unique_list([float('{:.2g}'.format(ti)) for ti in 10.**np.linspace(0, 4, 500)])
-pBWvalues = unique_list([float('{:.3g}'.format(pbw)) for pbw in 10.**np.linspace(2.1, 3.3, 500)])
+TRvalues = unique_list([float(f'{tr:.2g}') for tr in 10.**np.linspace(0, 4, 500)])
+TEvalues = unique_list([float(f'{te:.2g}') for te in 10.**np.linspace(0, 3, 500)])
+TIvalues = unique_list([float(f'{ti:.2g}') for ti in 10.**np.linspace(0, 4, 500)])
+pBWvalues = unique_list([float(f'{pbw:.3g}') for pbw in 10.**np.linspace(2.1, 3.3, 500)])
 matrixValues = list(range(16, 600+1))
 reconMatrixValues = list(range(16, 1200+1))
 EPIfactorValues = list(range(1, 64+1))
@@ -470,10 +470,10 @@ class MRIsimulator(param.Parameterized):
     def setParamBounds(self, param, minval, maxval):
         curval = getattr(self, param.name)
         if curval < minval:
-            warnings.warn('trying to set {} bounds above current value ({} > {})'.format(param.name, minval, curval))
+            warnings.warn(f'trying to set {param.name} bounds above current value ({minval} > {curval})')
             minval = curval
         if curval > maxval:
-            warnings.warn('trying to set {} bounds below current value ({} < {})'.format(param.name, maxval, curval))
+            warnings.warn(f'trying to set {param.name} bounds below current value ({maxval} < {curval})')
             maxval = curval
         param.bounds = (minval, maxval)
     
@@ -485,11 +485,11 @@ class MRIsimulator(param.Parameterized):
         if maxval is not None:
             values = [val for val in values if not val > maxval]
         if curval not in values:
-            warnings.warn('{} current value {} is outside its new bounds [{}, {}]'.format(param.name, curval, minval, maxval))
+            warnings.warn(f'{param.name} current value {curval} is outside its new bounds [{minval}, {maxval}]')
             values = [curval] # necessary to avoid empty bounds
             self.outbound_params.add(param.name)
         elif param.name in self.outbound_params:
-            print('Param {} no longer conflicting'.format(param.name))
+            print(f'Param {param.name} no longer conflicting')
             self.outbound_params.remove(param.name)
         param.objects = values
     
@@ -1049,9 +1049,9 @@ class MRIsimulator(param.Parameterized):
     
     def updateLabelsByTrajectory(self):
         shotLabel = 'shot' if not self.isRadial() else 'spoke' if (self.EPIfactor * self.turboFactor == 1) else 'blade'
-        self.num_shots_label = '# {}s'.format(shotLabel)
-        self.param.shot.label = 'Displayed {}'.format(shotLabel)
-        self.param.radialFactor.label = '{} sampling factor'.format(shotLabel.capitalize())
+        self.num_shots_label = f'# {shotLabel}s'
+        self.param.shot.label = f'Displayed {shotLabel}'
+        self.param.radialFactor.label = f'{shotLabel.capitalize()} sampling factor'
         # Label radial trajectory 'Radial' or 'PROPELLER' depending on nLines per shot
         traj_indices = [0, 1] if (self.EPIfactor * self.turboFactor == 1) else [0, 2]
         self.param.trajectory.objects = [constants.TRAJECTORIES[i] for i in traj_indices]
@@ -1158,27 +1158,27 @@ class MRIsimulator(param.Parameterized):
 
 
     def updateFWshiftObjects(self):
-        self.param.FWshift.objects = unique_list([float('{:.2f}'.format(pixelBW2shift(pBW, self.fieldStrength))) for pBW in self.param.pixelBandWidth.objects[::-1]])
+        self.param.FWshift.objects = unique_list([float(f'{pixelBW2shift(pBW, self.fieldStrength):.2f}') for pBW in self.param.pixelBandWidth.objects[::-1]])
     
 
     def updateFOVbandwidthObjects(self):
-        self.param.FOVbandwidth.objects = unique_list([float('{:.2g}'.format(pixelBW2FOVBW(pBW, self.matrixF))) for pBW in self.param.pixelBandWidth.objects])
+        self.param.FOVbandwidth.objects = unique_list([float(f'{pixelBW2FOVBW(pBW, self.matrixF):.2g}') for pBW in self.param.pixelBandWidth.objects])
     
     
     def updateVoxelFobjects(self):
-        self.param.voxelF.objects = unique_list([float('{:.3g}'.format(self.FOVF/matrix)) for matrix in self.param.matrixF.objects[::-1]])
+        self.param.voxelF.objects = unique_list([float(f'{self.FOVF/matrix:.3g}') for matrix in self.param.matrixF.objects[::-1]])
 
 
     def updateVoxelPobjects(self):
-        self.param.voxelP.objects = unique_list([float('{:.3g}'.format(self.FOVP/matrix)) for matrix in self.param.matrixP.objects[::-1]])
+        self.param.voxelP.objects = unique_list([float(f'{self.FOVP/matrix:.3g}') for matrix in self.param.matrixP.objects[::-1]])
 
 
     def updateReconVoxelFobjects(self):
-        self.param.reconVoxelF.objects = unique_list([float('{:.3g}'.format(self.FOVF/matrix)) for matrix in self.param.reconMatrixF.objects[::-1]])
+        self.param.reconVoxelF.objects = unique_list([float(f'{self.FOVF/matrix:.3g}') for matrix in self.param.reconMatrixF.objects[::-1]])
 
 
     def updateReconVoxelPobjects(self):
-        self.param.reconVoxelP.objects = unique_list([float('{:.3g}'.format(self.FOVP/matrix)) for matrix in self.param.reconMatrixP.objects[::-1]])
+        self.param.reconVoxelP.objects = unique_list([float(f'{self.FOVP/matrix:.3g}') for matrix in self.param.reconMatrixP.objects[::-1]])
 
 
     def updateSliceThicknessBounds(self):
@@ -1242,7 +1242,7 @@ class MRIsimulator(param.Parameterized):
 
 
     def loadPhantom(self):
-        print('Preparing k-space for "{}" phantom (might take a few minutes on first use)'.format(self.object))
+        print(f'Preparing k-space for "{self.object}" phantom (might take a few minutes on first use)')
         self.phantom['kAxes'] = [recon.getKaxis(self.phantom['matrix'][dim], self.phantom['FOV'][dim]/self.phantom['matrix'][dim]) for dim in range(len(self.phantom['matrix']))]
         shapes = load_phantom.load(self.phantom['file'])
         self.tissues = set(shapes.keys())
@@ -1258,7 +1258,7 @@ class MRIsimulator(param.Parameterized):
             if tissue not in self.phantom['kspace']:
                 self.phantom['kspace'][tissue] = np.zeros((self.phantom['matrix']), dtype=complex)
                 k = np.array(np.meshgrid(self.phantom['kAxes'][0], self.phantom['kAxes'][1])).T
-                for shape in tqdm(shapes[tissue], desc='"{}" shapes'.format(tissue), leave=False):
+                for shape in tqdm(shapes[tissue], desc=f'"{tissue}" shapes', leave=False):
                     self.phantom['kspace'][tissue] += kspace_for_shape(shape, k)
                 np.save(file, self.phantom['kspace'][tissue])
         self.setup_frequency_encoding() # frequency oversampling is adapted to phantom FOV for efficiency
@@ -1606,7 +1606,7 @@ class MRIsimulator(param.Parameterized):
         self.boards['RF']['objects']['refocusing'] = []
         if not self.isGradientEcho():
             for rf_echo in range(self.turboFactor):
-                self.boards['RF']['objects']['refocusing'].append(sequence.getRF(flipAngle=180., dur=3., shape='hammingSinc',  name='refocusing {}'.format(rf_echo+1 if self.turboFactor>1 else '')))
+                self.boards['RF']['objects']['refocusing'].append(sequence.getRF(flipAngle=180., dur=3., shape='hammingSinc',  name=f'refocusing{" " + str(rf_echo + 1) if self.turboFactor > 1 else ""}'))
             add_to_pipeline(self.sequencePipeline, ['placeRefocusing'])
         add_to_pipeline(self.sequencePipeline, ['setupSliceSelection', 'updateMinTE', 'updateMatrixPbounds', 'updateFOVPbounds', 'updateSliceThicknessBounds'])
         add_to_pipeline(self.sequencePlotPipeline, ['renderRFBoard'])
@@ -1683,10 +1683,10 @@ class MRIsimulator(param.Parameterized):
             gr_echoes = []
             samplings = []
             for gr_echo in range(self.EPIfactor):
-                suffix = ' {}{}{}'.format(
-                    rf_echo+1 if self.turboFactor>1 else '', 
-                    '.' if (self.turboFactor>1 and self.EPIfactor>1) else '',
-                    gr_echo+1 if self.EPIfactor>1 else '')
+                suffix = ((" " if (self.turboFactor > 1 or self.EPIfactor > 1) else "")
+                        + (str(rf_echo + 1) if self.turboFactor > 1 else "")
+                        + ("." if (self.turboFactor > 1 and self.EPIfactor > 1) else "")
+                        + (str(gr_echo + 1) if self.EPIfactor > 1 else ""))
                 readout = sequence.getGradient('frequency', maxAmp=amp, flatArea=flatArea, name='readout'+suffix, maxSlew=self.maxSlew)
                 gr_echoes.append(readout)
                 adc = sequence.getADC(dur=readout['flatDur_f'], name='sampling'+suffix)
@@ -1725,7 +1725,7 @@ class MRIsimulator(param.Parameterized):
 
         for rf_echo in range(self.turboFactor):
             phaserArea = largest_phaser_area + self.pe_table[self.shot-1][rf_echo][0] * phase_step_area
-            suffix = ' {}'.format(rf_echo+1) if self.turboFactor>1 else ''
+            suffix = f' {rf_echo + 1}' if self.turboFactor > 1 else ''
             phaser = sequence.getGradient('phase', totalArea=largest_phaser_area, name='phase encode'+suffix, maxAmp=self.maxAmp, maxSlew=self.maxSlew)
             if abs(largest_phaser_area) > 1e-5:
                 sequence.rescaleGradient(phaser, phaserArea/largest_phaser_area)
@@ -1868,7 +1868,7 @@ class MRIsimulator(param.Parameterized):
                 hoverCallback = CustomJS(args={'hoverIndex': self.hoverIndex, 'board': board}, code=file.read())
         else:
             hoverCallback = None
-        hover = HoverTool(tooltips=[(attr, '@{}'.format(attr)) for attr in attributes], attachment='below', callback=hoverCallback)
+        hover = HoverTool(tooltips=[(attr, f'@{attr}') for attr in attributes], attachment='below', callback=hoverCallback)
         return hover, attributes
     
 
@@ -2071,7 +2071,7 @@ def getApp(darkMode=True, settingsFilestem=''):
     title = '# SpinSight MRI simulator'
     author = '*Written by [Johan Berglund](mailto:johan.berglund@akademiska.se), Ph.D.*'
     try:
-        version = '(v {})'.format(toml.load(Path(__file__).parent.parent/'pyproject.toml')['project']['version'])
+        version = f'(v {toml.load(Path(__file__).parent.parent / "pyproject.toml")["project"]["version"]})'
     except (FileNotFoundError, KeyError):
         version = ''
     settingsParams = pn.panel(simulator.param, parameters=['object', 'fieldStrength', 'parameterStyle'], name='Settings')
