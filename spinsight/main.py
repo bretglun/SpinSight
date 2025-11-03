@@ -210,13 +210,23 @@ def format_scantime(milliseconds):
         else:
             return f'{int(milliseconds)} msec'
 
-TRvalues = {tr + ' msec': float(tr) for tr in [format_float(tr, 2) for tr in 10.**np.linspace(0, 4, 500)]}
-TEvalues = {te + ' msec': float(te) for te in [format_float(te, 2) for te in 10.**np.linspace(0, 3, 500)]}
-TIvalues = {ti + ' msec': float(ti) for ti in [format_float(ti, 2) for ti in 10.**np.linspace(0, 4, 500)]}
-pBWvalues = {bw + ' Hz': float(bw) for bw in [format_float(bw, 3) for bw in 10.**np.linspace(2.097, 3.301, 500)]}
-matrixValues = list(range(16, 600+1))
-reconMatrixValues = list(range(16, 1200+1))
-EPIfactorValues = list(range(1, 64+1))
+
+param_values = {
+    'TR': {tr + ' msec': float(tr) for tr in [format_float(tr, 2) for tr in 10.**np.linspace(0, 4, 500)]},
+    'TE': {te + ' msec': float(te) for te in [format_float(te, 2) for te in 10.**np.linspace(0, 3, 500)]},
+    'FA': {str(int(fa)) + '°': float(fa) for fa in range(1, 91)},
+    'TI': {ti + ' msec': float(ti) for ti in [format_float(ti, 2) for ti in 10.**np.linspace(0, 4, 500)]},
+    'FOVP': {str(int(fov)) + ' mm': float(fov) for fov in range(100, 601)},
+    'FOVF': {str(int(fov)) + ' mm': float(fov) for fov in range(100, 601)},
+    'phaseOversampling': {str(int(po)) + '%': float(po) for po in range(0, 101)},
+    'pixelBandWidth': {bw + ' Hz': float(bw) for bw in [format_float(bw, 3) for bw in 10.**np.linspace(2.097, 3.301, 500)]},
+    'matrixP': list(range(16, 600+1)),
+    'matrixF': list(range(16, 600+1)),
+    'reconMatrixP': list(range(16, 1200+1)),
+    'reconMatrixF': list(range(16, 1200+1)),
+    'sliceThickness': {thk + ' mm': float(thk) for thk in [format_float(thk, 2) for thk in np.linspace(0.5, 10, 96)]},
+    'EPIfactor': list(range(1, 64+1)),
+}
 
 
 class MRIsimulator(param.Parameterized):
@@ -227,14 +237,14 @@ class MRIsimulator(param.Parameterized):
     FatSat = param.Boolean(default=False, label='Fat saturation')
     TR = param.Selector(default=10000, label='TR')
     TE = param.Selector(default=10, label='TE')
-    FA = param.Number(default=90.0, precedence=-1, label='Flip angle [°]')
+    FA = param.Selector(default=90, precedence=-1, label='Flip angle')
     TI = param.Selector(default=40, precedence=-1, label='TI')
     
     trajectory = param.ObjectSelector(default=constants.TRAJECTORIES[0], precedence=1, label='k-space trajectory')
     frequencyDirection = param.ObjectSelector(default=list(constants.DIRECTIONS.keys())[0], precedence=1, label='Frequency encoding direction')
-    FOVP = param.Number(default=240, precedence=2, label='FOV x [mm]')
-    FOVF = param.Number(default=240, precedence=2, label='FOV y [mm]')
-    phaseOversampling = param.Number(default=0, step=1., precedence=3, label='Phase oversampling [%]')
+    FOVP = param.Selector(default=240, precedence=2, label='FOV x')
+    FOVF = param.Selector(default=240, precedence=2, label='FOV y')
+    phaseOversampling = param.Selector(default=0, precedence=3, label='Phase oversampling')
     radialFactor = param.Number(default=1., precedence=-3, label='Spoke sampling factor')
     num_shots = param.Integer(precedence=-3)
     num_shots_label = param.String('# shots')
@@ -246,11 +256,11 @@ class MRIsimulator(param.Parameterized):
     reconVoxelF = param.Selector(default=0.666, precedence=-5, label='Reconstructed voxel size y')
     reconMatrixP = param.Selector(default=360, precedence=5, label='Reconstruction matrix x')
     reconMatrixF = param.Selector(default=360, precedence=5, label='Reconstruction matrix y')
-    sliceThickness = param.Number(default=3, precedence=6, label='Slice thickness [mm]')
+    sliceThickness = param.Selector(default=3, precedence=6, label='Slice thickness')
     radialFOVoversampling = param.Number(default=2, step=0.01, precedence=9, label='Radial FOV oversampling factor')
     
     sequence = param.ObjectSelector(default=constants.SEQUENCES[0], precedence=1, label='Pulse sequence')
-    pixelBandWidth = param.Selector(default=pBWvalues['480 Hz'], precedence=2, label='Pixel bandwidth')
+    pixelBandWidth = param.Selector(default=480, precedence=2, label='Pixel bandwidth')
     FOVbandwidth = param.Selector(default=pixelBW2FOVBW(480, 180), precedence=-2, label='FOV bandwidth')
     FWshift = param.Selector(default=pixelBW2shift(480), precedence=-2, label='Fat/water shift')
     NSA = param.Integer(default=1, precedence=3, label='NSA')
@@ -398,33 +408,21 @@ class MRIsimulator(param.Parameterized):
         self.param.object.objects = get_phantom_list()
         self.param.fieldStrength.objects=[1.5, 3.0]
         self.param.parameterStyle.objects=['Matrix and Pixel BW', 'Voxelsize and Fat/water shift', 'Matrix and FOV BW']
-        self.param.TR.objects=TRvalues
-        self.param.TE.objects=TEvalues
-        self.param.FA.bounds=(1, 90.0)
-        self.param.TI.objects=TIvalues
         self.param.frequencyDirection.objects=constants.DIRECTIONS.keys()
         self.param.trajectory.objects=constants.TRAJECTORIES[:2]
-        self.param.FOVP.bounds=(100, 600)
-        self.param.FOVF.bounds=(100, 600)
-        self.param.phaseOversampling.bounds=(0, 100)
         self.param.radialFactor.bounds=(0.1, 4.)
-        self.param.matrixP.objects=matrixValues
-        self.param.matrixF.objects=matrixValues
-        self.param.reconMatrixP.objects=reconMatrixValues
-        self.param.reconMatrixF.objects=reconMatrixValues
-        self.param.sliceThickness.bounds=(0.5, 10)
         self.param.radialFOVoversampling.bounds=(1, 2)
         self.param.sequence.objects=constants.SEQUENCES
-        self.param.pixelBandWidth.objects=pBWvalues
         self.param.NSA.bounds=(1, 16)
         self.param.partialFourier.bounds=(.6, 1)
         self.param.turboFactor.bounds=(1, 64)
-        self.param.EPIfactor.objects=EPIfactorValues
         self.param.shot.bounds=(1, 1)
         self.param.imageType.objects=constants.OPERATORS.keys()
         self.param.kspaceType.objects=constants.OPERATORS.keys()
         self.param.kspaceExponent.bounds=(0.1, 1)
         self.param.apodizationAlpha.bounds=(.01, 1)
+        for par, values in param_values.items():
+            self.param[par].objects=values
 
 
     def runPipeline(self, pipeline):
@@ -474,30 +472,32 @@ class MRIsimulator(param.Parameterized):
         self.param.update(settings)
 
     
-    def setParamBounds(self, param, minval, maxval):
-        curval = getattr(self, param.name)
+    def setParamBounds(self, par, minval=None, maxval=None):
+        curval = getattr(self, par.name)
+        if type(par) is param.parameters.Selector:
+            return self.setParamDiscreteBounds(par, curval, minval, maxval)
         if curval < minval:
-            warnings.warn(f'trying to set {param.name} bounds above current value ({minval} > {curval})')
+            warnings.warn(f'trying to set {par.name} bounds above current value ({minval} > {curval})')
             minval = curval
         if curval > maxval:
-            warnings.warn(f'trying to set {param.name} bounds below current value ({maxval} < {curval})')
+            warnings.warn(f'trying to set {par.name} bounds below current value ({maxval} < {curval})')
             maxval = curval
-        param.bounds = (minval, maxval)
+        par.bounds = (minval, maxval)
     
 
-    def setParamDiscreteBounds(self, param, values, minval=None, maxval=None):
-        curval = getattr(self, param.name)
+    def setParamDiscreteBounds(self, par, curval, minval=None, maxval=None):
+        values = param_values[par.name]
         def inbound(val): return (minval is None or val >= minval) and (maxval is None or val <= maxval)
         values = {k: v for k, v in values.items() if inbound(v)} if type(values) is dict else [v for v in values if inbound(v)]
         
         if (type(values) is list and curval not in values) or (type(values) is dict and curval not in values.values()):
-            warnings.warn(f'{param.name} current value {curval} is outside its new bounds [{minval}, {maxval}]')
+            warnings.warn(f'{par.name} current value {curval} is outside its new bounds [{minval}, {maxval}]')
             values = {'outbound': curval} if type(values) is dict else [curval]
-            self.outbound_params.add(param.name)
-        elif param.name in self.outbound_params:
-            print(f'Param {param.name} no longer conflicting')
-            self.outbound_params.remove(param.name)
-        param.objects = values
+            self.outbound_params.add(par.name)
+        elif par.name in self.outbound_params:
+            print(f'Param {par.name} no longer conflicting')
+            self.outbound_params.remove(par.name)
+        par.objects = values
     
 
     @param.depends('object', watch=True)
@@ -607,7 +607,7 @@ class MRIsimulator(param.Parameterized):
             add_to_pipeline(self.acquisitionPipeline, ['sampleKspace', 'updateSamplingTime', 'modulateKspace', 'simulateNoise', 'compileKspace'])
             add_to_pipeline(self.reconPipeline, ['partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
             add_to_pipeline(self.sequencePipeline, ['setupReadouts', 'updateBWbounds', 'updateMatrixFbounds', 'updateFOVFbounds'])
-            self.param.reconMatrixF.objects = [m for m in reconMatrixValues if m>=self.matrixF]
+            self.setParamBounds(self.param['reconMatrixF'], minval=self.matrixF)
             self.updateReconVoxelFobjects()
             self.reconMatrixF = take_closest(self.param.reconMatrixF.objects, self.matrixF * self.recAcqRatioF)
             self.param.trigger('voxelF', 'reconVoxelF')
@@ -623,7 +623,7 @@ class MRIsimulator(param.Parameterized):
             add_to_pipeline(self.acquisitionPipeline, ['sampleKspace', 'updateSamplingTime', 'modulateKspace', 'simulateNoise', 'compileKspace'])
             add_to_pipeline(self.reconPipeline, ['partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
             add_to_pipeline(self.sequencePipeline, ['setupPhasers', 'updateFOVPbounds', 'updateTurboFactorBounds', 'updateEPIfactorObjects'])
-            self.param.reconMatrixP.objects = [m for m in reconMatrixValues if m>=self.matrixP]
+            self.setParamBounds(self.param['reconMatrixP'], minval=self.matrixP)
             self.updateReconVoxelPobjects()
             self.reconMatrixP = take_closest(self.param.reconMatrixP.objects, self.matrixP * self.recAcqRatioP)
             self.param.trigger('voxelP', 'reconVoxelP')
@@ -920,20 +920,20 @@ class MRIsimulator(param.Parameterized):
     def updateMinTR(self):
         self.minTR = self.boards['slice']['objects']['spoiler']['time'][-1]
         self.minTR -= self.getSeqStart()
-        self.setParamDiscreteBounds(self.param.TR, TRvalues, minval=self.minTR)
+        self.setParamBounds(self.param.TR, minval=self.minTR)
         add_to_pipeline(self.sequencePipeline, ['updateMaxTE', 'updateMaxTI'])
     
 
     def updateMaxTE(self):
         maxTE = self.TR - self.minTR + self.TE
-        self.setParamDiscreteBounds(self.param.TE, TEvalues, minval=self.minTE, maxval=maxTE)
+        self.setParamBounds(self.param.TE, minval=self.minTE, maxval=maxTE)
     
     
     def updateMaxTI(self):
         if self.sequence != 'Inversion Recovery':
             return
         maxTI = self.TR - self.minTR + self.TI
-        self.setParamDiscreteBounds(self.param.TI, TIvalues, minval=40, maxval=maxTI)
+        self.setParamBounds(self.param.TI, minval=40, maxval=maxTI)
     
 
     def resolveConflicts(self):
@@ -943,9 +943,9 @@ class MRIsimulator(param.Parameterized):
             warnings.warn('Resolving conflict: TR')
             self.outbound_params.remove('TR')
             tr = self.TR
-            self.param.TR.objects = TRvalues
+            self.param.TR.objects = param_values['TR']
             add_to_pipeline(self.sequencePipeline, ['updateMinTR'])
-            self.TR = list(TRvalues.values())[-1] # max TR
+            self.TR = list(param_values['TR'].values())[-1] # max TR
             self.TR = take_closest(self.param.TR.objects, tr) # Set back TR within (new) bounds
         if 'TI' in self.outbound_params:
             warnings.warn('Resolving conflict: TI')
@@ -954,8 +954,8 @@ class MRIsimulator(param.Parameterized):
         if 'TE' in self.outbound_params:
             warnings.warn('Resolving conflict: TE')
             self.outbound_params.remove('TE')
-            self.param.TE.objects = TEvalues
-            self.TE = take_closest([t for t in TEvalues if t>=self.minTE], self.TE)
+            self.setParamBounds(self.param.TE, minval=self.minTE)
+            self.TE = take_closest(self.param.TE.objects, self.TE)
         elif self.outbound_params:
             warnings.warn('Unresolved conflict:', self.outbound_params)
     
@@ -1115,7 +1115,7 @@ class MRIsimulator(param.Parameterized):
         small = 1e-2 # to avoid roundoff errors
         minpBW = 1e3 / min(maxReadDurations) + small
         maxpBW = 1e3 / max(minReadDurations) - small
-        self.setParamDiscreteBounds(self.param.pixelBandWidth, pBWvalues, minval=minpBW, maxval=maxpBW)
+        self.setParamBounds(self.param.pixelBandWidth, minval=minpBW, maxval=maxpBW)
         self.updateFWshiftObjects()
         self.updateFOVbandwidthObjects()
         
@@ -1126,14 +1126,14 @@ class MRIsimulator(param.Parameterized):
         if self.parameterStyle == 'Matrix and FOV BW':
             minMatrixF = max(minMatrixF, self.pixelBandWidth * self.matrixF / list(self.param.pixelBandWidth.objects.values())[-1])
             maxMatrixF = min(maxMatrixF, self.pixelBandWidth * self.matrixF / list(self.param.pixelBandWidth.objects.values())[0])
-        self.setParamDiscreteBounds(self.param.matrixF, matrixValues, minval=minMatrixF, maxval=maxMatrixF)
+        self.setParamBounds(self.param.matrixF, minval=minMatrixF, maxval=maxMatrixF)
         self.updateVoxelFobjects()
         self.updateReconVoxelFobjects()
     
 
     def updateMatrixPbounds(self):
         maxMatrixP = int(self.getMaxPhaserArea() * 2e-3 * self.FOVP * constants.GYRO) + 1
-        self.setParamDiscreteBounds(self.param.matrixP, matrixValues, maxval=maxMatrixP)
+        self.setParamBounds(self.param.matrixP, maxval=maxMatrixP)
         self.updateVoxelPobjects()
         self.updateReconVoxelPobjects()
 
@@ -1239,12 +1239,10 @@ class MRIsimulator(param.Parameterized):
 
     def updateEPIfactorObjects(self):
         maxEPIFactor = int(np.floor(self.matrix[self.phaseDir] * self.partialFourier / self.turboFactor * 2)) # let's limit phase oversampling to 2
-        values = [v for v in EPIfactorValues if v <= maxEPIFactor]
+        self.setParamBounds(self.param.EPIfactor, maxval=maxEPIFactor)
         # EPIfactor must be odd for turbo spin echo (GRASE)
         if self.turboFactor > 1:
-            self.param.EPIfactor.objects = [v for v in values if v%2]
-        else:
-            self.param.EPIfactor.objects = values
+            self.param.EPIfactor.objects = [v for v in self.param.EPIfactor.objects if v%2]
 
 
     def loadPhantom(self):
@@ -2080,11 +2078,17 @@ def getApp(darkMode=True, settingsFilestem=''):
         version = f'(v {toml.load(Path(__file__).parent.parent / "pyproject.toml")["project"]["version"]})'
     except (FileNotFoundError, KeyError):
         version = ''
-    settingsParams = pn.panel(simulator.param, parameters=['object', 'fieldStrength', 'parameterStyle'], name='Settings')
-    contrastParams = pn.panel(simulator.param, parameters=['FatSat', 'TR', 'TE', 'FA', 'TI'], widgets={'TR': pn.widgets.DiscreteSlider, 'TE': pn.widgets.DiscreteSlider, 'TI': pn.widgets.DiscreteSlider}, name='Contrast')
-    geometryParams = pn.panel(simulator.param, parameters=['trajectory', 'frequencyDirection', 'FOVF', 'FOVP', 'phaseOversampling', 'radialFactor', 'voxelF', 'voxelP', 'matrixF', 'matrixP', 'reconVoxelF', 'reconVoxelP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness'], widgets={'matrixF': pn.widgets.DiscreteSlider, 'matrixP': pn.widgets.DiscreteSlider, 'reconMatrixF': pn.widgets.DiscreteSlider, 'reconMatrixP': pn.widgets.DiscreteSlider, 'voxelF': pn.widgets.DiscreteSlider, 'voxelP': pn.widgets.DiscreteSlider, 'reconVoxelF': pn.widgets.DiscreteSlider, 'reconVoxelP': pn.widgets.DiscreteSlider}, name='Geometry')
-    sequenceParams = pn.panel(simulator.param, parameters=['sequence', 'pixelBandWidth', 'FOVbandwidth', 'FWshift', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor'], widgets={'pixelBandWidth': pn.widgets.DiscreteSlider, 'FOVbandwidth': pn.widgets.DiscreteSlider, 'FWshift': pn.widgets.DiscreteSlider, 'EPIfactor': pn.widgets.DiscreteSlider}, name='Sequence')
-    postprocParams = pn.panel(simulator.param, parameters=['homodyne', 'doApodize', 'apodizationAlpha', 'doZerofill'], name='Post-processing')
+    settingsParams = ['object', 'fieldStrength', 'parameterStyle']
+    contrastParams = ['FatSat', 'TR', 'TE', 'FA', 'TI']
+    geometryParams = ['trajectory', 'frequencyDirection', 'FOVF', 'FOVP', 'phaseOversampling', 'radialFactor', 'voxelF', 'voxelP', 'matrixF', 'matrixP', 'reconVoxelF', 'reconVoxelP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness']
+    sequenceParams = ['sequence', 'pixelBandWidth', 'FOVbandwidth', 'FWshift', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor']
+    postprocParams = ['homodyne', 'doApodize', 'apodizationAlpha', 'doZerofill']
+    discreteSliderParams = ['TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'voxelF', 'voxelP', 'reconVoxelF', 'reconVoxelP', 'sliceThickness', 'pixelBandWidth', 'FOVbandwidth', 'FWshift', 'EPIfactor']
+    settingsPanel = pn.panel(simulator.param, parameters=settingsParams, name='Settings')
+    contrastPanel = pn.panel(simulator.param, parameters=contrastParams, widgets={p: pn.widgets.DiscreteSlider for p in contrastParams if p in discreteSliderParams}, name='Contrast')
+    geometryPanel = pn.panel(simulator.param, parameters=geometryParams, widgets={p: pn.widgets.DiscreteSlider for p in geometryParams if p in discreteSliderParams}, name='Geometry')
+    sequencePanel = pn.panel(simulator.param, parameters=sequenceParams, widgets={p: pn.widgets.DiscreteSlider for p in sequenceParams if p in discreteSliderParams}, name='Sequence')
+    postprocPanel = pn.panel(simulator.param, parameters=postprocParams, name='Post-processing')
 
     infoPane = pn.Row(infoNumber(name='Relative SNR', format='{value:.0f}%', value=simulator.param.relativeSNR, textColor=textColor),
                       infoString(name='Scan time', value=simulator.param.scantime, textColor=textColor),
@@ -2119,13 +2123,13 @@ def getApp(darkMode=True, settingsFilestem=''):
                 pn.Row(
                     pn.Column(
                         pn.Row(loadButton, saveButton), 
-                        settingsParams, 
+                        settingsPanel, 
                         pn.Row(sequenceButton, kSpaceButton), 
-                        sequenceParams
+                        sequencePanel
                     ), 
                     pn.Column(
-                        contrastParams,
-                        geometryParams
+                        contrastPanel,
+                        geometryPanel
                     )
                 )
             ), 
@@ -2139,7 +2143,7 @@ def getApp(darkMode=True, settingsFilestem=''):
             ), 
             pn.Column(
                 dmapKspace,
-                postprocParams
+                postprocPanel
             )
         ), 
         dmapSequence, 
