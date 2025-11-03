@@ -177,15 +177,23 @@ def flatten_dicts(list_of_dicts_and_lists):
 
 
 def take_closest(objects, value):
-    return min(objects, key=lambda x: abs(x-value))
+    values = objects.values() if type(objects) is dict else objects
+    return min(values, key=lambda x: abs(x-value))
 
 
 def add_to_pipeline(pipeline, functions):
     pipeline.update({f: True for f in functions})
 
 
-def unique_list(lst):
-    return list(dict.fromkeys(lst))
+def format_float(value, sigfigs=2):
+    rounded = float(f'{value:.{sigfigs}g}')
+    integer, decimal = str(rounded).split('.')
+    exponent = int(math.floor(math.log10(abs(rounded))))
+    num_decimals = sigfigs - exponent - 1
+    if num_decimals <= 0:
+        return integer
+    decimal += '0' * (num_decimals - len(decimal))
+    return '.'.join((integer, decimal))
 
 
 def format_scantime(milliseconds):
@@ -202,11 +210,10 @@ def format_scantime(milliseconds):
         else:
             return f'{int(milliseconds)} msec'
 
-
-TRvalues = unique_list([float(f'{tr:.2g}') for tr in 10.**np.linspace(0, 4, 500)])
-TEvalues = unique_list([float(f'{te:.2g}') for te in 10.**np.linspace(0, 3, 500)])
-TIvalues = unique_list([float(f'{ti:.2g}') for ti in 10.**np.linspace(0, 4, 500)])
-pBWvalues = unique_list([float(f'{pbw:.3g}') for pbw in 10.**np.linspace(2.1, 3.3, 500)])
+TRvalues = {tr + ' msec': float(tr) for tr in [format_float(tr, 2) for tr in 10.**np.linspace(0, 4, 500)]}
+TEvalues = {te + ' msec': float(te) for te in [format_float(te, 2) for te in 10.**np.linspace(0, 3, 500)]}
+TIvalues = {ti + ' msec': float(ti) for ti in [format_float(ti, 2) for ti in 10.**np.linspace(0, 4, 500)]}
+pBWvalues = {bw + ' Hz': float(bw) for bw in [format_float(bw, 3) for bw in 10.**np.linspace(2.097, 3.301, 500)]}
 matrixValues = list(range(16, 600+1))
 reconMatrixValues = list(range(16, 1200+1))
 EPIfactorValues = list(range(1, 64+1))
@@ -218,10 +225,10 @@ class MRIsimulator(param.Parameterized):
     parameterStyle = param.ObjectSelector(default='Matrix and Pixel BW', label='Parameter Style')
     
     FatSat = param.Boolean(default=False, label='Fat saturation')
-    TR = param.Selector(default=10000, label='TR [msec]')
-    TE = param.Selector(default=10, label='TE [msec]')
+    TR = param.Selector(default=10000, label='TR')
+    TE = param.Selector(default=10, label='TE')
     FA = param.Number(default=90.0, precedence=-1, label='Flip angle [°]')
-    TI = param.Selector(default=40, precedence=-1, label='TI [msec]')
+    TI = param.Selector(default=40, precedence=-1, label='TI')
     
     trajectory = param.ObjectSelector(default=constants.TRAJECTORIES[0], precedence=1, label='k-space trajectory')
     frequencyDirection = param.ObjectSelector(default=list(constants.DIRECTIONS.keys())[0], precedence=1, label='Frequency encoding direction')
@@ -231,21 +238,21 @@ class MRIsimulator(param.Parameterized):
     radialFactor = param.Number(default=1., precedence=-3, label='Spoke sampling factor')
     num_shots = param.Integer(precedence=-3)
     num_shots_label = param.String('# shots')
-    voxelP = param.Selector(default=1.333, precedence=-4, label='Voxel size x [mm]')
-    voxelF = param.Selector(default=1.333, precedence=-4, label='Voxel size y [mm]')
+    voxelP = param.Selector(default=1.333, precedence=-4, label='Voxel size x')
+    voxelF = param.Selector(default=1.333, precedence=-4, label='Voxel size y')
     matrixP = param.Selector(default=180, precedence=4, label='Acquisition matrix x')
     matrixF = param.Selector(default=180, precedence=4, label='Acquisition matrix y')
-    reconVoxelP = param.Selector(default=0.666, precedence=-5, label='Reconstructed voxel size x [mm]')
-    reconVoxelF = param.Selector(default=0.666, precedence=-5, label='Reconstructed voxel size y [mm]')
+    reconVoxelP = param.Selector(default=0.666, precedence=-5, label='Reconstructed voxel size x')
+    reconVoxelF = param.Selector(default=0.666, precedence=-5, label='Reconstructed voxel size y')
     reconMatrixP = param.Selector(default=360, precedence=5, label='Reconstruction matrix x')
     reconMatrixF = param.Selector(default=360, precedence=5, label='Reconstruction matrix y')
     sliceThickness = param.Number(default=3, precedence=6, label='Slice thickness [mm]')
     radialFOVoversampling = param.Number(default=2, step=0.01, precedence=9, label='Radial FOV oversampling factor')
     
     sequence = param.ObjectSelector(default=constants.SEQUENCES[0], precedence=1, label='Pulse sequence')
-    pixelBandWidth = param.Selector(default=pBWvalues[249], precedence=2, label='Pixel bandwidth [Hz]')
-    FOVbandwidth = param.Selector(default=pixelBW2FOVBW(500, 180), precedence=-2, label='FOV bandwidth [±kHz]')
-    FWshift = param.Selector(default=pixelBW2shift(500), precedence=-2, label='Fat/water shift [pixels]')
+    pixelBandWidth = param.Selector(default=pBWvalues['480 Hz'], precedence=2, label='Pixel bandwidth')
+    FOVbandwidth = param.Selector(default=pixelBW2FOVBW(480, 180), precedence=-2, label='FOV bandwidth')
+    FWshift = param.Selector(default=pixelBW2shift(480), precedence=-2, label='Fat/water shift')
     NSA = param.Integer(default=1, precedence=3, label='NSA')
     partialFourier = param.Number(default=1, step=0.01, precedence=5, label='Partial Fourier factor')
     turboFactor = param.Integer(default=1, precedence=6, label='Turbo factor')
@@ -480,13 +487,12 @@ class MRIsimulator(param.Parameterized):
 
     def setParamDiscreteBounds(self, param, values, minval=None, maxval=None):
         curval = getattr(self, param.name)
-        if minval is not None:
-            values = [val for val in values if not val < minval]
-        if maxval is not None:
-            values = [val for val in values if not val > maxval]
-        if curval not in values:
+        def inbound(val): return (minval is None or val >= minval) and (maxval is None or val <= maxval)
+        values = {k: v for k, v in values.items() if inbound(v)} if type(values) is dict else [v for v in values if inbound(v)]
+        
+        if (type(values) is list and curval not in values) or (type(values) is dict and curval not in values.values()):
             warnings.warn(f'{param.name} current value {curval} is outside its new bounds [{minval}, {maxval}]')
-            values = [curval] # necessary to avoid empty bounds
+            values = {'outbound': curval} if type(values) is dict else [curval]
             self.outbound_params.add(param.name)
         elif param.name in self.outbound_params:
             print(f'Param {param.name} no longer conflicting')
@@ -939,7 +945,7 @@ class MRIsimulator(param.Parameterized):
             tr = self.TR
             self.param.TR.objects = TRvalues
             add_to_pipeline(self.sequencePipeline, ['updateMinTR'])
-            self.TR = TRvalues[-1] # max TR
+            self.TR = list(TRvalues.values())[-1] # max TR
             self.TR = take_closest(self.param.TR.objects, tr) # Set back TR within (new) bounds
         if 'TI' in self.outbound_params:
             warnings.warn('Resolving conflict: TI')
@@ -1118,8 +1124,8 @@ class MRIsimulator(param.Parameterized):
         minMatrixF, maxMatrixF = 16, 600
         maxMatrixF = min(maxMatrixF, self.getMaxReadoutArea() * 1e-3 * self.FOVF * constants.GYRO)
         if self.parameterStyle == 'Matrix and FOV BW':
-            minMatrixF = max(minMatrixF, self.pixelBandWidth * self.matrixF / self.param.pixelBandWidth.objects[-1])
-            maxMatrixF = min(maxMatrixF, self.pixelBandWidth * self.matrixF / self.param.pixelBandWidth.objects[0])
+            minMatrixF = max(minMatrixF, self.pixelBandWidth * self.matrixF / list(self.param.pixelBandWidth.objects.values())[-1])
+            maxMatrixF = min(maxMatrixF, self.pixelBandWidth * self.matrixF / list(self.param.pixelBandWidth.objects.values())[0])
         self.setParamDiscreteBounds(self.param.matrixF, matrixValues, minval=minMatrixF, maxval=maxMatrixF)
         self.updateVoxelFobjects()
         self.updateReconVoxelFobjects()
@@ -1158,27 +1164,27 @@ class MRIsimulator(param.Parameterized):
 
 
     def updateFWshiftObjects(self):
-        self.param.FWshift.objects = unique_list([float(f'{pixelBW2shift(pBW, self.fieldStrength):.2f}') for pBW in self.param.pixelBandWidth.objects[::-1]])
+        self.param.FWshift.objects = {f'{format_float(shift, 2)} pixels': shift for shift in [pixelBW2shift(pBW, self.fieldStrength) for pBW in list(self.param.pixelBandWidth.objects.values())[::-1]]}
     
 
     def updateFOVbandwidthObjects(self):
-        self.param.FOVbandwidth.objects = unique_list([float(f'{pixelBW2FOVBW(pBW, self.matrixF):.2g}') for pBW in self.param.pixelBandWidth.objects])
+        self.param.FOVbandwidth.objects = {f'±{format_float(bw, 3)} kHz': bw for bw in [pixelBW2FOVBW(pBW, self.matrixF) for pBW in self.param.pixelBandWidth.objects.values()]}
     
     
     def updateVoxelFobjects(self):
-        self.param.voxelF.objects = unique_list([float(f'{self.FOVF/matrix:.3g}') for matrix in self.param.matrixF.objects[::-1]])
+        self.param.voxelF.objects = {f'{format_float(voxel, 3)} mm': voxel for voxel in [self.FOVF/matrix for matrix in self.param.matrixF.objects[::-1]]}
 
 
     def updateVoxelPobjects(self):
-        self.param.voxelP.objects = unique_list([float(f'{self.FOVP/matrix:.3g}') for matrix in self.param.matrixP.objects[::-1]])
+        self.param.voxelP.objects = {f'{format_float(voxel, 3)} mm': voxel for voxel in [self.FOVP/matrix for matrix in self.param.matrixP.objects[::-1]]}
 
 
     def updateReconVoxelFobjects(self):
-        self.param.reconVoxelF.objects = unique_list([float(f'{self.FOVF/matrix:.3g}') for matrix in self.param.reconMatrixF.objects[::-1]])
+        self.param.voxelF.objects = {f'{format_float(voxel, 3)} mm': voxel for voxel in [self.FOVF/matrix for matrix in self.param.reconMatrixF.objects[::-1]]}
 
 
     def updateReconVoxelPobjects(self):
-        self.param.reconVoxelP.objects = unique_list([float(f'{self.FOVP/matrix:.3g}') for matrix in self.param.reconMatrixP.objects[::-1]])
+        self.param.reconVoxelP.objects = {f'{format_float(voxel, 3)} mm': voxel for voxel in [self.FOVP/matrix for matrix in self.param.reconMatrixP.objects[::-1]]}
 
 
     def updateSliceThicknessBounds(self):
