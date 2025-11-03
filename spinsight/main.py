@@ -2078,17 +2078,15 @@ def getApp(darkMode=True, settingsFilestem=''):
         version = f'(v {toml.load(Path(__file__).parent.parent / "pyproject.toml")["project"]["version"]})'
     except (FileNotFoundError, KeyError):
         version = ''
-    settingsParams = ['object', 'fieldStrength', 'parameterStyle']
-    contrastParams = ['FatSat', 'TR', 'TE', 'FA', 'TI']
-    geometryParams = ['trajectory', 'frequencyDirection', 'FOVF', 'FOVP', 'phaseOversampling', 'radialFactor', 'voxelF', 'voxelP', 'matrixF', 'matrixP', 'reconVoxelF', 'reconVoxelP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness']
-    sequenceParams = ['sequence', 'pixelBandWidth', 'FOVbandwidth', 'FWshift', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor']
-    postprocParams = ['homodyne', 'doApodize', 'apodizationAlpha', 'doZerofill']
+    
     discreteSliderParams = ['TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'voxelF', 'voxelP', 'reconVoxelF', 'reconVoxelP', 'sliceThickness', 'pixelBandWidth', 'FOVbandwidth', 'FWshift', 'EPIfactor']
-    settingsPanel = pn.panel(simulator.param, parameters=settingsParams, name='Settings')
-    contrastPanel = pn.panel(simulator.param, parameters=contrastParams, widgets={p: pn.widgets.DiscreteSlider for p in contrastParams if p in discreteSliderParams}, name='Contrast')
-    geometryPanel = pn.panel(simulator.param, parameters=geometryParams, widgets={p: pn.widgets.DiscreteSlider for p in geometryParams if p in discreteSliderParams}, name='Geometry')
-    sequencePanel = pn.panel(simulator.param, parameters=sequenceParams, widgets={p: pn.widgets.DiscreteSlider for p in sequenceParams if p in discreteSliderParams}, name='Sequence')
-    postprocPanel = pn.panel(simulator.param, parameters=postprocParams, name='Post-processing')
+    paramPanels = {name: pn.panel(simulator.param, parameters=params, widgets={p: pn.widgets.DiscreteSlider for p in params if p in discreteSliderParams}, name=name) for name, params in [
+        ('Settings', ['object', 'fieldStrength', 'parameterStyle']),
+        ('Contrast', ['FatSat', 'TR', 'TE', 'FA', 'TI']),
+        ('Geometry', ['trajectory', 'frequencyDirection', 'FOVF', 'FOVP', 'phaseOversampling', 'radialFactor', 'voxelF', 'voxelP', 'matrixF', 'matrixP', 'reconVoxelF', 'reconVoxelP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness']),
+        ('Sequence', ['sequence', 'pixelBandWidth', 'FOVbandwidth', 'FWshift', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor']),
+        ('Post-processing', ['homodyne', 'doApodize', 'apodizationAlpha', 'doZerofill']),
+    ]}
 
     infoPane = pn.Row(infoNumber(name='Relative SNR', format='{value:.0f}%', value=simulator.param.relativeSNR, textColor=textColor),
                       infoString(name='Scan time', value=simulator.param.scantime, textColor=textColor),
@@ -2123,13 +2121,13 @@ def getApp(darkMode=True, settingsFilestem=''):
                 pn.Row(
                     pn.Column(
                         pn.Row(loadButton, saveButton), 
-                        settingsPanel, 
+                        paramPanels['Settings'], 
                         pn.Row(sequenceButton, kSpaceButton), 
-                        sequencePanel
+                        paramPanels['Sequence']
                     ), 
                     pn.Column(
-                        contrastPanel,
-                        geometryPanel
+                        paramPanels['Contrast'],
+                        paramPanels['Geometry']
                     )
                 )
             ), 
@@ -2143,7 +2141,7 @@ def getApp(darkMode=True, settingsFilestem=''):
             ), 
             pn.Column(
                 dmapKspace,
-                postprocPanel
+                paramPanels['Post-processing']
             )
         ), 
         dmapSequence, 
