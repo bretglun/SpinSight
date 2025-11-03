@@ -1180,7 +1180,7 @@ class MRIsimulator(param.Parameterized):
 
 
     def updateReconVoxelFobjects(self):
-        self.param.voxelF.objects = {f'{format_float(voxel, 3)} mm': voxel for voxel in [self.FOVF/matrix for matrix in self.param.reconMatrixF.objects[::-1]]}
+        self.param.reconVoxelF.objects = {f'{format_float(voxel, 3)} mm': voxel for voxel in [self.FOVF/matrix for matrix in self.param.reconMatrixF.objects[::-1]]}
 
 
     def updateReconVoxelPobjects(self):
