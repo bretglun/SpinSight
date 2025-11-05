@@ -2066,7 +2066,7 @@ def infoString(name, value, textColor):
     return pn.indicators.String(default_color=textColor, name=name, font_size='12pt', title_size='12pt', value=value)
 
 
-def getApp(darkMode=True, settingsFilestem=''):
+def getApp(darkMode=True, settingsFilestem='', startTime=datetime.now()):
     pn.config.theme = 'dark' if darkMode else 'default'
     textColor = 'white' if darkMode else 'black' # needed for pn.indicators.Number which doesn't respect pn.config.theme
 
@@ -2076,7 +2076,7 @@ def getApp(darkMode=True, settingsFilestem=''):
     title = '# SpinSight MRI simulator'
     author = '*Written by [Johan Berglund](mailto:johan.berglund@akademiska.se), Ph.D.*'
     try:
-        version = f'(v {toml.load(Path(__file__).parent.parent / "pyproject.toml")["project"]["version"]})'
+        version = f', v {toml.load(Path(__file__).parent.parent / "pyproject.toml")["project"]["version"]}'
     except (FileNotFoundError, KeyError):
         version = ''
     
@@ -2147,7 +2147,7 @@ def getApp(darkMode=True, settingsFilestem=''):
         ), 
         dmapSequence, 
         pn.Column(pn.pane.Markdown(author),
-                  pn.pane.Markdown(f'*(session started {datetime.now(): %Y-%m-%d %H:%M:%S} {version}*', styles={'color': 'gray'}),
+                  pn.pane.Markdown(f'*(server started {startTime: %Y-%m-%d %H:%M:%S}{version})*', styles={'color': 'gray'}),
                   height=10)
     )
     return dashboard

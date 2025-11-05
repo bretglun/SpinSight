@@ -8,6 +8,7 @@ from pathlib import Path
 import sys
 sys.path.append(str(Path(__file__).parent.parent))
 from spinsight import main
+from datetime import datetime
 
 
 def CLI():
@@ -47,7 +48,8 @@ def CLI():
 
     # serve application
     try:
-        def getApp(): return main.getApp(darkMode, options.settingsFile) # closure function
+        startTime = datetime.now()
+        def getApp(): return main.getApp(darkMode, options.settingsFile, startTime) # closure function
         pn.serve(getApp, show=False, title='SpinSight', port=options.port, websocket_origin=['{}:{}'.format(host, options.port) for host in hosts])
     except OSError as e:
         print(e)
