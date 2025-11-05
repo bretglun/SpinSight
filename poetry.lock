@@ -739,14 +739,14 @@ test = ["coverage", "pytest", "pytest-cov"]
 
 [[package]]
 name = "markdown"
-version = "3.9"
+version = "3.10"
 description = "Python implementation of John Gruber's Markdown."
 optional = false
-python-versions = ">=3.9"
+python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "markdown-3.9-py3-none-any.whl", hash = "sha256:9f4d91ed810864ea88a6f32c07ba8bee1346c0cc1f6b1f9f6c822f2a9667d280"},
-    {file = "markdown-3.9.tar.gz", hash = "sha256:d2900fe1782bd33bdbbd56859defef70c2e78fc46668f8eb9df3128138f2cb6a"},
+    {file = "markdown-3.10-py3-none-any.whl", hash = "sha256:b5b99d6951e2e4948d939255596523444c0e677c669700b1d17aa4a8a464cb7c"},
+    {file = "markdown-3.10.tar.gz", hash = "sha256:37062d4f2aa4b2b6b32aefb80faa300f82cc790cb949a35b8caede34f2b68c0e"},
 ]
 
 [package.extras]
@@ -1020,14 +1020,14 @@ torchkbnufft = ["cupy-cuda12x", "torchkbnufft"]
 
 [[package]]
 name = "narwhals"
-version = "2.10.1"
+version = "2.10.2"
 description = "Extremely lightweight compatibility layer between dataframe libraries"
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
 files = [
-    {file = "narwhals-2.10.1-py3-none-any.whl", hash = "sha256:eed3d9ec8f821963456fef306c1ad11017995982169fca1f38f71c97d6a97b9b"},
-    {file = "narwhals-2.10.1.tar.gz", hash = "sha256:d6e3a9b1c0904a82984dec58a3d12b3bc08e9d61bbee639e7bb05349e663d036"},
+    {file = "narwhals-2.10.2-py3-none-any.whl", hash = "sha256:059cd5c6751161b97baedcaf17a514c972af6a70f36a89af17de1a0caf519c43"},
+    {file = "narwhals-2.10.2.tar.gz", hash = "sha256:ff738a08bc993cbb792266bec15346c1d85cc68fdfe82a23283c3713f78bd354"},
 ]
 
 [package.extras]

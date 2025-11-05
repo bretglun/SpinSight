@@ -16,6 +16,7 @@ from bokeh.models import HoverTool, CustomJS, ColumnDataSource
 from functools import partial
 from tqdm import tqdm
 import warnings
+from datetime import datetime
 
 hv.extension('bokeh')
 
@@ -2145,6 +2146,8 @@ def getApp(darkMode=True, settingsFilestem=''):
             )
         ), 
         dmapSequence, 
-        pn.Row(pn.pane.Markdown(author), pn.pane.Markdown(version))
+        pn.Column(pn.pane.Markdown(author),
+                  pn.pane.Markdown(f'*(session started {datetime.now(): %Y-%m-%d %H:%M:%S} {version}*', styles={'color': 'gray'}),
+                  height=10)
     )
     return dashboard
