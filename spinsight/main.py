@@ -178,7 +178,10 @@ def flatten_dicts(list_of_dicts_and_lists):
 
 
 def take_closest(objects, value):
-    values = objects.values() if type(objects) is dict else objects
+    if callable(getattr(objects, 'items', None)): # objects could be dict or param.ListProxy
+        values = [v for k, v in objects.items() if k != 'outbound']
+    else:
+        values = objects
     return min(values, key=lambda x: abs(x-value))
 
 
@@ -480,9 +483,11 @@ class MRIsimulator(param.Parameterized):
         if curval < minval:
             warnings.warn(f'trying to set {par.name} bounds above current value ({minval} > {curval})')
             minval = curval
+            self.outbound_params.add(par.name)
         if curval > maxval:
             warnings.warn(f'trying to set {par.name} bounds below current value ({maxval} < {curval})')
             maxval = curval
+            self.outbound_params.add(par.name)
         par.bounds = (minval, maxval)
     
 
@@ -492,8 +497,14 @@ class MRIsimulator(param.Parameterized):
         values = {k: v for k, v in values.items() if inbound(v)} if type(values) is dict else [v for v in values if inbound(v)]
         
         if (type(values) is list and curval not in values) or (type(values) is dict and curval not in values.values()):
-            warnings.warn(f'{par.name} current value {curval} is outside its new bounds [{minval}, {maxval}]')
-            values = {'outbound': curval} if type(values) is dict else [curval]
+            if minval > maxval:
+                warnings.warn(f'{par.name} has illegal bounds, minval > maxval ({minval} > {maxval})')
+            else:
+                warnings.warn(f'{par.name} current value {curval} is outside its new bounds [{minval}, {maxval}]')
+            if type(values) is dict:
+                values['outbound'] = curval
+            else:
+                values = [curval]
             self.outbound_params.add(par.name)
         elif par.name in self.outbound_params:
             print(f'Param {par.name} no longer conflicting')
@@ -948,17 +959,13 @@ class MRIsimulator(param.Parameterized):
             add_to_pipeline(self.sequencePipeline, ['updateMinTR'])
             self.TR = list(param_values['TR'].values())[-1] # max TR
             self.TR = take_closest(self.param.TR.objects, tr) # Set back TR within (new) bounds
-        if 'TI' in self.outbound_params:
-            warnings.warn('Resolving conflict: TI')
-            self.outbound_params.remove('TI')
-            self.TI = take_closest(self.param.TI.objects, self.TI) # Set back TI within (new) bounds
-        if 'TE' in self.outbound_params:
-            warnings.warn('Resolving conflict: TE')
-            self.outbound_params.remove('TE')
-            self.setParamBounds(self.param.TE, minval=self.minTE)
-            self.TE = take_closest(self.param.TE.objects, self.TE)
-        elif self.outbound_params:
-            warnings.warn('Unresolved conflict:', self.outbound_params)
+        for par in ['TI', 'TE', 'pixelBandWidth']:
+            if par in self.outbound_params:
+                warnings.warn(f'Resolving conflict: {par}')
+                self.outbound_params.remove(par)
+                setattr(self, par, take_closest(self.param[par].objects, getattr(self, par))) # Set back param within bounds
+        if self.outbound_params:
+            warnings.warn(f'Unresolved conflict: {self.outbound_params}')
     
 
     def getMaxPrephaserArea(self, readAmp):
