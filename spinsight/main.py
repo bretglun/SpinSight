@@ -1080,7 +1080,7 @@ class MRIsimulator(param.Parameterized):
         minReadDurations = [.5] # msec (corresponds to a pixel BW of 2000 Hz)
         # min limit imposed by maximum gradient amplitude:
         minReadDurations.append(A / self.maxAmp)
-        maxReadDurations = [8.] # msec (corresponds to a pixel BW of 125 Hz)
+        maxReadDurations = [1e3 / min(param_values['pixelBandWidth'].values())] # msec
         if self.isGradientEcho():
             minPhaserTime = min([self.boards['phase']['objects'][typ][0]['dur_f'] for typ in ['phasers', 'rephasers']])
             readStartToTE = self.TE - self.boards['RF']['objects']['excitation']['dur_f']/2
@@ -1101,7 +1101,8 @@ class MRIsimulator(param.Parameterized):
                 tp = self.TE/2 - refocusing_dur/2 - self.boards['RF']['objects']['excitation']['dur_f']/2
                 h = s * tp / 2
                 h = min(h, self.maxAmp)
-                minReadDurations.append(np.sqrt(A**2/(2*h*s*tp - s*A - 2*h**2)))
+                denom = 2*h*s*tp - s*A - 2*h**2
+                minReadDurations.append(np.sqrt(A**2/denom) if denom > 0 else np.inf)
             if self.EPIfactor==1:
                 max_readtrain_spacing = self.TE / (1 + 1/2 * self.split_center)
             else: # linear k-space order
@@ -1113,16 +1114,21 @@ class MRIsimulator(param.Parameterized):
             # tr is half the maximum readout gradient duration
             tr = ((idle_space) / self.EPIfactor) / 2
             # max limit imposed by readout rise time:
-            maxReadDurations.append(tr + np.sqrt(tr**2 - 2*A/s))
+            radicand = tr**2 - 2*A/s
+            if radicand >= 0:
+                maxReadDurations.append(tr + np.sqrt(radicand))
+            else:
+                maxReadDurations.append(0)
             # max limit imposed by slice select refocusing down ramp time:
             maxReadDurations.append((tr - self.boards['slice']['objects']['slice select refocusing'][0]['riseTime_f']) * 2)
             # readtrain_spacing may be limited by TR:
             read_end_by_TR = (self.TR - (-self.getSeqStart()) - self.boards['slice']['objects']['spoiler']['dur_f'])
             read_end_by_else = self.readtrain_spacing * (self.turboFactor + 1/2) - refocusing_dur/2
             maxReadDurations.append((tr - (read_end_by_else-read_end_by_TR)) * 2)
+        minReadDuration, maxReadDuration = max(minReadDurations), min(maxReadDurations)
         small = 1e-2 # to avoid roundoff errors
-        minpBW = 1e3 / min(maxReadDurations) + small
-        maxpBW = 1e3 / max(minReadDurations) - small
+        minpBW = 1e3 / maxReadDuration + small if maxReadDuration > 0 else np.inf
+        maxpBW = 1e3 / minReadDuration - small if minReadDuration > 0 else np.inf
         self.setParamBounds(self.param.pixelBandWidth, minval=minpBW, maxval=maxpBW)
         self.updateFWshiftObjects()
         self.updateFOVbandwidthObjects()
