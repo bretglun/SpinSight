@@ -177,14 +177,6 @@ def flatten_dicts(list_of_dicts_and_lists):
     return res
 
 
-def take_closest(objects, value):
-    if callable(getattr(objects, 'items', None)): # objects could be dict or param.ListProxy
-        values = [v for k, v in objects.items() if k != 'outbound']
-    else:
-        values = objects
-    return min(values, key=lambda x: abs(x-value))
-
-
 def add_to_pipeline(pipeline, functions):
     pipeline.update({f: True for f in functions})
 
@@ -510,13 +502,24 @@ class MRIsimulator(param.Parameterized):
                 warnings.warn(f'{par.name} current value {curval} is outside its new bounds [{minval}, {maxval}]')
             if isinstance(values, dict):
                 values['outbound'] = curval
-            else:
+            elif isinstance(values, list) and not values:
                 values = [curval]
             self.outbound_params.add(par.name)
         elif par.name in self.outbound_params:
             print(f'Param {par.name} no longer conflicting')
             self.outbound_params.remove(par.name)
         par.objects = values
+    
+
+    def set_closest(self, par, value=None):
+        if value is None:
+            value = getattr(self, par.name)
+        # par.objects could be dict or param.ListProxy
+        values = [v for k, v in par.objects.items() if k != 'outbound'] if callable(getattr(par.objects, 'items', None)) else par.objects
+        setattr(self, par.name, min(values, key=lambda x: abs(x-value)))
+        if par.name in self.outbound_params:
+            print(f'Param {par.name} no longer conflicting')
+            self.outbound_params.remove(par.name)
     
 
     @param.depends('object', watch=True)
@@ -565,13 +568,13 @@ class MRIsimulator(param.Parameterized):
     def _watch_FOVF(self):
         with param.parameterized.batch_call_watchers(self):
             if self.parameterStyle=='Voxelsize and Fat/water shift' or self.isRadial():
-                self.matrixF = take_closest(self.param.matrixF.objects, self.FOVF/self.voxelF)
-                self.reconMatrixF = take_closest(self.param.reconMatrixF.objects, self.FOVF/self.reconVoxelF)
+                self.set_closest(self.param.matrixF, self.FOVF/self.voxelF)
+                self.set_closest(self.param.reconMatrixF, self.FOVF/self.reconVoxelF)
             self.updateFOVbandwidthObjects()
             self.updateVoxelFobjects()
             self.updateReconVoxelFobjects()
-            self.voxelF = take_closest(self.param.voxelF.objects, self.FOVF/self.matrixF)
-            self.reconVoxelF = take_closest(self.param.reconVoxelF.objects, self.FOVF/self.reconMatrixF)
+            self.set_closest(self.param.voxelF, self.FOVF/self.matrixF)
+            self.set_closest(self.param.reconVoxelF, self.FOVF/self.reconMatrixF)
             self.param.trigger('voxelF', 'reconVoxelF')
             add_to_pipeline(self.acquisitionPipeline, ['sampleKspace', 'updateSamplingTime', 'modulateKspace', 'simulateNoise', 'compileKspace'])
             add_to_pipeline(self.reconPipeline, ['partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
@@ -582,12 +585,12 @@ class MRIsimulator(param.Parameterized):
     def _watch_FOVP(self):
         with param.parameterized.batch_call_watchers(self):
             if self.parameterStyle=='Voxelsize and Fat/water shift' or self.isRadial():
-                self.matrixP = take_closest(self.param.matrixP.objects, self.FOVP/self.voxelP)
-                self.reconMatrixP = take_closest(self.param.reconMatrixP.objects, self.FOVP/self.reconVoxelP)
+                self.set_closest(self.param.matrixP, self.FOVP/self.voxelP)
+                self.set_closest(self.param.reconMatrixP, self.FOVP/self.reconVoxelP)
             self.updateVoxelPobjects()
             self.updateReconVoxelPobjects()
-            self.voxelP = take_closest(self.param.voxelP.objects, self.FOVP/self.matrixP)
-            self.reconVoxelP = take_closest(self.param.reconVoxelP.objects, self.FOVP/self.reconMatrixP)
+            self.set_closest(self.param.voxelP, self.FOVP/self.matrixP)
+            self.set_closest(self.param.reconVoxelP, self.FOVP/self.reconMatrixP)
             self.param.trigger('voxelP', 'reconVoxelP')
             add_to_pipeline(self.acquisitionPipeline, ['sampleKspace', 'updateSamplingTime', 'modulateKspace', 'simulateNoise', 'compileKspace'])
             add_to_pipeline(self.reconPipeline, ['partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
@@ -617,64 +620,64 @@ class MRIsimulator(param.Parameterized):
         with param.parameterized.batch_call_watchers(self):
             self.updateFOVbandwidthObjects()
             if self.parameterStyle == 'Matrix and FOV BW':
-                self.pixelBandWidth = take_closest(self.param.pixelBandWidth.objects, FOVBW2pixelBW(self.FOVbandwidth, self.matrixF))
+                self.set_closest(self.param.pixelBandWidth, FOVBW2pixelBW(self.FOVbandwidth, self.matrixF))
             else:
-                self.FOVbandwidth = take_closest(self.param.FOVbandwidth.objects, pixelBW2FOVBW(self.pixelBandWidth, self.matrixF))
+                self.set_closest(self.param.FOVbandwidth, pixelBW2FOVBW(self.pixelBandWidth, self.matrixF))
                 self.param.trigger('FOVbandwidth')
             self.updateVoxelFobjects()
-            self.voxelF = take_closest(self.param.voxelF.objects, self.FOVF/self.matrixF)
+            self.set_closest(self.param.voxelF, self.FOVF/self.matrixF)
             add_to_pipeline(self.acquisitionPipeline, ['sampleKspace', 'updateSamplingTime', 'modulateKspace', 'simulateNoise', 'compileKspace'])
             add_to_pipeline(self.reconPipeline, ['partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
             add_to_pipeline(self.sequencePipeline, ['setupReadouts', 'updateBWbounds', 'updateMatrixFbounds', 'updateFOVFbounds'])
             self.setParamBounds(self.param['reconMatrixF'], minval=self.matrixF)
             self.updateReconVoxelFobjects()
-            self.reconMatrixF = take_closest(self.param.reconMatrixF.objects, self.matrixF * self.recAcqRatioF)
+            self.set_closest(self.param.reconMatrixF, self.matrixF * self.recAcqRatioF)
             self.param.trigger('voxelF', 'reconVoxelF')
             if self.isRadial():
-                self.matrixP = take_closest(self.param.matrixP.objects, self.matrixF*self.FOVP/self.FOVF)
+                self.set_closest(self.param.matrixP, self.matrixF*self.FOVP/self.FOVF)
     
     
     @param.depends('matrixP', watch=True)
     def _watch_matrixP(self):
         with param.parameterized.batch_call_watchers(self):
             self.updateVoxelPobjects()
-            self.voxelP = take_closest(self.param.voxelP.objects, self.FOVP/self.matrixP)
+            self.set_closest(self.param.voxelP, self.FOVP/self.matrixP)
             add_to_pipeline(self.acquisitionPipeline, ['sampleKspace', 'updateSamplingTime', 'modulateKspace', 'simulateNoise', 'compileKspace'])
             add_to_pipeline(self.reconPipeline, ['partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
             add_to_pipeline(self.sequencePipeline, ['setupPhasers', 'updateFOVPbounds', 'updateTurboFactorBounds', 'updateEPIfactorObjects'])
             self.setParamBounds(self.param['reconMatrixP'], minval=self.matrixP)
             self.updateReconVoxelPobjects()
-            self.reconMatrixP = take_closest(self.param.reconMatrixP.objects, self.matrixP * self.recAcqRatioP)
+            self.set_closest(self.param.reconMatrixP, self.matrixP * self.recAcqRatioP)
             self.param.trigger('voxelP', 'reconVoxelP')
             if self.isRadial():
-                self.matrixF = take_closest(self.param.matrixP.objects, self.matrixP*self.FOVF/self.FOVP)
+                self.set_closest(self.param.matrixF, self.matrixP*self.FOVF/self.FOVP)
 
 
     @param.depends('voxelF', watch=True)
     def _watch_voxelF(self):
         if self.param.voxelF.precedence > 0:
-            self.matrixF = take_closest(self.param.matrixF.objects, self.FOVF/self.voxelF)
+            self.set_closest(self.param.matrixF, self.FOVF/self.voxelF)
             add_to_pipeline(self.sequencePipeline, ['updateFOVFbounds'])
 
 
     @param.depends('voxelP', watch=True)
     def _watch_voxelP(self):
         if self.param.voxelP.precedence > 0:
-            self.matrixP = take_closest(self.param.matrixP.objects, self.FOVP/self.voxelP)
+            self.set_closest(self.param.matrixP, self.FOVP/self.voxelP)
             add_to_pipeline(self.sequencePipeline, ['updateFOVPbounds'])
 
 
     @param.depends('reconVoxelF', watch=True)
     def _watch_reconVoxelF(self):
         if self.param.reconVoxelF.precedence > 0:
-            self.reconMatrixF = take_closest(self.param.reconMatrixF.objects, self.FOVF/self.reconVoxelF)
+            self.set_closest(self.param.reconMatrixF, self.FOVF/self.reconVoxelF)
             add_to_pipeline(self.sequencePipeline, ['updateFOVFbounds'])
 
 
     @param.depends('reconVoxelP', watch=True)
     def _watch_reconVoxelP(self):
         if self.param.reconVoxelP.precedence > 0:
-            self.reconMatrixP = take_closest(self.param.reconMatrixP.objects, self.FOVP/self.reconVoxelP)
+            self.set_closest(self.param.reconMatrixP, self.FOVP/self.reconVoxelP)
             add_to_pipeline(self.sequencePipeline, ['updateFOVPbounds'])
 
 
@@ -719,9 +722,9 @@ class MRIsimulator(param.Parameterized):
             self.param.radialFactor.precedence = 3
             # set isotropic voxelsize:
             if (self.FOVF/self.matrixF < self.FOVP/self.matrixP):
-                self.matrixP = take_closest(self.param.matrixP.objects, self.matrixF*self.FOVP/self.FOVF)
+                self.set_closest(self.param.matrixP, self.matrixF*self.FOVP/self.FOVF)
             else:
-                self.matrixF = take_closest(self.param.matrixF.objects, self.matrixP*self.FOVF/self.FOVP)
+                self.set_closest(self.param.matrixF, self.matrixP*self.FOVF/self.FOVP)
         else:
             self.param.partialFourier.precedence = 5
             self.param.frequencyDirection.precedence = 1
@@ -737,7 +740,7 @@ class MRIsimulator(param.Parameterized):
     def _watch_fieldStrength(self):
         with param.parameterized.batch_call_watchers(self):
             self.updateFWshiftObjects()
-            self.FWshift = take_closest(self.param.FWshift.objects, pixelBW2shift(self.pixelBandWidth, self.fieldStrength))
+            self.set_closest(self.param.FWshift, pixelBW2shift(self.pixelBandWidth, self.fieldStrength))
             self.param.trigger('FWshift')
             add_to_pipeline(self.acquisitionPipeline, ['updateSamplingTime', 'modulateKspace', 'simulateNoise', 'updatePDandT1w', 'compileKspace'])
             add_to_pipeline(self.reconPipeline, ['partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
@@ -747,8 +750,8 @@ class MRIsimulator(param.Parameterized):
     @param.depends('pixelBandWidth', watch=True)
     def _watch_pixelBandWidth(self):
         with param.parameterized.batch_call_watchers(self):
-            self.FWshift = take_closest(self.param.FWshift.objects, pixelBW2shift(self.pixelBandWidth, self.fieldStrength))
-            self.FOVbandwidth = take_closest(self.param.FOVbandwidth.objects, pixelBW2FOVBW(self.pixelBandWidth, self.matrixF))
+            self.set_closest(self.param.FWshift, pixelBW2shift(self.pixelBandWidth, self.fieldStrength))
+            self.set_closest(self.param.FOVbandwidth, pixelBW2FOVBW(self.pixelBandWidth, self.matrixF))
             add_to_pipeline(self.acquisitionPipeline, ['updateSamplingTime', 'modulateKspace', 'simulateNoise', 'compileKspace'])
             add_to_pipeline(self.reconPipeline, ['partialFourierRecon', 'apodization', 'zerofill', 'reconstruct'])
             add_to_pipeline(self.sequencePipeline, ['setupReadouts', 'updateMatrixFbounds', 'updateFOVFbounds', 'updateMatrixPbounds', 'updateFOVPbounds'])
@@ -756,13 +759,13 @@ class MRIsimulator(param.Parameterized):
     @param.depends('FWshift', watch=True)
     def _watch_FWshift(self):
         if self.param.FWshift.precedence > 0:
-            self.pixelBandWidth = take_closest(self.param.pixelBandWidth.objects, shift2pixelBW(self.FWshift, self.fieldStrength))
+            self.set_closest(self.param.pixelBandWidth, shift2pixelBW(self.FWshift, self.fieldStrength))
     
 
     @param.depends('FOVbandwidth', watch=True)
     def _watch_FOVbandwidth(self):
         if self.param.FOVbandwidth.precedence > 0:
-            self.pixelBandWidth = take_closest(self.param.pixelBandWidth.objects, FOVBW2pixelBW(self.FOVbandwidth, self.matrixF))
+            self.set_closest(self.param.pixelBandWidth, FOVBW2pixelBW(self.FOVbandwidth, self.matrixF))
 
 
     @param.depends('NSA', watch=True)
@@ -882,7 +885,7 @@ class MRIsimulator(param.Parameterized):
         self.recAcqRatioF = self.reconMatrixF / self.matrixF
         if self.doZerofill:
             add_to_pipeline(self.reconPipeline, ['zerofill', 'reconstruct'])
-        self.reconVoxelF = take_closest(self.param.reconVoxelF.objects, self.FOVF/self.reconMatrixF)
+        self.set_closest(self.param.reconVoxelF, self.FOVF/self.reconMatrixF)
 
 
     @param.depends('reconMatrixP', watch=True)
@@ -890,7 +893,7 @@ class MRIsimulator(param.Parameterized):
         self.recAcqRatioP = self.reconMatrixP / self.matrixP
         if self.doZerofill:
             add_to_pipeline(self.reconPipeline, ['zerofill', 'reconstruct'])
-        self.reconVoxelP = take_closest(self.param.reconVoxelP.objects, self.FOVP/self.reconMatrixP)
+        self.set_closest(self.param.reconVoxelP, self.FOVP/self.reconMatrixP)
 
 
     def isGradientEcho(self):
@@ -965,12 +968,11 @@ class MRIsimulator(param.Parameterized):
             self.param.TR.objects = param_values['TR']
             add_to_pipeline(self.sequencePipeline, ['updateMinTR'])
             self.TR = list(param_values['TR'].values())[-1] # max TR
-            self.TR = take_closest(self.param.TR.objects, tr) # Set back TR within (new) bounds
+            self.set_closest(self.param.TR, tr) # Set back TR within (new) bounds
         for par in ['TI', 'TE', 'pixelBandWidth']:
             if par in self.outbound_params:
                 warnings.warn(f'Resolving conflict: {par}')
-                self.outbound_params.remove(par)
-                setattr(self, par, take_closest(self.param[par].objects, getattr(self, par))) # Set back param within bounds
+                self.set_closest(self.param[par]) # Set back param within bounds
         if self.outbound_params:
             warnings.warn(f'Unresolved conflict: {self.outbound_params}')
     
