@@ -487,6 +487,13 @@ class MRIsimulator(param.Parameterized):
         par.bounds = (minval, maxval)
     
 
+    def conflict_solved(self, par):
+        self.outbound_params.remove(par.name)
+        if callable(getattr(par.objects, 'keys', None)) and 'outbound' in par.objects.keys():
+            par.objects = dict(i for i in par.objects.items() if 'outbound' not in i)
+        print(f'Param {par.name} no longer conflicting')
+    
+    
     def setParamDiscreteBounds(self, par, curval, minval=None, maxval=None):
         values = param_values[par.name]
         if minval is None:
@@ -495,7 +502,8 @@ class MRIsimulator(param.Parameterized):
             maxval = max(values.values() if isinstance(values, dict) else values)
         values = {k: v for k, v in values.items() if minval <= v <= maxval} if isinstance(values, dict) else [v for v in values if minval <= v <= maxval]
         
-        if (isinstance(values, list) and curval not in values) or (isinstance(values, dict) and curval not in values.values()):
+        outbound = (isinstance(values, list) and curval not in values) or (isinstance(values, dict) and curval not in values.values())
+        if outbound:
             if (minval > maxval):
                 warnings.warn(f'{par.name} has illegal bounds, minval > maxval ({minval} > {maxval})')
             else:
@@ -505,21 +513,22 @@ class MRIsimulator(param.Parameterized):
             elif isinstance(values, list) and not values:
                 values = [curval]
             self.outbound_params.add(par.name)
-        elif par.name in self.outbound_params:
-            print(f'Param {par.name} no longer conflicting')
-            self.outbound_params.remove(par.name)
         par.objects = values
+        if not outbound and par.name in self.outbound_params:
+            self.conflict_solved(par)
     
 
     def set_closest(self, par, value=None):
-        if value is None:
-            value = getattr(self, par.name)
         # par.objects could be dict or param.ListProxy
         values = [v for k, v in par.objects.items() if k != 'outbound'] if callable(getattr(par.objects, 'items', None)) else par.objects
-        setattr(self, par.name, min(values, key=lambda x: abs(x-value)))
+        if not values:
+            warnings.warn(f'Could not set {par.name} since no allowed values')
+            return
         if par.name in self.outbound_params:
-            print(f'Param {par.name} no longer conflicting')
-            self.outbound_params.remove(par.name)
+            self.conflict_solved(par)
+        if value is None:
+            value = getattr(self, par.name)
+        setattr(self, par.name, min(values, key=lambda x: abs(x-value)))
     
 
     @param.depends('object', watch=True)
