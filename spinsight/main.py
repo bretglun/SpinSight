@@ -966,24 +966,26 @@ class MRIsimulator(param.Parameterized):
         maxTI = self.TR - self.minTR + self.TI
         self.setParamBounds(self.param.TI, maxval=maxTI)
     
-
-    def resolveConflicts(self):
-        if not self.outbound_params:
-            return
-        if 'TR' in self.outbound_params:
-            warnings.warn('Resolving conflict: TR')
-            self.outbound_params.remove('TR')
-            tr = self.TR
-            self.param.TR.objects = param_values['TR']
-            add_to_pipeline(self.sequencePipeline, ['updateMinTR'])
-            self.TR = list(param_values['TR'].values())[-1] # max TR
-            self.set_closest(self.param.TR, tr) # Set back TR within (new) bounds
-        for par in ['TI', 'TE', 'pixelBandWidth']:
-            if par in self.outbound_params:
-                warnings.warn(f'Resolving conflict: {par}')
-                self.set_closest(self.param[par]) # Set back param within bounds
+    
+    def resolveConflicts(self, maxTR=False):
+        if maxTR:
+            self.outbound_params.add('TR')
         if self.outbound_params:
-            warnings.warn(f'Unresolved conflict: {self.outbound_params}')
+            for par in ['TR', 'TI', 'TE', 'pixelBandWidth']:
+                if par in self.outbound_params:
+                    value = getattr(self, par)
+                    if par=='TR' and maxTR:
+                        warnings.warn('Resolving conflict by maximizing TR')
+                        add_to_pipeline(self.sequencePipeline, ['updateMinTR'])
+                        self.TR = list(param_values['TR'].values())[-1]
+                    else:
+                        warnings.warn(f'Resolving conflict: {par}')
+                    self.set_closest(self.param[par], value) # Set back param within bounds
+        if self.outbound_params:
+            if not maxTR:
+                self.resolveConflicts(maxTR=True)
+            else:
+                warnings.warn(f'Unresolved conflict: {self.outbound_params}')
     
 
     def getMaxPrephaserArea(self, readAmp):
