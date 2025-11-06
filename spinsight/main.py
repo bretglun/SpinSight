@@ -219,7 +219,7 @@ param_values = {
     'TR': {tr + ' msec': float(tr) for tr in [format_float(tr, 2) for tr in 10.**np.linspace(0, 4, 500)]},
     'TE': {te + ' msec': float(te) for te in [format_float(te, 2) for te in 10.**np.linspace(0, 3, 500)]},
     'FA': {str(int(fa)) + '°': float(fa) for fa in range(1, 91)},
-    'TI': {ti + ' msec': float(ti) for ti in [format_float(ti, 2) for ti in 10.**np.linspace(0, 4, 500)]},
+    'TI': {ti + ' msec': float(ti) for ti in [format_float(ti, 2) for ti in 10.**np.linspace(1.6, 4, 500)]},
     'FOVP': {str(int(fov)) + ' mm': float(fov) for fov in range(100, 601)},
     'FOVF': {str(int(fov)) + ' mm': float(fov) for fov in range(100, 601)},
     'phaseOversampling': {str(int(po)) + '%': float(po) for po in range(0, 101)},
@@ -477,6 +477,10 @@ class MRIsimulator(param.Parameterized):
 
     
     def setParamBounds(self, par, minval=None, maxval=None):
+        if isinstance(minval, list):
+            minval = max(minval) if minval else None
+        if isinstance(maxval, list):
+            maxval = min(maxval) if maxval else None
         curval = getattr(self, par.name)
         if type(par) is param.parameters.Selector:
             return self.setParamDiscreteBounds(par, curval, minval, maxval)
@@ -493,15 +497,18 @@ class MRIsimulator(param.Parameterized):
 
     def setParamDiscreteBounds(self, par, curval, minval=None, maxval=None):
         values = param_values[par.name]
-        def inbound(val): return (minval is None or val >= minval) and (maxval is None or val <= maxval)
-        values = {k: v for k, v in values.items() if inbound(v)} if type(values) is dict else [v for v in values if inbound(v)]
+        if minval is None:
+            minval = min(values.values() if isinstance(values, dict) else values)
+        if maxval is None:
+            maxval = max(values.values() if isinstance(values, dict) else values)
+        values = {k: v for k, v in values.items() if minval <= v <= maxval} if isinstance(values, dict) else [v for v in values if minval <= v <= maxval]
         
-        if (type(values) is list and curval not in values) or (type(values) is dict and curval not in values.values()):
-            if minval > maxval:
+        if (isinstance(values, list) and curval not in values) or (isinstance(values, dict) and curval not in values.values()):
+            if (minval > maxval):
                 warnings.warn(f'{par.name} has illegal bounds, minval > maxval ({minval} > {maxval})')
             else:
                 warnings.warn(f'{par.name} current value {curval} is outside its new bounds [{minval}, {maxval}]')
-            if type(values) is dict:
+            if isinstance(values, dict):
                 values['outbound'] = curval
             else:
                 values = [curval]
@@ -945,7 +952,7 @@ class MRIsimulator(param.Parameterized):
         if self.sequence != 'Inversion Recovery':
             return
         maxTI = self.TR - self.minTR + self.TI
-        self.setParamBounds(self.param.TI, minval=40, maxval=maxTI)
+        self.setParamBounds(self.param.TI, maxval=maxTI)
     
 
     def resolveConflicts(self):
@@ -1077,10 +1084,9 @@ class MRIsimulator(param.Parameterized):
         # See paramBounds.tex for formulae relating to the readout board
         s = self.maxSlew
         A = 1e3 * self.matrixF / (self.FOVF * constants.GYRO) # readout area
-        minReadDurations = [.5] # msec (corresponds to a pixel BW of 2000 Hz)
         # min limit imposed by maximum gradient amplitude:
-        minReadDurations.append(A / self.maxAmp)
-        maxReadDurations = [1e3 / min(param_values['pixelBandWidth'].values())] # msec
+        minReadDurations = [A / self.maxAmp]
+        maxReadDurations = []
         if self.isGradientEcho():
             minPhaserTime = min([self.boards['phase']['objects'][typ][0]['dur_f'] for typ in ['phasers', 'rephasers']])
             readStartToTE = self.TE - self.boards['RF']['objects']['excitation']['dur_f']/2
@@ -1135,11 +1141,11 @@ class MRIsimulator(param.Parameterized):
         
         
     def updateMatrixFbounds(self):
-        minMatrixF, maxMatrixF = 16, 600
-        maxMatrixF = min(maxMatrixF, self.getMaxReadoutArea() * 1e-3 * self.FOVF * constants.GYRO)
+        minMatrixF = []
+        maxMatrixF = [self.getMaxReadoutArea() * 1e-3 * self.FOVF * constants.GYRO]
         if self.parameterStyle == 'Matrix and FOV BW':
-            minMatrixF = max(minMatrixF, self.pixelBandWidth * self.matrixF / list(self.param.pixelBandWidth.objects.values())[-1])
-            maxMatrixF = min(maxMatrixF, self.pixelBandWidth * self.matrixF / list(self.param.pixelBandWidth.objects.values())[0])
+            minMatrixF.append(self.pixelBandWidth * self.matrixF / list(self.param.pixelBandWidth.objects.values())[-1])
+            maxMatrixF.append(self.pixelBandWidth * self.matrixF / list(self.param.pixelBandWidth.objects.values())[0])
         self.setParamBounds(self.param.matrixF, minval=minMatrixF, maxval=maxMatrixF)
         self.updateVoxelFobjects()
         self.updateReconVoxelFobjects()
@@ -1154,27 +1160,25 @@ class MRIsimulator(param.Parameterized):
 
     def updateFOVFbounds(self):
         maxReadoutArea = self.getMaxReadoutArea()
-        minFOV = 1e3 * self.matrixF / (maxReadoutArea * constants.GYRO) if maxReadoutArea > 0 else 600
-        minFOV = max(minFOV, 100)
-        maxFOV = 600
+        minFOV = [1e3 * self.matrixF / (maxReadoutArea * constants.GYRO) if maxReadoutArea > 0 else np.inf]
+        maxFOV = []
         if self.parameterStyle == 'Voxelsize and Fat/water shift':
-            minFOV = max(minFOV, self.FOVF/self.matrixF * self.param.matrixF.objects[0])
-            minFOV = max(minFOV, self.FOVF/self.reconMatrixF * self.param.reconMatrixF.objects[0])
-            maxFOV = min(maxFOV, self.FOVF/self.matrixF * self.param.matrixF.objects[-1])
-            maxFOV = min(maxFOV, self.FOVF/self.reconMatrixF * self.param.reconMatrixF.objects[-1])
-        self.setParamBounds(self.param.FOVF, minFOV, maxFOV)
+            minFOV.append(self.FOVF/self.matrixF * self.param.matrixF.objects[0])
+            minFOV.append(self.FOVF/self.reconMatrixF * self.param.reconMatrixF.objects[0])
+            maxFOV.append(self.FOVF/self.matrixF * self.param.matrixF.objects[-1])
+            maxFOV.append(self.FOVF/self.reconMatrixF * self.param.reconMatrixF.objects[-1])
+        self.setParamBounds(self.param.FOVF, minval=minFOV, maxval=maxFOV)
 
 
     def updateFOVPbounds(self):
-        minFOV = (self.matrixP - 1) / (self.getMaxPhaserArea() * constants.GYRO * 2e-3)
-        minFOV = max(minFOV, 100)
-        maxFOV = 600
+        minFOV = [(self.matrixP - 1) / (self.getMaxPhaserArea() * constants.GYRO * 2e-3)]
+        maxFOV = []
         if self.parameterStyle == 'Voxelsize and Fat/water shift':
-            minFOV = max(minFOV, self.FOVP/self.matrixP * self.param.matrixP.objects[0])
-            minFOV = max(minFOV, self.FOVP/self.reconMatrixP * self.param.reconMatrixP.objects[0])
-            maxFOV = min(maxFOV, self.FOVP/self.matrixP * self.param.matrixP.objects[-1])
-            maxFOV = min(maxFOV, self.FOVP/self.reconMatrixP * self.param.reconMatrixP.objects[-1])
-        self.setParamBounds(self.param.FOVP, minFOV, maxFOV)
+            minFOV.append(self.FOVP/self.matrixP * self.param.matrixP.objects[0])
+            minFOV.append(self.FOVP/self.reconMatrixP * self.param.reconMatrixP.objects[0])
+            maxFOV.append(self.FOVP/self.matrixP * self.param.matrixP.objects[-1])
+            maxFOV.append(self.FOVP/self.reconMatrixP * self.param.reconMatrixP.objects[-1])
+        self.setParamBounds(self.param.FOVP, minval=minFOV, maxval=maxFOV)
 
 
     def updateFWshiftObjects(self):
@@ -1202,8 +1206,7 @@ class MRIsimulator(param.Parameterized):
 
 
     def updateSliceThicknessBounds(self):
-        minThks = [.5]
-        minThks.append(self.boards['RF']['objects']['excitation']['FWHM_f'] / (self.maxAmp * constants.GYRO))
+        minThks = [self.boards['RF']['objects']['excitation']['FWHM_f'] / (self.maxAmp * constants.GYRO)]
         if not self.isGradientEcho():
             minThks.append(self.boards['RF']['objects']['refocusing'][0]['FWHM_f'] / (self.maxAmp * constants.GYRO))
         if self.sequence=='Inversion Recovery':
@@ -1235,7 +1238,7 @@ class MRIsimulator(param.Parameterized):
         Be = self.boards['RF']['objects']['excitation']['FWHM_f']
         minThks.append(Be * d / (constants.GYRO * A)) # mm
         
-        self.setParamBounds(self.param.sliceThickness, max(minThks), 10.)
+        self.setParamBounds(self.param.sliceThickness, minval=minThks)
 
 
     def updateTurboFactorBounds(self):
