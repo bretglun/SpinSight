@@ -1,37 +1,34 @@
 [project]
 name = "spinsight"
-homepage = "https://github.com/bretglun/spinsight"
-version = "1.1.9"
+version = "1.2.0"
 description = "MR image simulator for teaching purposes"
-authors = [
-    {name = "Johan Berglund", email = "berglund.hpj@gmail.com"}
-]
-license = "GPL-3.0-or-later"
-readme = "README.md"
+authors = [{ name = "Johan Berglund", email = "johan.berglund@akademiska.se" }]
 requires-python = ">=3.10"
-
+readme = "README.md"
+license = "GPL-3.0-or-later"
 dependencies = [
-    "holoviews (>=1.18.0)",
-    "panel (>=1.3.7)",
-    "param (>=2.0.0)",
-    "numpy (>=1.26.3)",
-    "xarray (>=2023.10.1)",
-    "scipy (>=1.11.4)",
-    "darkdetect (>=0.8.0)",
-    "toml (>=0.10.2)",
-    "finufft (>=2.3.1)",
-    "mri-nufft (>=1.2.1)",
-    "svgpathtools (>=1.7.1)",
+    "darkdetect>=0.8.0",
+    "finufft>=2.4.1",
+    "holoviews>=1.21.0",
+    "mri-nufft>=1.2.1",
+    "numpy>=2.2.6",
+    "panel>=1.8.2",
+    "param>=2.2.1",
+    "scipy>=1.15.3",
+    "svgpathtools>=1.7.1",
+    "toml>=0.10.2",
+    "xarray>=2025.6.1",
 ]
+
+[project.urls]
+Homepage = "https://github.com/bretglun/spinsight"
 
 [project.scripts]
 spinsight = "spinsight.deploy:CLI"
 
-[project.optional-dependencies]
-dev = [
-    "pytest (>=8.3.2)",
-]
+[dependency-groups]
+dev = ["pytest>=8.3.2,<9"]
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
