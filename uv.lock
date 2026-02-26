@@ -1513,7 +1513,7 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
-dev = [{ name = "pytest", specifier = ">=8.3.2,<9" }]
+dev = [{ name = "pytest", specifier = ">=8.3.2" }]
 
 [[package]]
 name = "svgpathtools"

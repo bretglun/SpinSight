@@ -2095,8 +2095,9 @@ def infoString(name, value, textColor):
     return pn.indicators.String(default_color=textColor, name=name, font_size='12pt', title_size='12pt', value=value)
 
 
-def getApp(darkMode=True, settingsFilestem='', startTime=datetime.now()):
+def getApp(darkMode=True, settingsFilestem='', startTime=datetime.now(), lazySliders=False):
     pn.config.theme = 'dark' if darkMode else 'default'
+    pn.config.throttled = lazySliders
     textColor = 'white' if darkMode else 'black' # needed for pn.indicators.Number which doesn't respect pn.config.theme
 
     settingsFile = Path(settingsFilestem).with_suffix('.toml') if bool(settingsFilestem) else Path('')
