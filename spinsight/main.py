@@ -2103,7 +2103,7 @@ def getApp(darkMode=True, settingsFilestem='', startTime=datetime.now(), lazySli
     settingsFile = Path(settingsFilestem).with_suffix('.toml') if bool(settingsFilestem) else Path('')
 
     simulator = MRIsimulator(name='')
-    title = '# SpinSight MRI simulator'
+    title = 'SpinSight MRI simulator'
     author = '*Written by [Johan Berglund](mailto:johan.berglund@akademiska.se), Ph.D.*'
     try:
         version = f', v {toml.load(Path(__file__).parent.parent / "pyproject.toml")["project"]["version"]}'
@@ -2148,7 +2148,6 @@ def getApp(darkMode=True, settingsFilestem='', startTime=datetime.now(), lazySli
     dashboard = pn.Column(
         pn.Row(
             pn.Column(
-                pn.pane.Markdown(title), 
                 pn.Row(
                     pn.Column(
                         pn.Row(loadButton, saveButton), 
@@ -2178,6 +2177,16 @@ def getApp(darkMode=True, settingsFilestem='', startTime=datetime.now(), lazySli
         dmapSequence, 
         pn.Column(pn.pane.Markdown(author),
                   pn.pane.Markdown(f'*(server started {startTime: %Y-%m-%d %H:%M:%S}{version})*', styles={'color': 'gray'}),
-                  height=10)
+                  height=10),
+        sizing_mode='stretch_both'
     )
-    return dashboard
+
+    template = pn.template.FastListTemplate(
+        title=title,
+        theme='dark' if darkMode else 'default',
+        theme_toggle=False,
+        header_background='#262626',
+        modal=[pn.Column()]
+    )
+    template.main.append(dashboard)
+    return template
