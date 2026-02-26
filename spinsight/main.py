@@ -2097,6 +2097,7 @@ def infoString(name, value, textColor):
 
 def getApp(darkMode=True, settingsFilestem='', startTime=datetime.now()):
     pn.config.theme = 'dark' if darkMode else 'default'
+    pn.config.throttled = True
     textColor = 'white' if darkMode else 'black' # needed for pn.indicators.Number which doesn't respect pn.config.theme
 
     settingsFile = Path(settingsFilestem).with_suffix('.toml') if bool(settingsFilestem) else Path('')
