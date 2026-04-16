@@ -8,10 +8,7 @@ import scipy
 from pathlib import Path
 import toml
 import xarray as xr
-from spinsight import constants
-from spinsight import sequence
-from spinsight import recon
-from spinsight import load_phantom
+from spinsight import constants, sequence, recon, load_phantom
 from bokeh.models import HoverTool, CustomJS, ColumnDataSource
 from functools import partial
 from tqdm import tqdm
@@ -81,6 +78,25 @@ def kspace_for_shape(shape, k):
     return {'polygon': kspace_for_polygon, 'ellipse': kspace_for_ellipse}[shape['type']](shape, k)
 
 
+def get_support(shapes):
+    minimum, maximum = [np.inf, np.inf], [-np.inf, -np.inf]
+    for shape in (shape for shapelist in shapes.values() for shape in shapelist):
+        for dim in range(2):
+            if shape['type']=='polygon':
+                shape_min = shape['vertices'][dim].min()
+                shape_max = shape['vertices'][dim].max()
+            else:
+                half_extent = np.sqrt((shape['radius'][dim] * np.cos(shape['angle']))**2 + 
+                                      (shape['radius'][-1-dim] * np.sin(shape['angle']))**2)
+                shape_min = shape['pos'][dim] - half_extent
+                shape_max = shape['pos'][dim] + half_extent
+            minimum[dim] = min(minimum[dim], shape_min)
+            maximum[dim] = max(maximum[dim], shape_max)
+    support = tuple(maximum[dim] - minimum[dim] for dim in range(2))
+    center = tuple(minimum[dim] + support[dim]/2 for dim in range(2))
+    return {'support': support, 'center': center}
+
+
 def load_phantom_toml(name):
     path = Path(__file__).parent.resolve() / 'phantoms' / name
     with open(Path(path / name).with_suffix('.toml'), 'r') as f:
@@ -88,7 +104,9 @@ def load_phantom_toml(name):
     phantom['name'] = name
     phantom['path'] = path
     phantom['file'] = Path(path / phantom['file'])
-    phantom['matrix'] = tuple(phantom['matrix'])    
+    phantom['matrix'] = tuple(phantom['matrix'])
+    phantom['shapes'] = load_phantom.load(phantom['file'])
+    phantom.update(get_support(phantom['shapes']))
     return phantom
 
 
@@ -541,7 +559,7 @@ class MRIsimulator(param.Parameterized):
                 self.acquisitionPipeline[f] = True
             for f in self.reconPipeline:
                 self.reconPipeline[f] = True
-            minFOV = self.phantom['FOV']
+            minFOV = self.phantom['support']
             if self.frequencyDirection=='left-right':
                 minFOV = minFOV.reverse()
             self.FOVF = max(self.FOVF, minFOV[0])
@@ -1277,9 +1295,8 @@ class MRIsimulator(param.Parameterized):
 
     def loadPhantom(self):
         print(f'Preparing k-space for "{self.object}" phantom (might take a few minutes on first use)')
-        self.phantom['kAxes'] = [recon.getKaxis(self.phantom['matrix'][dim], self.phantom['FOV'][dim]/self.phantom['matrix'][dim]) for dim in range(len(self.phantom['matrix']))]
-        shapes = load_phantom.load(self.phantom['file'])
-        self.tissues = set(shapes.keys())
+        self.phantom['kAxes'] = [recon.getKaxis(self.phantom['matrix'][dim], self.phantom['support'][dim]/self.phantom['matrix'][dim]) for dim in range(len(self.phantom['matrix']))]
+        self.tissues = set(self.phantom['shapes'].keys())
         if self.phantom['referenceTissue'] not in self.tissues:
             raise Exception('Reference tissue "{}" not found in phantom "{}"'.format(self.phantom['referenceTissue'], self.object))
         self.phantom['kspace'] = {}
@@ -1292,8 +1309,9 @@ class MRIsimulator(param.Parameterized):
             if tissue not in self.phantom['kspace']:
                 self.phantom['kspace'][tissue] = np.zeros((self.phantom['matrix']), dtype=complex)
                 k = np.array(np.meshgrid(self.phantom['kAxes'][0], self.phantom['kAxes'][1])).T
-                for shape in tqdm(shapes[tissue], desc=f'"{tissue}" shapes', leave=False):
+                for shape in tqdm(self.phantom['shapes'][tissue], desc=f'"{tissue}" shapes', leave=False):
                     self.phantom['kspace'][tissue] += kspace_for_shape(shape, k)
+                self.phantom['kspace'][tissue] *= np.exp(2j*np.pi * np.dot(k, self.phantom['center'])) # offset FOV
                 np.save(file, self.phantom['kspace'][tissue])
         self.setup_frequency_encoding() # frequency oversampling is adapted to phantom FOV for efficiency
 
@@ -1389,12 +1407,12 @@ class MRIsimulator(param.Parameterized):
         if self.isCartesian():
             nSamples = self.matrixF
             # at least Nyquist sampling wrt phantom if loaded
-            if hasattr(self, 'phantom') and (self.FOV[self.freqDir] < self.phantom['FOV'][self.freqDir]):
-                nSamples = int(np.ceil(self.phantom['FOV'][self.freqDir] / voxelSize))
+            if hasattr(self, 'phantom') and (self.FOV[self.freqDir] < self.phantom['support'][self.freqDir]):
+                nSamples = int(np.ceil(self.phantom['support'][self.freqDir] / voxelSize))
         elif self.isRadial():
             FOV = max(self.FOVF, self.FOVP)
             if hasattr(self, 'phantom'):
-                FOV = max(max(self.phantom['FOV']), FOV)
+                FOV = max(max(self.phantom['support']), FOV)
             nSamples = int(np.ceil(FOV / voxelSize * self.radialFOVoversampling))
         self.kReadAxis = recon.getKaxis(nSamples, voxelSize)
     
@@ -1457,7 +1475,7 @@ class MRIsimulator(param.Parameterized):
         elif self.isRadial():
             for dim in range(2):
                 voxelSize = self.FOV[dim]/self.matrix[dim]
-                matrix = int(np.ceil(max(self.FOV[dim], self.phantom['FOV'][dim]) / voxelSize))
+                matrix = int(np.ceil(max(self.FOV[dim], self.phantom['support'][dim]) / voxelSize))
                 self.kGridAxes[dim] = recon.getKaxis(matrix, voxelSize)
             self.plainKspaceComps = recon.resampleKspace(self.phantom, self.kSamples)
         
