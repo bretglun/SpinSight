@@ -4,14 +4,12 @@ import panel as pn
 import param
 import numpy as np
 import math
-import scipy
 from pathlib import Path
 import toml
 import xarray as xr
-from spinsight import constants, sequence, recon, load_phantom
+from spinsight import constants, sequence, recon, phantom
 from bokeh.models import HoverTool, CustomJS, ColumnDataSource
 from functools import partial
-from tqdm import tqdm
 import warnings
 from datetime import datetime
 
@@ -36,89 +34,6 @@ def pixelBW2FOVBW(pixelBW, matrixF):
 def FOVBW2pixelBW(FOVBW, matrixF):
     ''' Get pixel bandwidth [Hz/pixel] from FOV bandwidth [±kHz] and read direction matrix'''
     return FOVBW / matrixF * 2e3
-
-
-def kspace_for_polygon(poly, k):
-    # analytical 2D Fourier transform of polygon (see https://cvil.ucsd.edu/wp-content/uploads/2016/09/Realistic-analytical-polyhedral-MRI-phantoms.pdf)
-    r = poly['vertices'] # position vectors of vertices Ve
-    Lv = np.roll(r, -1, axis=1) - r # edge vectors
-    L = np.linalg.norm(Lv, axis=0) # edge lengths
-    t = Lv/L # edge unit vectors
-    n = np.array([-t[1,:], t[0,:]]) # normals to tangents (pointing out from polygon)
-    rc = r + Lv / 2 # position vector for center of edge
-
-    ksp = np.sum(L * np.dot(k, n) * np.sinc(np.dot(k, Lv)) * np.exp(-2j*np.pi * np.dot(k, rc)), axis=-1)
-    
-    kcenter = np.all(k==0, axis=-1)
-    ksp[kcenter] = load_phantom.polygonArea(r)
-    notkcenter = np.logical_not(kcenter)
-    ksp[notkcenter] *= 1j / (2 * np.pi * np.linalg.norm(k[notkcenter], axis=-1)**2)
-    return ksp
-
-
-def rotation_matrix(theta):
-    cos, sin = np.cos(theta), np.sin(theta)
-    return np.array([[cos, -sin], [sin, cos]])
-
-
-def kspace_for_ellipse(ellipse, k):
-    # scaled and rotated radius vector:
-    r = np.linalg.norm(k @ rotation_matrix(np.radians(ellipse['angle'])) @ np.diag(ellipse['radius']), axis=-1)
-    ksp = np.empty(k.shape[:-1], dtype=complex)
-    ksp[r!=0] = scipy.special.j1(2 * np.pi * r[r!=0]) / r[r!=0] # Bessel function of first kind, first order
-    ksp[r==0] = np.pi
-    ksp *= np.prod(ellipse['radius']) # scale intensity
-    ksp *= np.exp(-2j*np.pi * np.dot(k, ellipse['pos'])) # translate
-    if ellipse['negative']:
-        return -ksp
-    return ksp
-
-
-def kspace_for_shape(shape, k):
-    return {'polygon': kspace_for_polygon, 'ellipse': kspace_for_ellipse}[shape['type']](shape, k)
-
-
-def get_support(shapes):
-    minimum, maximum = [np.inf, np.inf], [-np.inf, -np.inf]
-    for shape in (shape for shapelist in shapes.values() for shape in shapelist):
-        for dim in range(2):
-            if shape['type']=='polygon':
-                shape_min = shape['vertices'][dim].min()
-                shape_max = shape['vertices'][dim].max()
-            else:
-                half_extent = np.sqrt((shape['radius'][dim] * np.cos(shape['angle']))**2 + 
-                                      (shape['radius'][-1-dim] * np.sin(shape['angle']))**2)
-                shape_min = shape['pos'][dim] - half_extent
-                shape_max = shape['pos'][dim] + half_extent
-            minimum[dim] = min(minimum[dim], shape_min)
-            maximum[dim] = max(maximum[dim], shape_max)
-    support = tuple(maximum[dim] - minimum[dim] for dim in range(2))
-    center = tuple(minimum[dim] + support[dim]/2 for dim in range(2))
-    return {'support': support, 'center': center}
-
-
-def load_phantom_dict(name, min_voxelsize):
-    path = Path(__file__).parent.resolve() / 'phantoms' / name
-    phantom = {'name': name, 'path': path}
-    for suffix in ['.toml', '.svg']:
-        file = Path(path / name).with_suffix(suffix)
-        if file.is_file():
-            phantom['file'] = file
-    if 'file' not in phantom:
-        raise ValueError(f'Phantom {name}.svg/toml not found at {path}')
-    phantom['shapes'] = load_phantom.load(phantom['file'])
-    phantom.update(get_support(phantom['shapes']))
-    phantom['matrix'] = tuple(int(fov/min_voxelsize/2)*2+1 for fov in phantom['support']) # assert odd to sample k-space center
-    return phantom
-
-
-def get_phantom_list():
-    phantoms = []
-    phantom_path = Path(__file__).parent.resolve() / 'phantoms'
-    for dir in phantom_path.iterdir():
-        if dir.is_dir() and any(Path(dir / dir.name).with_suffix(suffix).is_file() for suffix in ['.toml', '.svg']):
-            phantoms.append(dir.name)
-    return phantoms
 
 
 def getT2w(component, timeAfterExcitation, timeRelativeInphase, B0):
@@ -305,6 +220,8 @@ class MRIsimulator(param.Parameterized):
     doZerofill = param.Boolean(default=True, precedence=4, label='Zerofill')
 
     def __init__(self, **params):
+        self._initialized = False
+        
         super().__init__(**params)
 
         self.init_bounds()
@@ -382,7 +299,6 @@ class MRIsimulator(param.Parameterized):
             ]}
         
         self.acquisitionPipeline = {f: True for f in [
-            'loadPhantom', 
             'sampleKspace', 
             'updateSamplingTime', 
             'modulateKspace', 
@@ -418,12 +334,14 @@ class MRIsimulator(param.Parameterized):
         self.FOV = [None]*2
         self.matrix = [None]*2
         self.kGridAxes = [None]*2
-        
+
         self.runSequencePipeline()
+
+        self._initialized = True
 
 
     def init_bounds(self):
-        self.param.object.objects = get_phantom_list()
+        self.param.object.objects = phantom.get_phantom_names()
         self.param.fieldStrength.objects=[1.5, 3.0]
         self.param.parameterStyle.objects=['Matrix and Pixel BW', 'Voxelsize and Fat/water shift', 'Matrix and FOV BW']
         self.param.frequencyDirection.objects=constants.DIRECTIONS.keys()
@@ -557,15 +475,17 @@ class MRIsimulator(param.Parameterized):
     def _watch_object(self):
         if hasattr(self, 'phantom') and self.phantom['name']==self.object:
             return
-        self.phantom = load_phantom_dict(self.object, self.min_voxelsize)
+        self.phantom = phantom.load(self.object, self.min_voxelsize)
+        add_to_pipeline(self.sequencePipeline, ['setupReadouts'])
+        self.acquisitionPipeline = {f: True for f in self.acquisitionPipeline}
+        self.reconPipeline = {f: True for f in self.reconPipeline}
+        self.tissues = list(self.phantom['shapes'].keys())
+        self.param.referenceTissue.objects = self.tissues
+        self.referenceTissue = self.tissues[0]
+        minFOV = self.phantom['support']
+        if self.frequencyDirection=='left-right':
+            minFOV = minFOV.reverse()
         with param.parameterized.batch_call_watchers(self):
-            for f in self.acquisitionPipeline:
-                self.acquisitionPipeline[f] = True
-            for f in self.reconPipeline:
-                self.reconPipeline[f] = True
-            minFOV = self.phantom['support']
-            if self.frequencyDirection=='left-right':
-                minFOV = minFOV.reverse()
             self.FOVF = max(self.FOVF, minFOV[0])
             self.FOVP = max(self.FOVP, minFOV[1])
     
@@ -930,7 +850,7 @@ class MRIsimulator(param.Parameterized):
     @param.depends('referenceTissue', watch=True)
     def _watch_referenceTissue(self):
         add_to_pipeline(self.acquisitionPipeline, ['modulateKspace', 'compileKspace'])
-        if not self.loading_phantom:
+        if self._initialized:
             self.runAcquisitionPipeline()
     
 
@@ -1302,31 +1222,6 @@ class MRIsimulator(param.Parameterized):
         # EPIfactor must be odd for turbo spin echo (GRASE)
         if self.turboFactor > 1:
             self.param.EPIfactor.objects = [v for v in self.param.EPIfactor.objects if v%2]
-
-
-    def loadPhantom(self):
-        self.loading_phantom = True
-        print(f'Preparing k-space for "{self.object}" phantom (might take a few minutes on first use)')
-        self.phantom['kAxes'] = [recon.getKaxis(self.phantom['matrix'][dim], self.phantom['support'][dim]/self.phantom['matrix'][dim]) for dim in range(len(self.phantom['matrix']))]
-        self.tissues = list(self.phantom['shapes'].keys())
-        self.param.referenceTissue.objects = self.tissues
-        self.referenceTissue = self.tissues[0]
-        self.phantom['kspace'] = {}
-        for tissue in tqdm(self.tissues, desc='Tissues'):
-            file = Path(self.phantom['path'] / tissue).with_suffix('.npy')
-            if file.is_file():
-                ksp = np.load(file)
-                if ksp.shape == self.phantom['matrix']:
-                    self.phantom['kspace'][tissue] = ksp
-            if tissue not in self.phantom['kspace']:
-                self.phantom['kspace'][tissue] = np.zeros((self.phantom['matrix']), dtype=complex)
-                k = np.array(np.meshgrid(self.phantom['kAxes'][0], self.phantom['kAxes'][1])).T
-                for shape in tqdm(self.phantom['shapes'][tissue], desc=f'"{tissue}" shapes', leave=False):
-                    self.phantom['kspace'][tissue] += kspace_for_shape(shape, k)
-                self.phantom['kspace'][tissue] *= np.exp(2j*np.pi * np.dot(k, self.phantom['center'])) # offset FOV
-                np.save(file, self.phantom['kspace'][tissue])
-        self.setup_frequency_encoding() # frequency oversampling is adapted to phantom FOV for efficiency
-        self.loading_phantom = False
 
 
     def get_min_readtrain_spacing(self):
