@@ -97,13 +97,15 @@ def get_support(shapes):
     return {'support': support, 'center': center}
 
 
-def load_phantom_toml(name, min_voxelsize):
+def load_phantom_dict(name, min_voxelsize):
     path = Path(__file__).parent.resolve() / 'phantoms' / name
-    with open(Path(path / name).with_suffix('.toml'), 'r') as f:
-        phantom = toml.load(f)
-    phantom['name'] = name
-    phantom['path'] = path
-    phantom['file'] = Path(path / phantom['file'])
+    phantom = {'name': name, 'path': path}
+    for suffix in ['.toml', '.svg']:
+        file = Path(path / name).with_suffix(suffix)
+        if file.is_file():
+            phantom['file'] = file
+    if 'file' not in phantom:
+        raise ValueError(f'Phantom {name}.svg/toml not found at {path}')
     phantom['shapes'] = load_phantom.load(phantom['file'])
     phantom.update(get_support(phantom['shapes']))
     phantom['matrix'] = tuple(int(fov/min_voxelsize/2)*2+1 for fov in phantom['support']) # assert odd to sample k-space center
@@ -114,7 +116,7 @@ def get_phantom_list():
     phantoms = []
     phantom_path = Path(__file__).parent.resolve() / 'phantoms'
     for dir in phantom_path.iterdir():
-        if dir.is_dir() and Path(dir / dir.name).with_suffix('.toml').is_file():
+        if dir.is_dir() and any(Path(dir / dir.name).with_suffix(suffix).is_file() for suffix in ['.toml', '.svg']):
             phantoms.append(dir.name)
     return phantoms
 
@@ -211,18 +213,18 @@ def format_float(value, sigfigs=2):
 
 
 def format_scantime(milliseconds):
-        total_seconds = milliseconds / 1000
-        minutes = int(total_seconds // 60)
-        seconds = int(total_seconds % 60)
+    total_seconds = milliseconds / 1000
+    minutes = int(total_seconds // 60)
+    seconds = int(total_seconds % 60)
 
-        if minutes > 0:
-            return f'{minutes} min {seconds} sec'
-        elif seconds >= 10:
-            return f'{seconds} sec'
-        elif seconds > 0:
-            return f'{total_seconds:.1f} sec'
-        else:
-            return f'{int(milliseconds)} msec'
+    if minutes > 0:
+        return f'{minutes} min {seconds} sec'
+    elif seconds >= 10:
+        return f'{seconds} sec'
+    elif seconds > 0:
+        return f'{total_seconds:.1f} sec'
+    else:
+        return f'{int(milliseconds)} msec'
 
 
 param_values = {
@@ -555,7 +557,7 @@ class MRIsimulator(param.Parameterized):
     def _watch_object(self):
         if hasattr(self, 'phantom') and self.phantom['name']==self.object:
             return
-        self.phantom = load_phantom_toml(self.object, self.min_voxelsize)
+        self.phantom = load_phantom_dict(self.object, self.min_voxelsize)
         with param.parameterized.batch_call_watchers(self):
             for f in self.acquisitionPipeline:
                 self.acquisitionPipeline[f] = True
