@@ -40,7 +40,7 @@ def get_hexcolor(attrib, styles):
     else:
         return None
     if 'fill' in style:
-        return style['fill'].strip('#')
+        return style['fill']
     return None
 
 
@@ -97,20 +97,33 @@ def kspace_for_shape(shape, k):
     return {'polygon': kspace_for_polygon, 'ellipse': kspace_for_ellipse}[shape['type']](shape, k)
 
 
+def colormap_shapes(shapes, colormap_file):
+    if not colormap_file.is_file():
+        raise FileNotFoundError(f'Expected colormap file at {colormap_file}')
+    with open(colormap_file, 'r') as f:
+        colormap = toml.load(f)
+    for hexcolor in list(shapes.keys()):
+        colored_shapes = shapes.pop(hexcolor)
+        if hexcolor in colormap:
+            tissue = colormap[hexcolor]
+            if tissue in constants.TISSUES:
+                shapes[tissue] = colored_shapes
+            else:
+                warnings.warn(f'Tissue "{tissue}" from colormap {colormap_file} not defined in constants.py')
+        else:
+            warnings.warn(f'Tissue color {hexcolor} in phantom not defined in colormap {colormap_file}')
+    return shapes
+
+
 # reads SVG file and returns polygon lists
 def load_shapes_svg(file):
-    hexcolors = [v['hexcolor'] for v in constants.TISSUES.values() if 'hexcolor' in v]
     styles = get_styles(file)
     paths, attributes = svgpathtools.svg2paths(file)
     shapes = {}
     for path, attrib in zip(paths, attributes):
         hexcolor = get_hexcolor(attrib, styles)
-        if hexcolor not in hexcolors:
-            warnings.warn('No tissue corresponding to hexcolor "{}" for path with id "{}"'.format(hexcolor, attrib['id']))
-            continue
-        tissue = [tissue for tissue, spec in constants.TISSUES.items() if 'hexcolor' in spec and spec['hexcolor']==hexcolor][0]
-        if tissue not in shapes:
-            shapes[tissue] = []
+        if hexcolor not in shapes:
+            shapes[hexcolor] = []
         transform = svgpathtools.parser.parse_transform(attrib['transform'] if 'transform' in attrib else '')
         subpaths = path.continuous_subpaths()
         polys = []
@@ -122,8 +135,8 @@ def load_shapes_svg(file):
             # invert polygons to make total area positive
             for poly in polys:
                 poly['vertices'] = np.flip(poly['vertices'], axis=1)
-        shapes[tissue] += polys
-    return shapes
+        shapes[hexcolor] += polys
+    return colormap_shapes(shapes, file.with_suffix('.toml'))
 
 
 def load_shapes_toml(file):
@@ -137,7 +150,11 @@ def load_shapes_toml(file):
 
 
 def load_shapes(file):
-    return {'.svg': load_shapes_svg, '.toml': load_shapes_toml}[file.suffix](file)
+    match file.suffix:
+        case '.svg':
+            return load_shapes_svg(file)
+        case '.toml':
+            return load_shapes_toml(file)
 
 
 def get_support(shapes):
