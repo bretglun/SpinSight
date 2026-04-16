@@ -1,2 +1,1 @@
 file = "Shepp-Logan_shapes.toml"
-referenceTissue = 'SL_gray' # for SNR calculations

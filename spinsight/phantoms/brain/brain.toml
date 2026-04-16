@@ -1,2 +1,1 @@
 file = "brain.svg"
-referenceTissue = 'gray' # for SNR calculations

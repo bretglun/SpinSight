@@ -287,6 +287,7 @@ class MRIsimulator(param.Parameterized):
     imageType = param.ObjectSelector(default='Magnitude', label='Image type')
     showFOV = param.Boolean(default=False, label='Show FOV')
     noiseGain = param.Number(default=3.)
+    referenceTissue = param.ObjectSelector(label='Reference tissue')
     SNR = param.Number(label='SNR')
     referenceSNR = param.Number(default=1, label='Reference SNR')
     relativeSNR = param.Number(label='Relative SNR [%]')
@@ -924,6 +925,13 @@ class MRIsimulator(param.Parameterized):
         self.set_closest(self.param.reconVoxelP, self.FOVP/self.reconMatrixP)
 
 
+    @param.depends('referenceTissue', watch=True)
+    def _watch_referenceTissue(self):
+        add_to_pipeline(self.acquisitionPipeline, ['modulateKspace', 'compileKspace'])
+        if not self.loading_phantom:
+            self.runAcquisitionPipeline()
+    
+
     def isGradientEcho(self):
         return 'Gradient Echo' in self.sequence
 
@@ -1295,11 +1303,12 @@ class MRIsimulator(param.Parameterized):
 
 
     def loadPhantom(self):
+        self.loading_phantom = True
         print(f'Preparing k-space for "{self.object}" phantom (might take a few minutes on first use)')
         self.phantom['kAxes'] = [recon.getKaxis(self.phantom['matrix'][dim], self.phantom['support'][dim]/self.phantom['matrix'][dim]) for dim in range(len(self.phantom['matrix']))]
-        self.tissues = set(self.phantom['shapes'].keys())
-        if self.phantom['referenceTissue'] not in self.tissues:
-            raise Exception('Reference tissue "{}" not found in phantom "{}"'.format(self.phantom['referenceTissue'], self.object))
+        self.tissues = list(self.phantom['shapes'].keys())
+        self.param.referenceTissue.objects = self.tissues
+        self.referenceTissue = self.tissues[0]
         self.phantom['kspace'] = {}
         for tissue in tqdm(self.tissues, desc='Tissues'):
             file = Path(self.phantom['path'] / tissue).with_suffix('.npy')
@@ -1315,6 +1324,7 @@ class MRIsimulator(param.Parameterized):
                 self.phantom['kspace'][tissue] *= np.exp(2j*np.pi * np.dot(k, self.phantom['center'])) # offset FOV
                 np.save(file, self.phantom['kspace'][tissue])
         self.setup_frequency_encoding() # frequency oversampling is adapted to phantom FOV for efficiency
+        self.loading_phantom = False
 
 
     def get_min_readtrain_spacing(self):
@@ -1532,7 +1542,7 @@ class MRIsimulator(param.Parameterized):
                     T2w = getT2w(component, self.timeAfterExcitation, timeRelativeInphase, self.fieldStrength)
                     dephasing = np.exp(2j*np.pi * constants.GYRO * self.fieldStrength * resonance['shift'] * timeRelativeInphase * 1e-3)
                     self.kspaceComps[tissue + component] = self.plainKspaceComps[tissue] * dephasing * T2w
-            if tissue==self.phantom['referenceTissue']:
+            if tissue==self.referenceTissue:
                 self.decayedSignal = self.signal * np.take(np.take(T2w, np.argmin(np.abs(self.kReadAxis)), axis=self.freqDir), np.argmin(np.abs(self.kPhaseAxis)))
     
     
@@ -1542,7 +1552,7 @@ class MRIsimulator(param.Parameterized):
 
 
     def updatePDandT1w(self):
-        self.PDandT1w = {component: getPDandT1w(component, self.sequence, self.TR, self.TE, self.TI, self.FA, self.fieldStrength) for component in self.tissues.union(set(constants.FATRESONANCES.keys()))}
+        self.PDandT1w = {component: getPDandT1w(component, self.sequence, self.TR, self.TE, self.TI, self.FA, self.fieldStrength) for component in set(self.tissues).union(set(constants.FATRESONANCES.keys()))}
 
 
     def setReferenceSNR(self, event=None):
@@ -1588,7 +1598,7 @@ class MRIsimulator(param.Parameterized):
                     tissue = component
                     ratio = 1.0
                 self.measuredkspace += self.kspaceComps[component] * self.PDandT1w[tissue] * ratio
-        self.updateSNR(self.decayedSignal * np.abs(self.PDandT1w[self.phantom['referenceTissue']]))
+        self.updateSNR(self.decayedSignal * np.abs(self.PDandT1w[self.referenceTissue]))
         self.updateScantime()
         add_to_pipeline(self.sequencePlotPipeline, ['renderSignalBoard'])
 
@@ -2185,6 +2195,7 @@ def getApp(darkMode=True, settingsFilestem='', startTime=datetime.now(), lazySli
                 pn.Column(
                     # simulator.param.imageType, 
                     pn.Row(resetSNRbutton, simulator.param.showFOV), 
+                    simulator.param.referenceTissue, 
                     infoPane
                 )
             ), 
