@@ -142,6 +142,7 @@ def load_shapes_svg(file):
 def load_shapes_toml(file):
     with open(file, 'r') as f:
         shapes = toml.load(f)
+    shapes = {k.replace('_', ' '): v for k, v in shapes.items()}
     for ellipse in (shape for lst in shapes.values() for shape in lst):
         if ellipse['type']=='ellipse':
             for attr in ['pos', 'radius']:
@@ -185,7 +186,7 @@ def get_kaxes(matrix, support):
 def get_kspace(kgrid, shapes, path, matrix, center):
     kspace = {}
     for tissue in tqdm(shapes.keys(), desc='Tissues'):
-        file = Path(path / tissue).with_suffix('.npy')
+        file = Path(path / tissue.replace(' ', '_')).with_suffix('.npy')
         if file.is_file():
             ksp = np.load(file)
             if ksp.shape == matrix:
