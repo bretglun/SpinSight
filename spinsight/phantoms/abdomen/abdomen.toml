@@ -1,3 +1,2 @@
 file = "abdomen.svg"
-matrix = [513, 641] # odd matrix to ensure kspace center is sampled (not required)
 referenceTissue = 'spleen' # for SNR calculations

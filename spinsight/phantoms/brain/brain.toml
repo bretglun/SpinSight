@@ -1,3 +1,2 @@
 file = "brain.svg"
-matrix = [601, 601] # odd matrix to ensure kspace center is sampled (not required)
 referenceTissue = 'gray' # for SNR calculations

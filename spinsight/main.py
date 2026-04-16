@@ -97,16 +97,16 @@ def get_support(shapes):
     return {'support': support, 'center': center}
 
 
-def load_phantom_toml(name):
+def load_phantom_toml(name, min_voxelsize):
     path = Path(__file__).parent.resolve() / 'phantoms' / name
     with open(Path(path / name).with_suffix('.toml'), 'r') as f:
         phantom = toml.load(f)
     phantom['name'] = name
     phantom['path'] = path
     phantom['file'] = Path(path / phantom['file'])
-    phantom['matrix'] = tuple(phantom['matrix'])
     phantom['shapes'] = load_phantom.load(phantom['file'])
     phantom.update(get_support(phantom['shapes']))
+    phantom['matrix'] = tuple(int(fov/min_voxelsize/2)*2+1 for fov in phantom['support']) # assert odd to sample k-space center
     return phantom
 
 
@@ -247,6 +247,7 @@ class MRIsimulator(param.Parameterized):
     object = param.ObjectSelector(default='brain', label='Phantom object')
     fieldStrength = param.ObjectSelector(default=1.5, label='B0 field strength [T]')
     parameterStyle = param.ObjectSelector(default='Matrix and Pixel BW', label='Parameter Style')
+    min_voxelsize = param.Number(default=0.5) # [mm] limit on phantom resolution (to limit computation time)
     
     FatSat = param.Boolean(default=False, label='Fat saturation')
     TR = param.Selector(default=10000, label='TR')
@@ -553,7 +554,7 @@ class MRIsimulator(param.Parameterized):
     def _watch_object(self):
         if hasattr(self, 'phantom') and self.phantom['name']==self.object:
             return
-        self.phantom = load_phantom_toml(self.object)
+        self.phantom = load_phantom_toml(self.object, self.min_voxelsize)
         with param.parameterized.batch_call_watchers(self):
             for f in self.acquisitionPipeline:
                 self.acquisitionPipeline[f] = True
