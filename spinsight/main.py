@@ -2150,13 +2150,11 @@ def getApp(darkMode=True, settingsFilestem='', startTime=datetime.now(), lazySli
             pn.Column(
                 pn.Row(
                     pn.Column(
-                        pn.Row(loadButton, saveButton), 
-                        paramPanels['Settings'], 
                         pn.Row(sequenceButton, kSpaceButton), 
-                        paramPanels['Sequence']
+                        paramPanels['Sequence'],
+                        paramPanels['Contrast']
                     ), 
                     pn.Column(
-                        paramPanels['Contrast'],
                         paramPanels['Geometry']
                     )
                 )
@@ -2186,7 +2184,14 @@ def getApp(darkMode=True, settingsFilestem='', startTime=datetime.now(), lazySli
         theme='dark' if darkMode else 'default',
         theme_toggle=False,
         header_background='#262626',
-        modal=[pn.Column()]
+        modal=[pn.Column()],
+        collapsed_sidebar=True
     )
     template.main.append(dashboard)
+    template.sidebar.append(
+        pn.Column(
+            pn.Row(loadButton, saveButton), 
+            paramPanels['Settings'], 
+        )
+    )
     return template
