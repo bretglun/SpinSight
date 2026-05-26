@@ -9,7 +9,8 @@ import toml
 from pathlib import Path
 from tqdm import tqdm
 
-def polygonArea(coords):
+
+def polygon_area(coords):
     return np.sum((coords[0]-np.roll(coords[0], 1)) * (coords[1]+np.roll(coords[1], 1))) / 2
 
 
@@ -69,7 +70,7 @@ def kspace_for_polygon(poly, k):
     ksp = np.sum(L * np.dot(k, n) * np.sinc(np.dot(k, Lv)) * np.exp(-2j*np.pi * np.dot(k, rc)), axis=-1)
     
     kcenter = np.all(k==0, axis=-1)
-    ksp[kcenter] = polygonArea(r)
+    ksp[kcenter] = polygon_area(r)
     notkcenter = np.logical_not(kcenter)
     ksp[notkcenter] *= 1j / (2 * np.pi * np.linalg.norm(k[notkcenter], axis=-1)**2)
     return ksp
@@ -131,7 +132,7 @@ def load_shapes_svg(file):
             vertices = get_vertices(subpath)
             if vertices is not None:
                 polys.append({'type': 'polygon', 'vertices': transform_coordinates(vertices, transform)})
-        if sum([polygonArea(poly['vertices']) for poly in polys]) < 0:
+        if sum([polygon_area(poly['vertices']) for poly in polys]) < 0:
             # invert polygons to make total area positive
             for poly in polys:
                 poly['vertices'] = np.flip(poly['vertices'], axis=1)
@@ -177,10 +178,10 @@ def get_support(shapes):
     return support, center
 
 
-def get_kaxes(matrix, support):
-    kaxes = [recon.getKaxis(matrix[dim], support[dim]/matrix[dim]) for dim in range(len(matrix))]
-    kgrid = np.array(np.meshgrid(kaxes[0], kaxes[1])).T
-    return kaxes, kgrid
+def get_k_axes(matrix, support):
+    k_axes = [recon.get_k_axis(matrix[dim], support[dim]/matrix[dim]) for dim in range(len(matrix))]
+    kgrid = np.array(np.meshgrid(k_axes[0], k_axes[1])).T
+    return k_axes, kgrid
 
 
 def get_kspace(kgrid, shapes, path, matrix, center):
@@ -200,7 +201,7 @@ def get_kspace(kgrid, shapes, path, matrix, center):
     return kspace
 
 
-def load(name, min_voxelsize):
+def load(name, min_voxel_size):
     path = Path(__file__).parent.resolve() / 'phantoms' / name
     phantom = {'name': name, 'path': path}
     for suffix in ['.toml', '.svg']:
@@ -211,10 +212,10 @@ def load(name, min_voxelsize):
         raise ValueError(f'Phantom {name}.svg/toml not found at {path}')
     phantom['shapes'] = load_shapes(phantom['file'])
     phantom['support'], phantom['center'] = get_support(phantom['shapes'])
-    phantom['matrix'] = tuple(int(fov/min_voxelsize/2)*2+1 for fov in phantom['support']) # assert odd to sample k-space center
+    phantom['matrix'] = tuple(int(fov/min_voxel_size/2)*2+1 for fov in phantom['support']) # assert odd to sample k-space center
 
     print(f'Preparing k-space for "{name}" phantom (might take a few minutes on first use)')
-    phantom['kAxes'], kgrid = get_kaxes(phantom['matrix'], phantom['support'])
+    phantom['k_axes'], kgrid = get_k_axes(phantom['matrix'], phantom['support'])
     phantom['kspace'] = get_kspace(kgrid, phantom['shapes'], path, phantom['matrix'], phantom['center'])
     return phantom
 

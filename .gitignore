@@ -17,7 +17,7 @@
 *.gz
 *.pdf
 
-testSampling.py
+test_sampling.py
 notes.md
 TODO.md
 localReadme.md

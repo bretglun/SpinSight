@@ -42,17 +42,17 @@ def CLI():
         for host in hosts:
             print(f'* http://{host}:{options.port}')
     
-    darkMode = darkdetect.isDark()
+    dark_mode = darkdetect.isDark()
     if options.mode:
         if options.mode not in ['dark', 'light']:
             raise IOError('GUI mode must be either "dark" or "light"')
-        darkMode = options.mode == 'dark'
+        dark_mode = options.mode == 'dark'
 
     # serve application
     try:
         startTime = datetime.now()
-        def getApp(): return app.getApp(darkMode, options.settingsFile, startTime, options.lazySliders) # closure function
-        pn.serve(getApp, show=False, title='SpinSight', port=options.port, websocket_origin=[f'{host}:{options.port}' for host in hosts])
+        def get_app(): return app.get_app(dark_mode, options.settingsFile, startTime, options.lazySliders) # closure function
+        pn.serve(get_app, show=False, title='SpinSight', port=options.port, websocket_origin=[f'{host}:{options.port}' for host in hosts])
     except OSError as e:
         print(e)
         print(f'Could not serve SpinSight on port {options.port}. Perhaps try another port (specify using the -p flag)')

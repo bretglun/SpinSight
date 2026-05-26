@@ -3,35 +3,35 @@ import mrinufft
 import numpy as np
 
 
-def getKaxis(matrix, pixelSize, symmetric=True, fftshift=True):
+def get_k_axis(matrix, pixel_size, symmetric=True, fftshift=True):
     kax = np.fft.fftfreq(matrix)
     if symmetric and not (matrix%2): # half-pixel to make even matrix symmetric
         kax += 1/(2*matrix)
-    kax /= pixelSize
+    kax /= pixel_size
     if fftshift:
         kax = np.fft.fftshift(kax)
     return kax
 
 
-def getPixelShiftMatrix(matrix, shift):
-        phase = [np.fft.fftfreq(matrix[dim]) * shift[dim] * 2*np.pi for dim in range(len(matrix))]
-        return np.exp(1j * np.sum(np.stack(np.meshgrid(*phase[::-1])), axis=0))
+def get_pixel_shift_matrix(matrix, shift):
+    phase = [np.fft.fftfreq(matrix[dim]) * shift[dim] * 2*np.pi for dim in range(len(matrix))]
+    return np.exp(1j * np.sum(np.stack(np.meshgrid(*phase[::-1])), axis=0))
 
 
-def FFT(img, pixelShifts, sampleShifts):
-        halfPixelShift = getPixelShiftMatrix(img.shape, pixelShifts)
-        halfSampleShift = getPixelShiftMatrix(img.shape, sampleShifts)
-        kspace = np.fft.fft2(np.fft.ifftshift(img) / halfSampleShift)
-        ksp = np.fft.fftshift(kspace / halfPixelShift)
-        return ksp
+def FFT(img, pixel_shifts, sample_shifts):
+    half_pixel_shift = get_pixel_shift_matrix(img.shape, pixel_shifts)
+    half_sample_shift = get_pixel_shift_matrix(img.shape, sample_shifts)
+    kspace = np.fft.fft2(np.fft.ifftshift(img) / half_sample_shift)
+    ksp = np.fft.fftshift(kspace / half_pixel_shift)
+    return ksp
 
 
-def IFFT(ksp, pixelShifts, sampleShifts):
-        halfPixelShift = getPixelShiftMatrix(ksp.shape, pixelShifts)
-        halfSampleShift = getPixelShiftMatrix(ksp.shape, sampleShifts)
-        kspace = np.fft.ifftshift(ksp) * halfPixelShift
-        img = np.fft.fftshift(np.fft.ifft2(kspace) * halfSampleShift)
-        return img
+def IFFT(ksp, pixel_shifts, sample_shifts):
+    half_pixel_shift = get_pixel_shift_matrix(ksp.shape, pixel_shifts)
+    half_sample_shift = get_pixel_shift_matrix(ksp.shape, sample_shifts)
+    kspace = np.fft.ifftshift(ksp) * half_pixel_shift
+    img = np.fft.fftshift(np.fft.ifft2(kspace) * half_sample_shift)
+    return img
 
 
 def crop(arr, shape):
@@ -41,10 +41,10 @@ def crop(arr, shape):
     return arr
 
 
-def resampleKspaceCartesian(phantom, kAxes, shape=None):
+def resample_kspace_Cartesian(phantom, k_axes, shape=None):
     kspace = phantom['kspace'].copy()
-    for dim in range(len(kAxes)):
-        sinc = np.sinc((np.tile(kAxes[dim], (len(phantom['kAxes'][dim]), 1)) - np.tile(phantom['kAxes'][dim][:, np.newaxis], (1, len(kAxes[dim])))) * phantom['support'][dim])
+    for dim in range(len(k_axes)):
+        sinc = np.sinc((np.tile(k_axes[dim], (len(phantom['k_axes'][dim]), 1)) - np.tile(phantom['k_axes'][dim][:, np.newaxis], (1, len(k_axes[dim])))) * phantom['support'][dim])
         for tissue in kspace:
             kspace[tissue] = np.moveaxis(np.tensordot(kspace[tissue], sinc, axes=(dim, 0)), -1, dim)
     if shape is not None:
@@ -53,26 +53,26 @@ def resampleKspaceCartesian(phantom, kAxes, shape=None):
     return kspace
 
 
-def resampleKspace(phantom, kSamples):
-    samples = np.array(kSamples * phantom['support'] / phantom['matrix'], dtype='float32')
+def resample_kspace(phantom, k_samples):
+    samples = np.array(k_samples * phantom['support'] / phantom['matrix'], dtype='float32')
     kspace = {}
-    gridder = getGridder(samples, phantom['matrix'])
+    gridder = get_gridder(samples, phantom['matrix'])
     norm_factor = np.sqrt(4 * np.prod(phantom['matrix'])) # for mrinufft
     for tissue in phantom['kspace']:
         kspace[tissue] = ungrid(phantom['kspace'][tissue], gridder=gridder, shape=samples.shape[:-1]) * norm_factor
     return kspace
 
 
-def homodyneWeights(N, nBlank, dim):
-    # create homodyne ramp filter of length N with nBlank unsampled lines
+def homodyne_weights(N, num_blank, dim):
+    # create homodyne ramp filter of length N with num_blank unsampled lines
     W = np.ones((N,))
-    W[nBlank-1:-nBlank+1] = np.linspace(1,0, N-2*(nBlank-1))
-    W[-nBlank:] = 0
+    W[num_blank-1:-num_blank+1] = np.linspace(1,0, N-2*(num_blank-1))
+    W[-num_blank:] = 0
     shape = (N, 1) if dim==0 else (1, N)
     return W.reshape(shape)
 
 
-def radialTukey(alpha, matrix):
+def radial_Tukey(alpha, matrix):
     kx = np.linspace(-1, 1, matrix[0]+2)[1:-1]
     ky = np.linspace(-1, 1, matrix[1]+2)[1:-1]
     kky, kkx = np.meshgrid(ky, kx)
@@ -82,21 +82,21 @@ def radialTukey(alpha, matrix):
     return np.sin(np.pi*k/2)**2
 
 
-def zerofill(kspace, reconMatrix):
+def zerofill(kspace, recon_matrix):
     for dim, n in enumerate(kspace.shape):
-        nTrailing = (reconMatrix[dim]-n)//2
-        nLeading = reconMatrix[dim] - n - nTrailing
-        kspace = np.insert(kspace, 0, np.zeros((nLeading, 1)), axis=dim)
-        kspace = np.insert(kspace, n+nLeading, np.zeros((nTrailing, 1)), axis=dim)
+        num_trailing = (recon_matrix[dim]-n)//2
+        num_leading = recon_matrix[dim] - n - num_trailing
+        kspace = np.insert(kspace, 0, np.zeros((num_leading, 1)), axis=dim)
+        kspace = np.insert(kspace, n+num_leading, np.zeros((num_trailing, 1)), axis=dim)
     return kspace
 
-def getKcoords(kSamples, pixelSize):
-    kx = kSamples[..., 0].flatten() * 2 * np.pi * pixelSize[0]
-    ky = kSamples[..., 1].flatten() * 2 * np.pi * pixelSize[1]
+def get_k_coords(k_samples, pixel_size):
+    kx = k_samples[..., 0].flatten() * 2 * np.pi * pixel_size[0]
+    ky = k_samples[..., 1].flatten() * 2 * np.pi * pixel_size[1]
     return kx, ky
 
 
-def getGridder(samples, shape):
+def get_gridder(samples, shape):
     for dim in range(len(shape)):
         if np.max(np.abs(samples[..., dim])) > .5:
             # pad matrix to ensure samples are <= .5
@@ -110,9 +110,9 @@ def getGridder(samples, shape):
 
 def ungrid(gridded, samples=None, gridder=None, shape=None):
     if not gridder:
-        gridder = getGridder(samples, gridded.shape)
-    sampleShifts = [0 if gridded.shape[dim]%2 else 1/2 for dim in range(2)]
-    img = IFFT(gridded, [0, 0], sampleShifts)
+        gridder = get_gridder(samples, gridded.shape)
+    sample_shifts = [0 if gridded.shape[dim]%2 else 1/2 for dim in range(2)]
+    img = IFFT(gridded, [0, 0], sample_shifts)
     ungridded = gridder.op(img)
     if samples is not None:
         return ungridded.reshape(samples.shape[:-1])
@@ -125,17 +125,17 @@ def grid(ungridded, shape, samples=None, gridder=None):
     if (samples is None) == (gridder is None):
         raise ValueError('Use either samples or gridder, not both.')
     if gridder is None:
-        gridder = getGridder(samples, shape)
+        gridder = get_gridder(samples, shape)
     img = gridder.adj_op(ungridded.flatten())
-    sampleShifts = [0 if gridder.shape[dim]%2 else 1/2 for dim in range(2)]
-    gridded = FFT(img, [0, 0], sampleShifts)
+    sample_shifts = [0 if gridder.shape[dim]%2 else 1/2 for dim in range(2)]
+    gridded = FFT(img, [0, 0], sample_shifts)
     return crop(gridded, shape) # crop in case gridder shape was padded
 
 
-def pipeMenon2D(kx, ky, gridShape, nIter=10):
+def Pipe_Menon_2D(kx, ky, grid_shape, num_iter=10):
     w = np.ones(len(kx), dtype=complex)
-    for iter in range(nIter):
-        wGrid = grid(w, kx, ky, gridShape)
-        wNonUni = ungrid(wGrid, kx, ky, w.shape)
-        w /= np.abs(wNonUni)
+    for iter in range(num_iter):
+        w_grid = grid(w, kx, ky, grid_shape)
+        w_nonuniform = ungrid(w_grid, kx, ky, w.shape)
+        w /= np.abs(w_nonuniform)
     return w

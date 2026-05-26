@@ -7,7 +7,7 @@ from functools import partial
 from datetime import datetime
 
 
-def hideShowButtonCallback(pane, event):
+def hide_show_button_callback(pane, event):
     if 'Show' in event.obj.name:
         pane.visible = True
         event.obj.name = event.obj.name.replace('Show', 'Hide')
@@ -16,34 +16,34 @@ def hideShowButtonCallback(pane, event):
         event.obj.name = event.obj.name.replace('Hide', 'Show')
 
 
-def loadButtonCallback(simulator, settingsFile, event):
-    print('Loading settings from file', settingsFile)
-    with open(settingsFile, 'r') as f:
+def load_button_callback(simulator, settings_file, event):
+    print('Loading settings from file', settings_file)
+    with open(settings_file, 'r') as f:
         settings = toml.load(f)
-    simulator.setParams(settings)
+    simulator.set_params(settings)
 
 
-def saveButtonCallback(simulator, settingsFile, event):
-    print('Saving settings to file', settingsFile)
-    settings = simulator.getParams()
-    with open(settingsFile, 'w') as f:
+def save_button_callback(simulator, settings_file, event):
+    print('Saving settings to file', settings_file)
+    settings = simulator.get_params()
+    with open(settings_file, 'w') as f:
         toml.dump(settings, f)
 
 
-def infoNumber(name, value, format, textColor):
-    return pn.indicators.Number(default_color=textColor, name=name, format=format, font_size='12pt', title_size='12pt', value=value)
+def info_number(name, value, format, text_color):
+    return pn.indicators.Number(default_color=text_color, name=name, format=format, font_size='12pt', title_size='12pt', value=value)
 
 
-def infoString(name, value, textColor):
-    return pn.indicators.String(default_color=textColor, name=name, font_size='12pt', title_size='12pt', value=value)
+def info_string(name, value, text_color):
+    return pn.indicators.String(default_color=text_color, name=name, font_size='12pt', title_size='12pt', value=value)
 
 
-def getApp(darkMode=True, settingsFilestem='', startTime=datetime.now(), lazySliders=False):
-    pn.config.theme = 'dark' if darkMode else 'default'
-    pn.config.throttled = lazySliders
-    textColor = 'white' if darkMode else 'black' # needed for pn.indicators.Number which doesn't respect pn.config.theme
+def get_app(dark_mode=True, settings_filestem='', start_time=datetime.now(), lazy_sliders=False):
+    pn.config.theme = 'dark' if dark_mode else 'default'
+    pn.config.throttled = lazy_sliders
+    text_color = 'white' if dark_mode else 'black' # needed for pn.indicators.Number which doesn't respect pn.config.theme
 
-    settingsFile = Path(settingsFilestem).with_suffix('.toml') if bool(settingsFilestem) else Path('')
+    settings_file = Path(settings_filestem).with_suffix('.toml') if bool(settings_filestem) else Path('')
 
     simulator = MRIsimulator.MRIsimulator(name='')
     title = 'SpinSight MRI simulator'
@@ -53,79 +53,79 @@ def getApp(darkMode=True, settingsFilestem='', startTime=datetime.now(), lazySli
     except (FileNotFoundError, KeyError):
         version = ''
     
-    discreteSliderParams = ['TR', 'TE', 'FA', 'TI', 'FOVF', 'FOVP', 'phaseOversampling', 'matrixF', 'matrixP', 'reconMatrixF', 'reconMatrixP', 'voxelF', 'voxelP', 'reconVoxelF', 'reconVoxelP', 'sliceThickness', 'pixelBandWidth', 'FOVbandwidth', 'FWshift', 'EPIfactor']
-    paramPanels = {name: pn.panel(simulator.param, parameters=params, widgets={p: pn.widgets.DiscreteSlider for p in params if p in discreteSliderParams}, name=name) for name, params in [
-        ('Settings', ['object', 'fieldStrength', 'parameterStyle']),
+    discrete_slider_params = ['TR', 'TE', 'FA', 'TI', 'FOV_F', 'FOV_P', 'phase_oversampling', 'matrix_F', 'matrix_P', 'recon_matrix_F', 'recon_matrix_P', 'voxel_F', 'voxel_P', 'recon_voxel_F', 'recon_voxel_P', 'slice_thickness', 'pixel_bandwidth', 'FOV_bandwidth', 'FW_shift', 'EPI_factor']
+    param_panels = {name: pn.panel(simulator.param, parameters=params, widgets={p: pn.widgets.DiscreteSlider for p in params if p in discrete_slider_params}, name=name) for name, params in [
+        ('Settings', ['object', 'field_strength', 'parameter_style']),
         ('Contrast', ['FatSat', 'TR', 'TE', 'FA', 'TI']),
-        ('Geometry', ['trajectory', 'frequencyDirection', 'FOVF', 'FOVP', 'phaseOversampling', 'radialFactor', 'voxelF', 'voxelP', 'matrixF', 'matrixP', 'reconVoxelF', 'reconVoxelP', 'reconMatrixF', 'reconMatrixP', 'sliceThickness']),
-        ('Sequence', ['sequence', 'pixelBandWidth', 'FOVbandwidth', 'FWshift', 'NSA', 'partialFourier', 'turboFactor', 'EPIfactor']),
-        ('Post-processing', ['homodyne', 'doApodize', 'apodizationAlpha', 'doZerofill']),
+        ('Geometry', ['trajectory', 'frequency_direction', 'FOV_F', 'FOV_P', 'phase_oversampling', 'radial_factor', 'voxel_F', 'voxel_P', 'matrix_F', 'matrix_P', 'recon_voxel_F', 'recon_voxel_P', 'recon_matrix_F', 'recon_matrix_P', 'slice_thickness']),
+        ('Sequence', ['sequence', 'pixel_bandwidth', 'FOV_bandwidth', 'FW_shift', 'NSA', 'partial_Fourier', 'turbo_factor', 'EPI_factor']),
+        ('Post-processing', ['homodyne', 'do_apodize', 'apodization_alpha', 'do_zerofill']),
     ]}
 
-    infoPane = pn.Row(infoNumber(name='Relative SNR', format='{value:.0f}%', value=simulator.param.relativeSNR, textColor=textColor),
-                      infoString(name='Scan time', value=simulator.param.scantime, textColor=textColor),
-                      infoNumber(name='Fat/water shift', format='{value:.2f} pixels', value=simulator.param.FWshift, textColor=textColor),
-                      infoNumber(name='Bandwidth', format='{value:.0f} Hz/pixel', value=simulator.param.pixelBandWidth, textColor=textColor))
-    shotAngleInfo = infoNumber(name='Angle', format='{value:.0f}°', value=simulator.param.spokeAngle, textColor=textColor) 
-    numShotsInfo = infoNumber(name='# shots', format='{value:.0f}', value=simulator.param.num_shots, textColor=textColor)
+    info_pane = pn.Row(info_number(name='Relative SNR', format='{value:.0f}%', value=simulator.param.relative_SNR, text_color=text_color),
+                      info_string(name='Scan time', value=simulator.param.scantime, text_color=text_color),
+                      info_number(name='Fat/water shift', format='{value:.2f} pixels', value=simulator.param.FW_shift, text_color=text_color),
+                      info_number(name='Bandwidth', format='{value:.0f} Hz/pixel', value=simulator.param.pixel_bandwidth, text_color=text_color))
+    shot_angle_info = info_number(name='Angle', format='{value:.0f}°', value=simulator.param.spoke_angle, text_color=text_color) 
+    num_shots_info = info_number(name='# shots', format='{value:.0f}', value=simulator.param.num_shots, text_color=text_color)
     def update_num_shots_label(event): 
-        numShotsInfo.name = event.new
+        num_shots_info.name = event.new
     simulator.param.watch(update_num_shots_label, 'num_shots_label')
     
-    dmapKspace = pn.Column(hv.DynamicMap(simulator.getKspace) * simulator.kLine, 
-                           # simulator.param.kspaceType, 
-                           pn.Row(simulator.param.showProcessedKspace, simulator.param.kspaceExponent), 
+    dmap_kspace = pn.Column(hv.DynamicMap(simulator.get_kspace) * simulator.k_line, 
+                           # simulator.param.kspace_type, 
+                           pn.Row(simulator.param.show_processed_kspace, simulator.param.kspace_exponent), 
                            visible=False)
-    dmapMRimage = hv.DynamicMap(simulator.getImage)
-    dmapSequence = pn.Column(hv.DynamicMap(simulator.getSequencePlot), pn.Row(simulator.param.shot, shotAngleInfo, numShotsInfo), visible=False)
-    loadButton = pn.widgets.Button(name='Load settings', visible=settingsFile.is_file())
-    loadButton.on_click(partial(loadButtonCallback, simulator, settingsFile))
-    saveButton = pn.widgets.Button(name='Save settings', visible=settingsFile.is_file())
-    saveButton.on_click(partial(saveButtonCallback, simulator, settingsFile))
-    sequenceButton = pn.widgets.Button(name='Show sequence')
-    sequenceButton.on_click(partial(hideShowButtonCallback, dmapSequence))
-    kSpaceButton = pn.widgets.Button(name='Show k-space')
-    kSpaceButton.on_click(partial(hideShowButtonCallback, dmapKspace))
-    resetSNRbutton = pn.widgets.Button(name='Set reference SNR')
-    resetSNRbutton.on_click(simulator.setReferenceSNR)
+    dmap_MR_image = hv.DynamicMap(simulator.get_image)
+    dmap_sequence = pn.Column(hv.DynamicMap(simulator.get_sequence_plot), pn.Row(simulator.param.shot, shot_angle_info, num_shots_info), visible=False)
+    load_button = pn.widgets.Button(name='Load settings', visible=settings_file.is_file())
+    load_button.on_click(partial(load_button_callback, simulator, settings_file))
+    save_button = pn.widgets.Button(name='Save settings', visible=settings_file.is_file())
+    save_button.on_click(partial(save_button_callback, simulator, settings_file))
+    sequence_button = pn.widgets.Button(name='Show sequence')
+    sequence_button.on_click(partial(hide_show_button_callback, dmap_sequence))
+    kspace_button = pn.widgets.Button(name='Show k-space')
+    kspace_button.on_click(partial(hide_show_button_callback, dmap_kspace))
+    reset_SNR_button = pn.widgets.Button(name='Set reference SNR')
+    reset_SNR_button.on_click(simulator.set_reference_SNR)
     dashboard = pn.Column(
         pn.Row(
             pn.Column(
                 pn.Row(
                     pn.Column(
-                        pn.Row(sequenceButton, kSpaceButton), 
-                        paramPanels['Sequence'],
-                        paramPanels['Contrast']
+                        pn.Row(sequence_button, kspace_button), 
+                        param_panels['Sequence'],
+                        param_panels['Contrast']
                     ), 
                     pn.Column(
-                        paramPanels['Geometry']
+                        param_panels['Geometry']
                     )
                 )
             ), 
             pn.Column(
-                dmapMRimage, 
+                dmap_MR_image, 
                 pn.Column(
-                    # simulator.param.imageType, 
-                    pn.Row(resetSNRbutton, simulator.param.showFOV), 
-                    simulator.param.referenceTissue, 
-                    infoPane
+                    # simulator.param.image_type, 
+                    pn.Row(reset_SNR_button, simulator.param.show_FOV), 
+                    simulator.param.reference_tissue, 
+                    info_pane
                 )
             ), 
             pn.Column(
-                dmapKspace,
-                paramPanels['Post-processing']
+                dmap_kspace,
+                param_panels['Post-processing']
             )
         ), 
-        dmapSequence, 
+        dmap_sequence, 
         pn.Column(pn.pane.Markdown(author),
-                  pn.pane.Markdown(f'*(server started {startTime: %Y-%m-%d %H:%M:%S}{version})*', styles={'color': 'gray'}),
+                  pn.pane.Markdown(f'*(server started {start_time: %Y-%m-%d %H:%M:%S}{version})*', styles={'color': 'gray'}),
                   height=10),
         sizing_mode='stretch_both'
     )
 
     template = pn.template.FastListTemplate(
         title=title,
-        theme='dark' if darkMode else 'default',
+        theme='dark' if dark_mode else 'default',
         theme_toggle=False,
         header_background='#262626',
         modal=[pn.Column()],
@@ -134,8 +134,8 @@ def getApp(darkMode=True, settingsFilestem='', startTime=datetime.now(), lazySli
     template.main.append(dashboard)
     template.sidebar.append(
         pn.Column(
-            pn.Row(loadButton, saveButton), 
-            paramPanels['Settings'], 
+            pn.Row(load_button, save_button), 
+            param_panels['Settings'], 
         )
     )
     return template
