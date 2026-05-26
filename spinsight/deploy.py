@@ -7,7 +7,7 @@ import optparse
 from pathlib import Path
 import sys
 sys.path.append(str(Path(__file__).parent.parent))
-from spinsight import main
+from spinsight import app
 from datetime import datetime
 
 
@@ -51,7 +51,7 @@ def CLI():
     # serve application
     try:
         startTime = datetime.now()
-        def getApp(): return main.getApp(darkMode, options.settingsFile, startTime, options.lazySliders) # closure function
+        def getApp(): return app.getApp(darkMode, options.settingsFile, startTime, options.lazySliders) # closure function
         pn.serve(getApp, show=False, title='SpinSight', port=options.port, websocket_origin=[f'{host}:{options.port}' for host in hosts])
     except OSError as e:
         print(e)

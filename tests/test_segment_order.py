@@ -1,4 +1,4 @@
-from spinsight.main import get_segment_order
+from spinsight.MRIsimulator import get_segment_order
 
 def test_segment_order():
     N = 5
