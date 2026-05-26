@@ -21,7 +21,7 @@ def get_vertices(continuous_path):
         if isinstance(segment, svgpathtools.path.Line):
             vertices.append((segment[0].imag, segment[0].real))
         else:
-            warnings.warn('Only SVG line segments are supported, not {}'.format(type(segment)))
+            warnings.warn(f'Only SVG line segments are supported, not {type(segment)}')
             return None
     if vertices:
         return np.array(vertices).T

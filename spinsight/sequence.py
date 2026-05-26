@@ -70,11 +70,11 @@ def getRF(flipAngle, dur, name, time=0., shape='hammingSinc'):
     rf = { 'RF': am,
             'time': t,
             'name': name,
-            'center': '{:.1f} ms'.format(time),
+            'center': f'{time:.1f} ms',
             'center_f': time,
-            'duration': '{:.1f} ms'.format(dur),
+            'duration': f'{dur:.1f} ms',
             'dur_f': dur,
-            'flip_angle': '{:.0f}°'.format(flipAngle),
+            'flip_angle': f'{flipAngle:.0f}°',
             'FWHM_f': getFWHM(am[1:-1], t[1:-1])}
     return rf
 
@@ -86,8 +86,8 @@ def getSignal(signal, time, scale=1.0, exponent=1.0, name='sampling'):
     signal = { 'signal': am,
             'time': t,
             'name': name,
-            'center': '{:.1f} ms'.format((t0+t1)/2),
-            'duration': '{:.1f} ms'.format(abs(t1-t0))}
+            'center': f'{(t0+t1)/2:.1f} ms',
+            'duration': f'{abs(t1-t0):.1f} ms'}
     return signal
 
 
@@ -114,13 +114,13 @@ def getGradient(dir, time=0., maxAmp=25., maxSlew=80., totalArea=None, flatArea=
         dir: amp,
         'time': t,
         'name': name,
-        'center': '{:.1f} ms'.format(time),
+        'center': f'{time:.1f} ms',
         'center_f': time,
-        'duration': '{:.1f} ms'.format(dur),
+        'duration': f'{dur:.1f} ms',
         'dur_f': dur,
         'flatDur_f': flatDur,
         'riseTime_f': riseTime,
-        'area': '{:.1f} μTs/m'.format(area),
+        'area': f'{area:.1f} μTs/m',
         'area_f': area
     }
     return gr
@@ -133,7 +133,7 @@ def getGradientArea(g, t):
 def moveWaveform(wf, time):
     oldTime = wf['center_f']
     wf['time'] += time - oldTime
-    wf['center'] = '{:.1f} ms'.format(time)
+    wf['center'] = f'{time:.1f} ms'
     wf['center_f'] = time
 
 
@@ -142,16 +142,16 @@ def rescaleGradient(g, scale):
         if dir in g:
             g[dir] *= scale
     g['area_f'] *= scale
-    g['area'] = '{:.1f} μTs/m'.format(g['area_f']),
+    g['area'] = f'{g['area_f']:.1f} μTs/m',
 
 
 def getADC(dur, name, time=0.):
     adc = {
         'name': name,
         'time': np.array([-dur/2, dur/2]) + time,
-        'center': '{:.1f} ms'.format(time),
+        'center': f'{time:.1f} ms',
         'center_f': time,
-        'duration': '{:.1f} ms'.format(dur),
+        'duration': f'{dur:.1f} ms',
         'dur_f': dur
     }
     return adc

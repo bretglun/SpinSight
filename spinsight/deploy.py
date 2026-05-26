@@ -40,7 +40,7 @@ def CLI():
     if len(hosts)>0:
         print('Deploying SpinSight at:')
         for host in hosts:
-            print('* http://{}:{}'.format(host, options.port))
+            print(f'* http://{host}:{options.port}')
     
     darkMode = darkdetect.isDark()
     if options.mode:
@@ -52,10 +52,10 @@ def CLI():
     try:
         startTime = datetime.now()
         def getApp(): return main.getApp(darkMode, options.settingsFile, startTime, options.lazySliders) # closure function
-        pn.serve(getApp, show=False, title='SpinSight', port=options.port, websocket_origin=['{}:{}'.format(host, options.port) for host in hosts])
+        pn.serve(getApp, show=False, title='SpinSight', port=options.port, websocket_origin=[f'{host}:{options.port}' for host in hosts])
     except OSError as e:
         print(e)
-        print('Could not serve SpinSight on port {}. Perhaps try another port (specify using the -p flag)'.format(options.port))
+        print(f'Could not serve SpinSight on port {options.port}. Perhaps try another port (specify using the -p flag)')
 
 
 if __name__ == '__main__':
