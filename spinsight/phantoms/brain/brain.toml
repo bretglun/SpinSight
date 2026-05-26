@@ -1,4 +1,8 @@
-file = "brain.svg"
-FOV = [188, 156] # compact support in mm for y and x dir
-matrix = [601, 601] # odd matrix to ensure kspace center is sampled (not required)
-referenceTissue = 'gray' # for SNR calculations
+'#00ff00' = 'Gray matter'
+'#d40000' = 'White matter'
+'#00ffff' = 'CSF'
+'#ffe680' = 'Adipose tissue'
+'#ffff44' = 'Bone marrow'
+'#008000' = 'Muscle'
+'#808000' = 'Cortical bone'
+'#ffeeee' = 'Blood'

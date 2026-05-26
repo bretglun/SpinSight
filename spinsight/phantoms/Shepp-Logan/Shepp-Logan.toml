@@ -1,4 +1,175 @@
-file = "Shepp-Logan_shapes.toml"
-FOV = [200, 200] # compact support in mm for y and x dir
-matrix = [601, 601] # odd matrix to ensure kspace center is sampled (not required)
-referenceTissue = 'SL_gray' # for SNR calculations
+# Shepp-Logan phantom according to:
+# Gach, H., Costin Tanase, and Fernando E. Boada. 2008. “2D & 3D Shepp-Logan Phantom Standards for MRI.” In: Int Conf Syst Eng, 521–26.
+
+# 1
+[[Shepp-Logan_Scalp]]
+type = "ellipse"
+pos = [0.0, 0.0]
+radius = [72.0, 95.0]
+angle = 0
+negative = false
+
+# 2
+[[Shepp-Logan_Bone_and_Marrow]]
+type = "ellipse"
+pos = [0.0, 0.0]
+radius = [69.0, 92.0]
+angle = 0
+negative = false
+
+[[Shepp-Logan_Scalp]]
+type = "ellipse"
+pos = [0.0, 0.0]
+radius = [69.0, 92.0]
+angle = 0
+negative = true
+
+# 3
+[[Shepp-Logan_CSF]]
+type = "ellipse"
+pos = [0.0, 1.84]
+radius = [66.24, 87.4]
+angle = 0
+negative = false
+
+[[Shepp-Logan_Bone_and_Marrow]]
+type = "ellipse"
+pos = [0.0, 1.84]
+radius = [66.24, 87.4]
+angle = 0
+negative = true
+
+# 4
+[[Shepp-Logan_Gray_matter]]
+type = "ellipse"
+pos = [0.0, 1.84]
+radius = [65.24, 86.4]
+angle = 0
+negative = false
+
+[[Shepp-Logan_CSF]]
+type = "ellipse"
+pos = [0.0, 1.84]
+radius = [65.24, 86.4]
+angle = 0
+negative = true
+
+# 5
+[[Shepp-Logan_CSF]]
+type = "ellipse"
+pos = [22.0, 0.0]
+radius = [41.0, 16.0]
+angle = 72
+negative = false
+
+[[Shepp-Logan_Gray_matter]]
+type = "ellipse"
+pos = [22.0, 0.0]
+radius = [41.0, 16.0]
+angle = 72
+negative = true
+
+# 6
+[[Shepp-Logan_CSF]]
+type = "ellipse"
+pos = [-22.0, 0.0]
+radius = [31.0, 11.0]
+angle = -72
+negative = false
+
+[[Shepp-Logan_Gray_matter]]
+type = "ellipse"
+pos = [-22.0, 0.0]
+radius = [31.0, 11.0]
+angle = -72
+negative = true
+
+# 7
+[[Shepp-Logan_White_matter]]
+type = "ellipse"
+pos = [0.0, -35.0]
+radius = [21.0, 25.0]
+angle = 0
+negative = false
+
+[[Shepp-Logan_Gray_matter]]
+type = "ellipse"
+pos = [0.0, -35.0]
+radius = [21.0, 25.0]
+angle = 0
+negative = true
+
+# 8
+[[Shepp-Logan_Tumor]]
+type = "ellipse"
+pos = [0.0, -10.0]
+radius = [4.6, 4.6]
+angle = 0
+negative = false
+
+[[Shepp-Logan_Gray_matter]]
+type = "ellipse"
+pos = [0.0, -10.0]
+radius = [4.6, 4.6]
+angle = 0
+negative = true
+
+# 9
+[[Shepp-Logan_Tumor]]
+type = "ellipse"
+pos = [8.0, 60.5]
+radius = [4.6, 2.3]
+angle = 0
+negative = false
+
+[[Shepp-Logan_Gray_matter]]
+type = "ellipse"
+pos = [8.0, 60.5]
+radius = [4.6, 2.3]
+angle = 0
+negative = true
+
+# 10
+[[Shepp-Logan_Tumor]]
+type = "ellipse"
+pos = [-6.0, 60.5]
+radius = [4.6, 2.3]
+angle = 90
+negative = false
+
+[[Shepp-Logan_Gray_matter]]
+type = "ellipse"
+pos = [-6.0, 60.5]
+radius = [4.6, 2.3]
+angle = 90
+negative = true
+
+# 11
+[[Shepp-Logan_Tumor]]
+type = "ellipse"
+pos = [0.0, 10.0]
+radius = [4.6, 4.6]
+angle = 0
+negative = false
+
+[[Shepp-Logan_Gray_matter]]
+type = "ellipse"
+pos = [0.0, 10.0]
+radius = [4.6, 4.6]
+angle = 0
+negative = true
+
+# 12
+[[Shepp-Logan_Tumor]]
+type = "ellipse"
+pos = [0.0, 60.5]
+radius = [2.3, 2.3]
+angle = 0
+negative = false
+
+[[Shepp-Logan_Gray_matter]]
+type = "ellipse"
+pos = [0.0, 60.5]
+radius = [2.3, 2.3]
+angle = 0
+negative = true

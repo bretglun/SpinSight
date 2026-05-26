@@ -1,4 +1,13 @@
-file = "abdomen.svg"
-FOV = [320, 400] # compact support in mm for y and x dir
-matrix = [513, 641] # odd matrix to ensure kspace center is sampled (not required)
-referenceTissue = 'spleen' # for SNR calculations
+'#00ffff' = 'CSF'
+'#ffe680' = 'Adipose tissue'
+'#ffff44' = 'Bone marrow'
+'#800000' = 'Liver'
+'#ff0000' = 'Spleen'
+'#008000' = 'Muscle'
+'#aa4400' = 'Kidney medulla'
+'#552200' = 'Kidney cortex'
+'#ffff00' = 'Spinal cord'
+'#808000' = 'Cortical bone'
+'#ffeeee' = 'Blood'
+'#1a2020' = 'Stomach'
+'#ff8080' = 'Perotineum'

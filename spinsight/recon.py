@@ -44,7 +44,7 @@ def crop(arr, shape):
 def resampleKspaceCartesian(phantom, kAxes, shape=None):
     kspace = phantom['kspace'].copy()
     for dim in range(len(kAxes)):
-        sinc = np.sinc((np.tile(kAxes[dim], (len(phantom['kAxes'][dim]), 1)) - np.tile(phantom['kAxes'][dim][:, np.newaxis], (1, len(kAxes[dim])))) * phantom['FOV'][dim])
+        sinc = np.sinc((np.tile(kAxes[dim], (len(phantom['kAxes'][dim]), 1)) - np.tile(phantom['kAxes'][dim][:, np.newaxis], (1, len(kAxes[dim])))) * phantom['support'][dim])
         for tissue in kspace:
             kspace[tissue] = np.moveaxis(np.tensordot(kspace[tissue], sinc, axes=(dim, 0)), -1, dim)
     if shape is not None:
@@ -54,7 +54,7 @@ def resampleKspaceCartesian(phantom, kAxes, shape=None):
 
 
 def resampleKspace(phantom, kSamples):
-    samples = np.array(kSamples * phantom['FOV'] / phantom['matrix'], dtype='float32')
+    samples = np.array(kSamples * phantom['support'] / phantom['matrix'], dtype='float32')
     kspace = {}
     gridder = getGridder(samples, phantom['matrix'])
     norm_factor = np.sqrt(4 * np.prod(phantom['matrix'])) # for mrinufft

@@ -4,17 +4,12 @@ import panel as pn
 import param
 import numpy as np
 import math
-import scipy
 from pathlib import Path
 import toml
 import xarray as xr
-from spinsight import constants
-from spinsight import sequence
-from spinsight import recon
-from spinsight import load_phantom
+from spinsight import constants, sequence, recon, phantom
 from bokeh.models import HoverTool, CustomJS, ColumnDataSource
 from functools import partial
-from tqdm import tqdm
 import warnings
 from datetime import datetime
 
@@ -39,66 +34,6 @@ def pixelBW2FOVBW(pixelBW, matrixF):
 def FOVBW2pixelBW(FOVBW, matrixF):
     ''' Get pixel bandwidth [Hz/pixel] from FOV bandwidth [±kHz] and read direction matrix'''
     return FOVBW / matrixF * 2e3
-
-
-def kspace_for_polygon(poly, k):
-    # analytical 2D Fourier transform of polygon (see https://cvil.ucsd.edu/wp-content/uploads/2016/09/Realistic-analytical-polyhedral-MRI-phantoms.pdf)
-    r = poly['vertices'] # position vectors of vertices Ve
-    Lv = np.roll(r, -1, axis=1) - r # edge vectors
-    L = np.linalg.norm(Lv, axis=0) # edge lengths
-    t = Lv/L # edge unit vectors
-    n = np.array([-t[1,:], t[0,:]]) # normals to tangents (pointing out from polygon)
-    rc = r + Lv / 2 # position vector for center of edge
-
-    ksp = np.sum(L * np.dot(k, n) * np.sinc(np.dot(k, Lv)) * np.exp(-2j*np.pi * np.dot(k, rc)), axis=-1)
-    
-    kcenter = np.all(k==0, axis=-1)
-    ksp[kcenter] = load_phantom.polygonArea(r)
-    notkcenter = np.logical_not(kcenter)
-    ksp[notkcenter] *= 1j / (2 * np.pi * np.linalg.norm(k[notkcenter], axis=-1)**2)
-    return ksp
-
-
-def rotation_matrix(theta):
-    cos, sin = np.cos(theta), np.sin(theta)
-    return np.array([[cos, -sin], [sin, cos]])
-
-
-def kspace_for_ellipse(ellipse, k):
-    # scaled and rotated radius vector:
-    r = np.linalg.norm(k @ rotation_matrix(np.radians(ellipse['angle'])) @ np.diag(ellipse['radius']), axis=-1)
-    ksp = np.empty(k.shape[:-1], dtype=complex)
-    ksp[r!=0] = scipy.special.j1(2 * np.pi * r[r!=0]) / r[r!=0] # Bessel function of first kind, first order
-    ksp[r==0] = np.pi
-    ksp *= np.prod(ellipse['radius']) # scale intensity
-    ksp *= np.exp(-2j*np.pi * np.dot(k, ellipse['pos'])) # translate
-    if ellipse['negative']:
-        return -ksp
-    return ksp
-
-
-def kspace_for_shape(shape, k):
-    return {'polygon': kspace_for_polygon, 'ellipse': kspace_for_ellipse}[shape['type']](shape, k)
-
-
-def load_phantom_toml(name):
-    path = Path(__file__).parent.resolve() / 'phantoms' / name
-    with open(Path(path / name).with_suffix('.toml'), 'r') as f:
-        phantom = toml.load(f)
-    phantom['name'] = name
-    phantom['path'] = path
-    phantom['file'] = Path(path / phantom['file'])
-    phantom['matrix'] = tuple(phantom['matrix'])    
-    return phantom
-
-
-def get_phantom_list():
-    phantoms = []
-    phantom_path = Path(__file__).parent.resolve() / 'phantoms'
-    for dir in phantom_path.iterdir():
-        if dir.is_dir() and Path(dir / dir.name).with_suffix('.toml').is_file():
-            phantoms.append(dir.name)
-    return phantoms
 
 
 def getT2w(component, timeAfterExcitation, timeRelativeInphase, B0):
@@ -193,18 +128,18 @@ def format_float(value, sigfigs=2):
 
 
 def format_scantime(milliseconds):
-        total_seconds = milliseconds / 1000
-        minutes = int(total_seconds // 60)
-        seconds = int(total_seconds % 60)
+    total_seconds = milliseconds / 1000
+    minutes = int(total_seconds // 60)
+    seconds = int(total_seconds % 60)
 
-        if minutes > 0:
-            return f'{minutes} min {seconds} sec'
-        elif seconds >= 10:
-            return f'{seconds} sec'
-        elif seconds > 0:
-            return f'{total_seconds:.1f} sec'
-        else:
-            return f'{int(milliseconds)} msec'
+    if minutes > 0:
+        return f'{minutes} min {seconds} sec'
+    elif seconds >= 10:
+        return f'{seconds} sec'
+    elif seconds > 0:
+        return f'{total_seconds:.1f} sec'
+    else:
+        return f'{int(milliseconds)} msec'
 
 
 param_values = {
@@ -229,6 +164,7 @@ class MRIsimulator(param.Parameterized):
     object = param.ObjectSelector(default='brain', label='Phantom object')
     fieldStrength = param.ObjectSelector(default=1.5, label='B0 field strength [T]')
     parameterStyle = param.ObjectSelector(default='Matrix and Pixel BW', label='Parameter Style')
+    min_voxelsize = param.Number(default=0.5) # [mm] limit on phantom resolution (to limit computation time)
     
     FatSat = param.Boolean(default=False, label='Fat saturation')
     TR = param.Selector(default=10000, label='TR')
@@ -268,6 +204,7 @@ class MRIsimulator(param.Parameterized):
     imageType = param.ObjectSelector(default='Magnitude', label='Image type')
     showFOV = param.Boolean(default=False, label='Show FOV')
     noiseGain = param.Number(default=3.)
+    referenceTissue = param.ObjectSelector(label='Reference tissue')
     SNR = param.Number(label='SNR')
     referenceSNR = param.Number(default=1, label='Reference SNR')
     relativeSNR = param.Number(label='Relative SNR [%]')
@@ -283,6 +220,8 @@ class MRIsimulator(param.Parameterized):
     doZerofill = param.Boolean(default=True, precedence=4, label='Zerofill')
 
     def __init__(self, **params):
+        self._initialized = False
+        
         super().__init__(**params)
 
         self.init_bounds()
@@ -360,7 +299,6 @@ class MRIsimulator(param.Parameterized):
             ]}
         
         self.acquisitionPipeline = {f: True for f in [
-            'loadPhantom', 
             'sampleKspace', 
             'updateSamplingTime', 
             'modulateKspace', 
@@ -396,12 +334,14 @@ class MRIsimulator(param.Parameterized):
         self.FOV = [None]*2
         self.matrix = [None]*2
         self.kGridAxes = [None]*2
-        
+
         self.runSequencePipeline()
+
+        self._initialized = True
 
 
     def init_bounds(self):
-        self.param.object.objects = get_phantom_list()
+        self.param.object.objects = phantom.get_phantom_names()
         self.param.fieldStrength.objects=[1.5, 3.0]
         self.param.parameterStyle.objects=['Matrix and Pixel BW', 'Voxelsize and Fat/water shift', 'Matrix and FOV BW']
         self.param.frequencyDirection.objects=constants.DIRECTIONS.keys()
@@ -535,15 +475,17 @@ class MRIsimulator(param.Parameterized):
     def _watch_object(self):
         if hasattr(self, 'phantom') and self.phantom['name']==self.object:
             return
-        self.phantom = load_phantom_toml(self.object)
+        self.phantom = phantom.load(self.object, self.min_voxelsize)
+        add_to_pipeline(self.sequencePipeline, ['setupReadouts'])
+        self.acquisitionPipeline = {f: True for f in self.acquisitionPipeline}
+        self.reconPipeline = {f: True for f in self.reconPipeline}
+        self.tissues = list(self.phantom['shapes'].keys())
+        self.param.referenceTissue.objects = self.tissues
+        self.referenceTissue = self.tissues[0]
+        minFOV = self.phantom['support']
+        if self.frequencyDirection=='left-right':
+            minFOV = minFOV.reverse()
         with param.parameterized.batch_call_watchers(self):
-            for f in self.acquisitionPipeline:
-                self.acquisitionPipeline[f] = True
-            for f in self.reconPipeline:
-                self.reconPipeline[f] = True
-            minFOV = self.phantom['FOV']
-            if self.frequencyDirection=='left-right':
-                minFOV = minFOV.reverse()
             self.FOVF = max(self.FOVF, minFOV[0])
             self.FOVP = max(self.FOVP, minFOV[1])
     
@@ -904,6 +846,13 @@ class MRIsimulator(param.Parameterized):
             add_to_pipeline(self.reconPipeline, ['zerofill', 'reconstruct'])
         self.set_closest(self.param.reconVoxelP, self.FOVP/self.reconMatrixP)
 
+
+    @param.depends('referenceTissue', watch=True)
+    def _watch_referenceTissue(self):
+        add_to_pipeline(self.acquisitionPipeline, ['modulateKspace', 'compileKspace'])
+        if self._initialized:
+            self.runAcquisitionPipeline()
+    
 
     def isGradientEcho(self):
         return 'Gradient Echo' in self.sequence
@@ -1275,29 +1224,6 @@ class MRIsimulator(param.Parameterized):
             self.param.EPIfactor.objects = [v for v in self.param.EPIfactor.objects if v%2]
 
 
-    def loadPhantom(self):
-        print(f'Preparing k-space for "{self.object}" phantom (might take a few minutes on first use)')
-        self.phantom['kAxes'] = [recon.getKaxis(self.phantom['matrix'][dim], self.phantom['FOV'][dim]/self.phantom['matrix'][dim]) for dim in range(len(self.phantom['matrix']))]
-        shapes = load_phantom.load(self.phantom['file'])
-        self.tissues = set(shapes.keys())
-        if self.phantom['referenceTissue'] not in self.tissues:
-            raise Exception('Reference tissue "{}" not found in phantom "{}"'.format(self.phantom['referenceTissue'], self.object))
-        self.phantom['kspace'] = {}
-        for tissue in tqdm(self.tissues, desc='Tissues'):
-            file = Path(self.phantom['path'] / tissue).with_suffix('.npy')
-            if file.is_file():
-                ksp = np.load(file)
-                if ksp.shape == self.phantom['matrix']:
-                    self.phantom['kspace'][tissue] = ksp
-            if tissue not in self.phantom['kspace']:
-                self.phantom['kspace'][tissue] = np.zeros((self.phantom['matrix']), dtype=complex)
-                k = np.array(np.meshgrid(self.phantom['kAxes'][0], self.phantom['kAxes'][1])).T
-                for shape in tqdm(shapes[tissue], desc=f'"{tissue}" shapes', leave=False):
-                    self.phantom['kspace'][tissue] += kspace_for_shape(shape, k)
-                np.save(file, self.phantom['kspace'][tissue])
-        self.setup_frequency_encoding() # frequency oversampling is adapted to phantom FOV for efficiency
-
-
     def get_min_readtrain_spacing(self):
         # Get shortest spacing for (center of) gradient echo trains
         # Equals center position of gradient echo (train) for gradient echo sequences
@@ -1389,12 +1315,12 @@ class MRIsimulator(param.Parameterized):
         if self.isCartesian():
             nSamples = self.matrixF
             # at least Nyquist sampling wrt phantom if loaded
-            if hasattr(self, 'phantom') and (self.FOV[self.freqDir] < self.phantom['FOV'][self.freqDir]):
-                nSamples = int(np.ceil(self.phantom['FOV'][self.freqDir] / voxelSize))
+            if hasattr(self, 'phantom') and (self.FOV[self.freqDir] < self.phantom['support'][self.freqDir]):
+                nSamples = int(np.ceil(self.phantom['support'][self.freqDir] / voxelSize))
         elif self.isRadial():
             FOV = max(self.FOVF, self.FOVP)
             if hasattr(self, 'phantom'):
-                FOV = max(max(self.phantom['FOV']), FOV)
+                FOV = max(max(self.phantom['support']), FOV)
             nSamples = int(np.ceil(FOV / voxelSize * self.radialFOVoversampling))
         self.kReadAxis = recon.getKaxis(nSamples, voxelSize)
     
@@ -1457,7 +1383,7 @@ class MRIsimulator(param.Parameterized):
         elif self.isRadial():
             for dim in range(2):
                 voxelSize = self.FOV[dim]/self.matrix[dim]
-                matrix = int(np.ceil(max(self.FOV[dim], self.phantom['FOV'][dim]) / voxelSize))
+                matrix = int(np.ceil(max(self.FOV[dim], self.phantom['support'][dim]) / voxelSize))
                 self.kGridAxes[dim] = recon.getKaxis(matrix, voxelSize)
             self.plainKspaceComps = recon.resampleKspace(self.phantom, self.kSamples)
         
@@ -1513,7 +1439,7 @@ class MRIsimulator(param.Parameterized):
                     T2w = getT2w(component, self.timeAfterExcitation, timeRelativeInphase, self.fieldStrength)
                     dephasing = np.exp(2j*np.pi * constants.GYRO * self.fieldStrength * resonance['shift'] * timeRelativeInphase * 1e-3)
                     self.kspaceComps[tissue + component] = self.plainKspaceComps[tissue] * dephasing * T2w
-            if tissue==self.phantom['referenceTissue']:
+            if tissue==self.referenceTissue:
                 self.decayedSignal = self.signal * np.take(np.take(T2w, np.argmin(np.abs(self.kReadAxis)), axis=self.freqDir), np.argmin(np.abs(self.kPhaseAxis)))
     
     
@@ -1523,7 +1449,7 @@ class MRIsimulator(param.Parameterized):
 
 
     def updatePDandT1w(self):
-        self.PDandT1w = {component: getPDandT1w(component, self.sequence, self.TR, self.TE, self.TI, self.FA, self.fieldStrength) for component in self.tissues.union(set(constants.FATRESONANCES.keys()))}
+        self.PDandT1w = {component: getPDandT1w(component, self.sequence, self.TR, self.TE, self.TI, self.FA, self.fieldStrength) for component in set(self.tissues).union(set(constants.FATRESONANCES.keys()))}
 
 
     def setReferenceSNR(self, event=None):
@@ -1569,7 +1495,7 @@ class MRIsimulator(param.Parameterized):
                     tissue = component
                     ratio = 1.0
                 self.measuredkspace += self.kspaceComps[component] * self.PDandT1w[tissue] * ratio
-        self.updateSNR(self.decayedSignal * np.abs(self.PDandT1w[self.phantom['referenceTissue']]))
+        self.updateSNR(self.decayedSignal * np.abs(self.PDandT1w[self.referenceTissue]))
         self.updateScantime()
         add_to_pipeline(self.sequencePlotPipeline, ['renderSignalBoard'])
 
@@ -2164,6 +2090,7 @@ def getApp(darkMode=True, settingsFilestem='', startTime=datetime.now(), lazySli
                 pn.Column(
                     # simulator.param.imageType, 
                     pn.Row(resetSNRbutton, simulator.param.showFOV), 
+                    simulator.param.referenceTissue, 
                     infoPane
                 )
             ), 

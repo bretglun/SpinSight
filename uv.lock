@@ -1177,7 +1177,7 @@ wheels = [
 
 [[package]]
 name = "panel"
-version = "1.9.0"
+version = "1.9.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "bokeh" },
@@ -1197,9 +1197,9 @@ dependencies = [
     { name = "tqdm" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/0a/6c/5b6a7333dbee83687cdce556f00e497f659350fee5519fde9f13777e0ef7/panel-1.9.0.tar.gz", hash = "sha256:1d57698a324e45ab0f56b4c6f36b77591c46cf4ce5c16b1f037de10b3e8722ee", size = 32208017, upload-time = "2026-05-21T12:17:02.338Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/3b/e8/e31a27936c482cd3b67be7c20c764d519f42f8b89da20ada7c79f722c994/panel-1.9.1.tar.gz", hash = "sha256:2e06294f9dcea6690c600fbcc8610976ca8a0b1531d1a49086267e1760075417", size = 32212780, upload-time = "2026-05-23T11:05:02.176Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/73/12/09b29c3be893b495765008cec38040c0abd499ed96ccdd7803a7bb1853df/panel-1.9.0-py3-none-any.whl", hash = "sha256:7801829f0595eecd7ac1ae9cdfbaeec816c0202bdaa5243790cb5007b100b897", size = 30298540, upload-time = "2026-05-21T12:16:56.589Z" },
+    { url = "https://files.pythonhosted.org/packages/32/ed/31e1b011e49c194587c688cfb4416fab6c02e055c8321fe77544caf1cc4f/panel-1.9.1-py3-none-any.whl", hash = "sha256:19c5a61772ebfa7c37a86af7a1208cccc3fb4bc1416123fb305fb9beec197a08", size = 30303528, upload-time = "2026-05-23T11:04:58.66Z" },
 ]
 
 [[package]]
@@ -1629,7 +1629,7 @@ wheels = [
 
 [[package]]
 name = "spinsight"
-version = "1.2.3"
+version = "1.2.4"
 source = { editable = "." }
 dependencies = [
     { name = "darkdetect" },
