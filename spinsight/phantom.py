@@ -15,7 +15,7 @@ def polygonArea(coords):
 
 def get_vertices(continuous_path):
     if not continuous_path.isclosed():
-        raise Exception('All paths in SVG file must be closed')
+        raise ValueError('All paths in SVG file must be closed')
     vertices = []
     for segment in continuous_path:
         if isinstance(segment, svgpathtools.path.Line):

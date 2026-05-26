@@ -56,7 +56,7 @@ def getPDandT1w(component, seqType, TR, TE, TI, FA, B0):
     elif seqType == 'Inversion Recovery':
         return PD * (1 - 2 * np.exp(-TI/T1) + E1)
     else:
-        raise Exception(f'Unknown sequence type: {seqType}')
+        raise ValueError(f'Unknown sequence type: {seqType}')
 
 
 def get_segment_order(N, Nsym, c):
