@@ -1788,14 +1788,14 @@ class MRIsimulator(param.Parameterized):
         self.k_trajectory = {'kx': kx, 'ky': ky, 't': t, 'dt': dt}
 
     @param.depends('sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOV_F', 'FOV_P', 'phase_oversampling', 'num_shots', 'matrix_F', 'matrix_P', 'slice_thickness', 'trajectory', 'frequency_direction', 'pixel_bandwidth', 'partial_Fourier', 'turbo_factor', 'EPI_factor', 'shot')
-    def get_sequence_plot(self):
+    def display_sequence_plot(self):
         self.run_sequence_plot_pipeline()
         last = len(self.board_plots)-1
         self.sequence_plot = hv.Layout(list([hv.Overlay(list(board_plot.values())).opts(width=1700, height=180 if n==last else 120, border=0, xaxis='bottom' if n==last else None) for n, board_plot in enumerate(self.board_plots.values())])).cols(1).options(toolbar='below')
         return self.sequence_plot
 
     @param.depends('object', 'field_strength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOV_F', 'FOV_P', 'phase_oversampling', 'num_shots', 'matrix_F', 'matrix_P', 'recon_matrix_F', 'recon_matrix_P', 'slice_thickness', 'trajectory', 'frequency_direction', 'pixel_bandwidth', 'NSA', 'partial_Fourier', 'turbo_factor', 'EPI_factor', 'kspace_type', 'show_processed_kspace', 'kspace_exponent', 'homodyne', 'do_apodize', 'apodization_alpha', 'do_zerofill', 'radial_FOV_oversampling')
-    def get_kspace(self):
+    def display_kspace(self):
         operator = constants.OPERATORS[self.kspace_type]
         if self.show_processed_kspace:
             self.run_recon_pipeline()
@@ -1835,7 +1835,7 @@ class MRIsimulator(param.Parameterized):
         return acq_FOV_shape * rec_FOV_shape
 
     @param.depends('object', 'field_strength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOV_F', 'FOV_P', 'phase_oversampling', 'num_shots', 'matrix_F', 'matrix_P', 'recon_matrix_F', 'recon_matrix_P', 'slice_thickness', 'trajectory', 'frequency_direction', 'pixel_bandwidth', 'NSA', 'partial_Fourier', 'turbo_factor', 'EPI_factor', 'image_type', 'show_FOV', 'homodyne', 'do_apodize', 'apodization_alpha', 'do_zerofill', 'radial_FOV_oversampling')
-    def get_image(self):
+    def display_image(self):
         self.run_recon_pipeline()
         operator = constants.OPERATORS[self.image_type]
         axes = [(np.arange(self.recon_matrix[dim]) - (self.recon_matrix[dim]-1)/2) / self.recon_matrix[dim] * self.FOV[dim] for dim in range(2)]

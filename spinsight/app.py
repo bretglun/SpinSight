@@ -72,12 +72,12 @@ def get_app(dark_mode=True, settings_filestem='', start_time=datetime.now(), laz
         num_shots_info.name = event.new
     simulator.param.watch(update_num_shots_label, 'num_shots_label')
     
-    dmap_kspace = pn.Column(hv.DynamicMap(simulator.get_kspace) * simulator.k_line, 
+    dmap_kspace = pn.Column(hv.DynamicMap(simulator.display_kspace) * simulator.k_line, 
                            # simulator.param.kspace_type, 
                            pn.Row(simulator.param.show_processed_kspace, simulator.param.kspace_exponent), 
                            visible=False)
-    dmap_MR_image = hv.DynamicMap(simulator.get_image)
-    dmap_sequence = pn.Column(hv.DynamicMap(simulator.get_sequence_plot), pn.Row(simulator.param.shot, shot_angle_info, num_shots_info), visible=False)
+    dmap_MR_image = hv.DynamicMap(simulator.display_image)
+    dmap_sequence = pn.Column(hv.DynamicMap(simulator.display_sequence_plot), pn.Row(simulator.param.shot, shot_angle_info, num_shots_info), visible=False)
     load_button = pn.widgets.Button(name='Load settings', visible=settings_file.is_file())
     load_button.on_click(partial(load_button_callback, simulator, settings_file))
     save_button = pn.widgets.Button(name='Save settings', visible=settings_file.is_file())
