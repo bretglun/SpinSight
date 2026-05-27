@@ -1,3 +1,24 @@
+class InputParamNode:
+    def __init__(self, params, name):
+        self.params = params
+        self.name = name
+
+        self.children = []
+
+        params.param.watch(
+            self._on_change,
+            name
+        )
+
+    @property
+    def value(self):
+        return getattr(self.params, self.name)
+
+    def _on_change(self, event):
+        for child in self.children:
+            child.invalidate()
+
+
 class ComputeNode:
     def __init__(self, func, parents=[]):
         self.func = func
@@ -29,22 +50,21 @@ class ComputeNode:
         return self._cache
 
 
-class ParamNode:
-    def __init__(self, params, name):
+class OutputParamNode(ComputeNode):
+    def __init__(self, params, name, func, parents):
+        super().__init__(func, parents)
+
         self.params = params
         self.name = name
 
-        self.children = []
-
-        params.param.watch(
-            self._on_change,
-            name
-        )
-
     @property
     def value(self):
-        return getattr(self.params, self.name)
 
-    def _on_change(self, event):
-        for child in self.children:
-            child.invalidate()
+        value = super().value
+
+        current = getattr(self.params, self.name)
+
+        if current != value:
+            setattr(self.params, self.name, value)
+
+        return value
