@@ -6,7 +6,7 @@ import math
 from pathlib import Path
 import xarray as xr
 from spinsight import constants, sequence, recon, phantom
-from spinsight.DAG import InputParamNode, ComputeNode, OutputParamNode
+from spinsight.DAG import InputParamNode, ComputeNode, ActionNode, OutputParamNode
 from bokeh.models import HoverTool, CustomJS, ColumnDataSource
 from functools import partial
 import warnings
@@ -274,13 +274,20 @@ class MRIsimulator(param.Parameterized):
             setattr(self, f'{par}_node', InputParamNode(self, par))
             #self.param.watch(lambda _: getattr(self, f'_watch_{par}')(), par, precedence=1)
 
-        self.is_Cartesian = ComputeNode(lambda trajectory: trajectory=='Cartesian', [self.trajectory_node])
+        self.phantom = ComputeNode(
+
+        )
+        
+        self.tissues = ComputeNode(
+
+        )
+
         self.is_radial = ComputeNode(lambda trajectory: trajectory in ['Radial', 'PROPELLER'], [self.trajectory_node])
         self.is_gradient_echo = ComputeNode(lambda sequence: 'Gradient Echo' in sequence, [self.sequence_node])
 
         self.freq_dir = ComputeNode(
-            lambda frequency_direction, is_Cartesian: constants.DIRECTIONS[frequency_direction] if is_Cartesian else 1,
-            [self.frequency_direction_node, self.is_Cartesian]
+            lambda frequency_direction, is_radial: constants.DIRECTIONS[frequency_direction] if not is_radial else 1,
+            [self.frequency_direction_node, self.is_radial]
         )
 
         self.phase_dir = ComputeNode(
@@ -298,9 +305,24 @@ class MRIsimulator(param.Parameterized):
             [self.matrix_F_node, self.matrix_P_node, self.freq_dir]
         )
 
+        self.recon_matrix = ComputeNode(
+            lambda recon_matrix_P, recon_matrix_F, freq_dir, do_zerofill, matrix:
+            ([recon_matrix_P, recon_matrix_F] if freq_dir else [recon_matrix_F, recon_matrix_P]) if do_zerofill else matrix,
+            [self.recon_matrix_P_node, self.recon_matrix_F_node, self.freq_dir, self.do_zerofill_node, self.matrix]
+        )
+
         self.k_read_axis = ComputeNode(
             self.k_read_axis_func,
-            [self.freq_dir, self.FOV, self.matrix, self.is_Cartesian, self.is_radial, self.radial_FOV_oversampling_node]
+            [self.freq_dir, self.FOV, self.matrix, self.is_radial, self.radial_FOV_oversampling_node]
+        )
+
+        self.readtrain_spacing = ComputeNode(
+            
+        )
+
+        
+        self.readouts = ComputeNode(
+            
         )
 
         self.num_blades = ComputeNode(
@@ -315,25 +337,191 @@ class MRIsimulator(param.Parameterized):
         self.num_shots_node = OutputParamNode(
             self,
             'num_shots',
-            lambda matrix_P, phase_oversampling, partial_Fourier, turbo_factor, EPI_factor, is_Cartesian, num_blades:
-            int(np.ceil(matrix_P * (1 + phase_oversampling / 100) * partial_Fourier / turbo_factor / EPI_factor)) if is_Cartesian else num_blades,
-            [self.matrix_P_node, self.phase_oversampling_node, self.partial_Fourier_node, self.turbo_factor_node, self.EPI_factor_node, self.is_Cartesian, self.num_blades]
+            lambda matrix_P, phase_oversampling, partial_Fourier, turbo_factor, EPI_factor, is_radial, num_blades:
+            int(np.ceil(matrix_P * (1 + phase_oversampling / 100) * partial_Fourier / turbo_factor / EPI_factor)) if not is_radial else num_blades,
+            [self.matrix_P_node, self.phase_oversampling_node, self.partial_Fourier_node, self.turbo_factor_node, self.EPI_factor_node, self.is_radial, self.num_blades]
         )
 
         self.num_measured_lines = ComputeNode(
-            lambda turbo_factor, EPI_factor, num_shots, is_Cartesian:
-            turbo_factor * EPI_factor * (num_shots if is_Cartesian else 1), # measured lines per blade
-            [self.turbo_factor_node, self.EPI_factor_node, self.num_shots_node, self.is_Cartesian]
+            lambda turbo_factor, EPI_factor, num_shots, is_radial:
+            turbo_factor * EPI_factor * (num_shots if not is_radial else 1), # measured lines per blade
+            [self.turbo_factor_node, self.EPI_factor_node, self.num_shots_node, self.is_radial]
+        )
+
+        self.lines_to_measure = ComputeNode(
+            
+        )
+
+        self.pe_table = ComputeNode(
+            
         )
 
         self.k_phase_axis = ComputeNode(
             self.k_phase_axis_func,
-            [self.is_Cartesian, self.is_radial, self.num_measured_lines, self.matrix, self.phase_dir, self.phase_oversampling_node, self.FOV]
+            [self.is_radial, self.num_measured_lines, self.matrix, self.phase_dir, self.phase_oversampling_node, self.FOV]
+        )
+
+        self.num_blank_lines = ComputeNode(
+            lambda k_phase_axis, lines_to_measure:
+            len(k_phase_axis) - sum(lines_to_measure),
+            [self.k_phase_axis, self.lines_to_measure]
+        )
+
+        ActionNode(
+            self.homodyne_visibility_func,
+            [self.num_blank_lines, self.is_radial]
+        )
+
+        self.signal_level = ComputeNode(
+            self.signal_level_func,
+            [self.k_read_axis, self.lines_to_measure, self.num_blades, self.slice_thickness_node, self.FOV, self.matrix]
+        )
+
+        self.spin_echoes = ComputeNode(
+            self.spin_echoes_func,
+            [self.lines_to_measure, self.pe_table, self.readtrain_spacing]
+        )
+        
+        self.sampling_time = ComputeNode(
+            self.sampling_time_func,
+            [self.pixel_bandwidth_node, self.k_read_axis]
+        )
+        
+        self.time_after_excitation = ComputeNode(
+            self.time_after_excitation_func,
+            [self.lines_to_measure, self.pe_table, self.readouts, self.sampling_time, self.freq_dir, self.phase_dir]
+        )
+
+        self.time_relative_inphase = ComputeNode(
+            self.time_relative_inphase_func,
+            [self.time_after_excitation, self.is_gradient_echo, self.spin_echoes, self.phase_dir]
+        )
+        
+        self.dephasing = ComputeNode(
+            self.dephasing_func,
+            [self.field_strength_node, self.time_relative_inphase]
+        )
+        
+        self.T2w = ComputeNode(
+            self.T2w_func,
+            [self.tissues, self.time_after_excitation, self.time_relative_inphase, self.field_strength_node]
+        )
+
+        self.k_axes = ComputeNode(
+            self.k_axes_func,
+            [self.freq_dir, self.phase_dir, self.k_read_axis, self.k_phase_axis, self.lines_to_measure]
+        )
+        
+        self.k_grid_axes = ComputeNode(
+            self.k_grid_axes_func,
+            [self.is_radial, self.k_axes, self.FOV, self.matrix]
+        )
+
+        self.k_samples = ComputeNode(
+            self.k_samples_func,
+            [self.k_axes, self.k_angles]
+        )
+
+        self.plain_kspace_comps = ComputeNode(
+            self.plain_kspace_comps_func,
+            [self.is_radial, self.phantom, self.k_grid_axes, self.k_samples]
+        )
+        
+        self.thick_kspace_comps = ComputeNode(
+            self.thick_kspace_comps_func,
+            [self.slice_thickness_node, self.k_samples, self.plain_kspace_comps]
+        )
+
+        self.kspace_comps = ComputeNode(
+            self.kspace_comps_func,
+            [self.tissues, self.thick_kspace_comps, self.T2w, self.dephasing]
+        )
+        
+        self.decayed_signal = ComputeNode(
+            self.decayed_signal_func,
+            [self.signal_level, self.T2w, self.reference_tissue_node, self.k_read_axis, self.k_phase_axis, self.freq_dir]
+        )
+        
+        self.PD_and_T1w = ComputeNode(
+            self.PD_and_T1w_func,
+            [self.sequence_node, self.TR_node, self.TE_node, self.TI_node, self.FA_node, self.field_strength_node, self.tissues]
+        )
+
+        self.reference_signal = ComputeNode(
+            lambda decayed_signal, PD_and_T1w, reference_tissue:
+            decayed_signal * np.abs(PD_and_T1w[reference_tissue]),
+            [self.decayed_signal, self.PD_and_T1w, self.reference_tissue_node]
+        )
+
+        self.noise_std = ComputeNode(
+            self.noise_std_func,
+            [self.sampling_time, self.noise_gain_node, self.NSA_node, self.field_strength_node]
+        )
+
+        self.noise = ComputeNode(
+            self.noise_func,
+            [self.k_samples, self.noise_std]
+        )
+
+        self.SNR = ComputeNode(
+            lambda signal, noise_std:
+            signal / noise_std,
+            [self.reference_signal, self.noise_std]
+        )
+        
+        self.relative_SNR_node = OutputParamNode(
+            self,
+            'relative_SNR',
+            lambda SNR, reference_SNR:
+            SNR / reference_SNR * 100,
+            [self.SNR, self.reference_SNR_node]
         )
 
         self.FOV_box = ComputeNode(
             self.FOV_box_func,
             [self.show_FOV_node, self.is_radial, self.FOV, self.matrix, self.freq_dir, self.phase_dir, self.k_read_axis, self.k_phase_axis]
+        )
+        
+        self.measured_kspace = ComputeNode(
+            self.measured_kspace_func,
+            [self.noise, self.kspace_comps, self.FatSat_node, self.PD_and_T1w]
+        )
+
+        self.gridded_kspace = ComputeNode(
+            self.gridded_kspace_func,
+            [self.k_grid_axes, self.is_radial, self.measured_kspace, self.k_samples, self.FOV, self.matrix]
+        )
+
+        self.full_kspace = ComputeNode(
+            self.full_kspace_func,
+            [self.num_blank_lines, self.is_radial, self.gridded_kspace, self.phase_dir, self.homodyne_node, self.k_phase_axis]
+        )
+
+        self.full_k_matrix = ComputeNode(lambda full_kspace: full_kspace.shape, [self.full_kspace])
+        
+        self.apodized_kspace = ComputeNode(
+            self.apodized_kspace_func,
+            [self.full_kspace, self.do_apodize_node, self.apodization_alpha_node]
+        )
+
+        self.oversampled_recon_matrix = ComputeNode(
+            self.oversampled_recon_matrix_func,
+            [self.recon_matrix, self.full_k_matrix, self.matrix]
+        )
+
+        self.zerofilled_kspace = ComputeNode(
+            self.zerofilled_kspace_func,
+            [self.apodized_kspace, self.oversampled_recon_matrix]
+        )
+        
+        self.image_array = ComputeNode(
+            self.image_array_func,
+            [self.oversampled_recon_matrix, self.full_k_matrix, self.recon_matrix, self.zerofilled_kspace]
+        )
+        
+        self.image = ComputeNode(
+            self.image_func,
+            [self.image_type_node, self.recon_matrix, self.FOV, self.image_array]
         )
 
         self.param.watch(lambda _: self._watch_trajectory(), 'trajectory', precedence=1)
@@ -389,8 +577,7 @@ class MRIsimulator(param.Parameterized):
         self.recon_pipeline = {f: True for f in [
             'partial_Fourier_recon', 
             'apodization', 
-            'zerofill', 
-            'reconstruct', 
+            'zerofill',
             'set_reference_SNR'
         ]}
 
@@ -399,8 +586,6 @@ class MRIsimulator(param.Parameterized):
         self._watch_recon_matrix_P()
         self._watch_matrix_F()
         self._watch_matrix_P()
-
-        self.k_grid_axes = [None]*2
 
         self.run_sequence_pipeline()
 
@@ -581,7 +766,7 @@ class MRIsimulator(param.Parameterized):
             self.set_closest(self.param.recon_voxel_F, self.FOV_F/self.recon_matrix_F)
             self.param.trigger('voxel_F', 'recon_voxel_F')
             add_to_pipeline(self.acquisition_pipeline, ['sample_kspace', 'update_sampling_time', 'modulate_kspace', 'simulate_noise', 'compile_kspace'])
-            add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill', 'reconstruct'])
+            add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill'])
             add_to_pipeline(self.sequence_pipeline, ['setup_readouts', 'update_BW_bounds', 'update_matrix_F_bounds'])
 
     @param.depends('FOV_P', watch=True)
@@ -596,7 +781,7 @@ class MRIsimulator(param.Parameterized):
             self.set_closest(self.param.recon_voxel_P, self.FOV_P/self.recon_matrix_P)
             self.param.trigger('voxel_P', 'recon_voxel_P')
             add_to_pipeline(self.acquisition_pipeline, ['sample_kspace', 'update_sampling_time', 'modulate_kspace', 'simulate_noise', 'compile_kspace'])
-            add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill', 'reconstruct'])
+            add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill'])
             add_to_pipeline(self.sequence_pipeline, ['setup_phasers', 'update_matrix_P_bounds'])
 
     @param.depends('phase_oversampling', watch=True)
@@ -610,7 +795,7 @@ class MRIsimulator(param.Parameterized):
     @param.depends('num_shots', watch=True)
     def _watch_num_shots(self):
         add_to_pipeline(self.acquisition_pipeline, ['sample_kspace', 'modulate_kspace', 'simulate_noise', 'compile_kspace'])
-        add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill', 'reconstruct'])
+        add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill'])
         add_to_pipeline(self.sequence_pipeline, ['setup_phasers', 'update_FOV_P_bounds', 'update_turbo_factor_bounds', 'update_EPI_factor_objects'])
         add_to_pipeline(self.sequence_plot_pipeline, ['calculate_k_trajectory'])
 
@@ -626,7 +811,7 @@ class MRIsimulator(param.Parameterized):
             self.update_voxel_F_objects()
             self.set_closest(self.param.voxel_F, self.FOV_F / self.matrix_F)
             add_to_pipeline(self.acquisition_pipeline, ['sample_kspace', 'update_sampling_time', 'modulate_kspace', 'simulate_noise', 'compile_kspace'])
-            add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill', 'reconstruct'])
+            add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill'])
             add_to_pipeline(self.sequence_pipeline, ['setup_readouts', 'update_BW_bounds', 'update_matrix_F_bounds', 'update_FOV_F_bounds'])
             self.set_param_bounds(self.param['recon_matrix_F'], minval=self.matrix_F)
             self.update_recon_voxel_F_objects()
@@ -641,7 +826,7 @@ class MRIsimulator(param.Parameterized):
             self.update_voxel_P_objects()
             self.set_closest(self.param.voxel_P, self.FOV_P / self.matrix_P)
             add_to_pipeline(self.acquisition_pipeline, ['sample_kspace', 'update_sampling_time', 'modulate_kspace', 'simulate_noise', 'compile_kspace'])
-            add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill', 'reconstruct'])
+            add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill'])
             add_to_pipeline(self.sequence_pipeline, ['setup_phasers', 'update_FOV_P_bounds', 'update_turbo_factor_bounds', 'update_EPI_factor_objects'])
             self.set_param_bounds(self.param['recon_matrix_P'], minval=self.matrix_P)
             self.update_recon_voxel_P_objects()
@@ -677,18 +862,18 @@ class MRIsimulator(param.Parameterized):
     @param.depends('slice_thickness', watch=True)
     def _watch_slice_thickness(self):
         add_to_pipeline(self.acquisition_pipeline, ['sample_kspace', 'update_sampling_time', 'modulate_kspace', 'simulate_noise', 'compile_kspace'])
-        add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill', 'reconstruct'])
+        add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill'])
         add_to_pipeline(self.sequence_pipeline, ['setup_slice_selection', 'place_FatSat'])
 
     @param.depends('radial_FOV_oversampling', watch=True)
     def _watch_radial_FOV_oversampling(self):
         add_to_pipeline(self.acquisition_pipeline, ['sample_kspace', 'update_sampling_time', 'modulate_kspace', 'simulate_noise', 'compile_kspace'])
-        add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill', 'reconstruct'])
+        add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill'])
 
     @param.depends('frequency_direction', watch=True)
     def _watch_frequency_direction(self):
         add_to_pipeline(self.acquisition_pipeline, ['sample_kspace', 'update_sampling_time', 'modulate_kspace', 'simulate_noise', 'compile_kspace'])
-        add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill', 'reconstruct'])
+        add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill'])
         for p in [self.param.FOV_F, self.param.FOV_P, self.param.matrix_F, self.param.matrix_P, self.param.recon_matrix_F, self.param.recon_matrix_P]:
             if ' x' in p.label:
                 p.label = p.label.replace(' x', ' y')
@@ -700,7 +885,7 @@ class MRIsimulator(param.Parameterized):
     #@param.depends('trajectory', watch=True)
     def _watch_trajectory(self):
         add_to_pipeline(self.acquisition_pipeline, ['sample_kspace', 'update_sampling_time', 'modulate_kspace', 'simulate_noise', 'compile_kspace'])
-        add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill', 'reconstruct'])
+        add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill'])
         add_to_pipeline(self.sequence_pipeline, ['setup_readouts', 'setup_phasers', 'update_FOV_P_bounds', 'update_turbo_factor_bounds', 'update_EPI_factor_objects'])
         if self.is_radial.value:
             self.partial_Fourier = 1.
@@ -730,7 +915,7 @@ class MRIsimulator(param.Parameterized):
             self.set_closest(self.param.FW_shift, pixel_BW_to_shift(self.pixel_bandwidth, self.field_strength))
             self.param.trigger('FW_shift')
             add_to_pipeline(self.acquisition_pipeline, ['update_sampling_time', 'modulate_kspace', 'simulate_noise', 'update_PD_and_T1w', 'compile_kspace'])
-            add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill', 'reconstruct'])
+            add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill'])
             self._watch_FatSat() # since fatsat pulse duration depends on field_strength
 
     @param.depends('pixel_bandwidth', watch=True)
@@ -739,7 +924,7 @@ class MRIsimulator(param.Parameterized):
             self.set_closest(self.param.FW_shift, pixel_BW_to_shift(self.pixel_bandwidth, self.field_strength))
             self.set_closest(self.param.FOV_bandwidth, pixel_BW_to_FOV_BW(self.pixel_bandwidth, self.matrix_F))
             add_to_pipeline(self.acquisition_pipeline, ['update_sampling_time', 'modulate_kspace', 'simulate_noise', 'compile_kspace'])
-            add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill', 'reconstruct'])
+            add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill'])
             add_to_pipeline(self.sequence_pipeline, ['setup_readouts', 'update_matrix_F_bounds', 'update_FOV_F_bounds', 'update_matrix_P_bounds', 'update_FOV_P_bounds'])
 
     @param.depends('FW_shift', watch=True)
@@ -755,18 +940,18 @@ class MRIsimulator(param.Parameterized):
     @param.depends('NSA', watch=True)
     def _watch_NSA(self):
         add_to_pipeline(self.acquisition_pipeline, ['update_sampling_time', 'modulate_kspace', 'simulate_noise', 'compile_kspace'])
-        add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill', 'reconstruct'])
+        add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill'])
 
     @param.depends('partial_Fourier', watch=True)
     def _watch_partial_Fourier(self):
         add_to_pipeline(self.acquisition_pipeline, ['sample_kspace', 'update_sampling_time', 'modulate_kspace', 'simulate_noise', 'compile_kspace'])
-        add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill', 'reconstruct'])
+        add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill'])
         add_to_pipeline(self.sequence_pipeline, ['setup_refocusing', 'setup_readouts', 'setup_phasers', 'update_min_TE', 'update_min_TR', 'update_max_TE', 'update_max_TI', 'update_BW_bounds', 'update_matrix_F_bounds', 'update_matrix_P_bounds', 'update_FOV_F_bounds',  'update_FOV_P_bounds', 'update_slice_thickness_bounds', 'update_turbo_factor_bounds', 'update_EPI_factor_objects'])
 
     @param.depends('turbo_factor', watch=True)
     def _watch_turbo_factor(self):
         add_to_pipeline(self.acquisition_pipeline, ['sample_kspace', 'update_sampling_time', 'modulate_kspace', 'simulate_noise', 'compile_kspace'])
-        add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill', 'reconstruct'])
+        add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill'])
         add_to_pipeline(self.sequence_pipeline, ['setup_refocusing', 'setup_readouts', 'setup_phasers', 'update_min_TE', 'update_min_TR', 'update_max_TE', 'update_max_TI', 'update_BW_bounds', 'update_matrix_F_bounds', 'update_matrix_P_bounds', 'update_FOV_F_bounds',  'update_FOV_P_bounds', 'update_slice_thickness_bounds', 'update_EPI_factor_objects'])
         self.update_labels_by_trajectory()
         self.update_EPI_factor_objects()
@@ -774,7 +959,7 @@ class MRIsimulator(param.Parameterized):
     @param.depends('EPI_factor', watch=True)
     def _watch_EPI_factor(self):
         add_to_pipeline(self.acquisition_pipeline, ['sample_kspace', 'update_sampling_time', 'modulate_kspace', 'simulate_noise', 'compile_kspace'])
-        add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill', 'reconstruct'])
+        add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill'])
         add_to_pipeline(self.sequence_pipeline, ['setup_readouts', 'setup_phasers', 'update_min_TE', 'update_min_TR', 'update_max_TE', 'update_max_TI', 'update_BW_bounds', 'update_matrix_F_bounds', 'update_matrix_P_bounds', 'update_FOV_F_bounds',  'update_FOV_P_bounds', 'update_slice_thickness_bounds', 'update_turbo_factor_bounds'])
         self.update_labels_by_trajectory()
         self.update_turbo_factor_bounds()
@@ -787,7 +972,7 @@ class MRIsimulator(param.Parameterized):
     @param.depends('sequence', watch=True)
     def _watch_sequence(self):
         add_to_pipeline(self.acquisition_pipeline, ['modulate_kspace', 'update_PD_and_T1w', 'compile_kspace'])
-        add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill', 'reconstruct'])
+        add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill'])
         add_to_pipeline(self.sequence_pipeline, ['setup_excitation', 'setup_refocusing', 'setup_inversion', 'setup_phasers', 'place_readouts', 'place_phasers'])
         self.param.FA.precedence = 1 if self.sequence=='Spoiled Gradient Echo' else -1
         self.param.TI.precedence = 1 if self.sequence=='Inversion Recovery' else -1
@@ -800,37 +985,37 @@ class MRIsimulator(param.Parameterized):
     @param.depends('TE', watch=True)
     def _watch_TE(self):
         add_to_pipeline(self.acquisition_pipeline, ['modulate_kspace', 'update_PD_and_T1w', 'compile_kspace'])
-        add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill', 'reconstruct'])
+        add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill'])
         add_to_pipeline(self.sequence_pipeline, ['setup_phasers', 'place_refocusing', 'place_readouts', 'update_matrix_F_bounds', 'update_FOV_F_bounds', 'update_matrix_P_bounds', 'update_FOV_P_bounds'])
 
     @param.depends('TR', watch=True)
     def _watch_TR(self):
         add_to_pipeline(self.acquisition_pipeline, ['update_PD_and_T1w', 'compile_kspace'])
-        add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill', 'reconstruct'])
+        add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill'])
         add_to_pipeline(self.sequence_pipeline, ['update_max_TE', 'update_max_TI', 'update_BW_bounds', 'update_slice_thickness_bounds'])
         add_to_pipeline(self.sequence_plot_pipeline, ['render_TR_span'])
 
     @param.depends('TI', watch=True)
     def _watch_TI(self):
         add_to_pipeline(self.acquisition_pipeline, ['update_PD_and_T1w', 'compile_kspace'])
-        add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill', 'reconstruct'])
+        add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill'])
         add_to_pipeline(self.sequence_pipeline, ['place_inversion'])
 
     @param.depends('FA', watch=True)
     def _watch_FA(self):
         add_to_pipeline(self.acquisition_pipeline, ['update_PD_and_T1w', 'compile_kspace'])
-        add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill', 'reconstruct'])
+        add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill'])
         add_to_pipeline(self.sequence_pipeline, ['setup_excitation'])
 
     @param.depends('FatSat', watch=True)
     def _watch_FatSat(self):
         add_to_pipeline(self.acquisition_pipeline, ['compile_kspace'])
-        add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill', 'reconstruct'])
+        add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill'])
         add_to_pipeline(self.sequence_pipeline, ['setup_FatSat', 'update_max_TE', 'update_BW_bounds'])
 
     @param.depends('homodyne', watch=True)
     def _watch_homodyne(self):
-        add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill', 'reconstruct'])
+        add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill'])
 
     @param.depends('do_apodize', watch=True)
     def _watch_do_apodize(self):
@@ -838,28 +1023,28 @@ class MRIsimulator(param.Parameterized):
             self.param.apodization_alpha.precedence = abs(self.param.apodization_alpha.precedence)
         else:
             self.param.apodization_alpha.precedence = -abs(self.param.apodization_alpha.precedence)
-        add_to_pipeline(self.recon_pipeline, ['apodization', 'zerofill', 'reconstruct'])
+        add_to_pipeline(self.recon_pipeline, ['apodization', 'zerofill'])
 
     @param.depends('apodization_alpha', watch=True)
     def _watch_apodization_alpha(self):
-        add_to_pipeline(self.recon_pipeline, ['apodization', 'zerofill', 'reconstruct'])
+        add_to_pipeline(self.recon_pipeline, ['apodization', 'zerofill'])
 
     @param.depends('do_zerofill', watch=True)
     def _watch_do_zerofill(self):
-        add_to_pipeline(self.recon_pipeline, ['zerofill', 'reconstruct'])
+        add_to_pipeline(self.recon_pipeline, ['zerofill'])
 
     @param.depends('recon_matrix_F', watch=True)
     def _watch_recon_matrix_F(self):
         self.rec_acq_ratio_F = self.recon_matrix_F / self.matrix_F
         if self.do_zerofill:
-            add_to_pipeline(self.recon_pipeline, ['zerofill', 'reconstruct'])
+            add_to_pipeline(self.recon_pipeline, ['zerofill'])
         self.set_closest(self.param.recon_voxel_F, self.FOV_F / self.recon_matrix_F)
 
     @param.depends('recon_matrix_P', watch=True)
     def _watch_recon_matrix_P(self):
         self.rec_acq_ratio_P = self.recon_matrix_P / self.matrix_P
         if self.do_zerofill:
-            add_to_pipeline(self.recon_pipeline, ['zerofill', 'reconstruct'])
+            add_to_pipeline(self.recon_pipeline, ['zerofill'])
         self.set_closest(self.param.recon_voxel_P, self.FOV_P / self.recon_matrix_P)
 
     @param.depends('reference_tissue', watch=True)
@@ -1277,31 +1462,35 @@ class MRIsimulator(param.Parameterized):
                 self.pe_table = [[list(range(rf_echo, sum(self.lines_to_measure), self.turbo_factor))[::order] for rf_echo in range(self.turbo_factor)][::order] for shot in range(self.num_shots_node.value)]
             else:
                 self.pe_table = [[list(range(rf_echo * self.num_shots_node.value + shot, sum(self.lines_to_measure), self.num_shots_node.value * self.turbo_factor))[::order] for rf_echo in range(self.turbo_factor)][::order] for shot in range(self.num_shots_node.value)]
+        self.pe_table = np.array(self.pe_table)
         
-    def k_read_axis_func(self, freq_dir, FOV, matrix, is_Cartesian, is_radial, radial_FOV_oversampling):
+    def k_read_axis_func(self, freq_dir, FOV, matrix, is_radial, radial_FOV_oversampling):
         voxel_size = FOV[freq_dir] / matrix[freq_dir]
-        if is_Cartesian:
+        if not is_radial:
             num_samples = matrix[freq_dir]
             # at least Nyquist sampling wrt phantom if loaded
             if hasattr(self, 'phantom') and (FOV[freq_dir] < self.phantom['support'][freq_dir]):
                 num_samples = int(np.ceil(self.phantom['support'][freq_dir] / voxel_size))
-        elif is_radial:
+        else:
             maxFOV = max(FOV)
             if hasattr(self, 'phantom'):
                 maxFOV = max(max(self.phantom['support']), maxFOV)
             num_samples = int(np.ceil(maxFOV / voxel_size * radial_FOV_oversampling))
         return recon.get_k_axis(num_samples, voxel_size)
 
-    def k_phase_axis_func(self, is_Cartesian, is_radial, num_measured_lines, matrix, phase_dir, phase_oversampling, FOV):
-        if is_Cartesian:
+    def k_phase_axis_func(self, is_radial, num_measured_lines, matrix, phase_dir, phase_oversampling, FOV):
+        if not is_radial:
             # oversampling may be higher than prescribed since num_shots must be integer:
             num_lines = max(num_measured_lines, int(np.ceil(matrix[phase_dir] * (1 + phase_oversampling / 100))))
             voxel_size = FOV[phase_dir] / matrix[phase_dir]
-        elif is_radial:
+        else:
             num_lines = num_measured_lines # future: take undersampling into account
             voxel_size = max(FOV) / num_lines # corresponding to blade width
             
         return recon.get_k_axis(num_lines, voxel_size)
+
+    def homodyne_visibility_func(self, num_blank_lines, is_radial):
+        self.param.homodyne.precedence = -1 if (num_blank_lines == 0 or is_radial) else 1
 
     def setup_phase_encoding(self):
         self.lines_to_measure = np.ones(len(self.k_phase_axis.value), dtype=bool)
@@ -1323,110 +1512,137 @@ class MRIsimulator(param.Parameterized):
         self.param.shot.bounds=(1, self.num_shots_node.value)
         self.shot = min(self.shot, self.num_shots_node.value)
 
-    def sample_kspace(self):
+    def k_axes_func(self, freq_dir, phase_dir, k_read_axis, k_phase_axis, lines_to_measure):
         k_axes = [None]*2
-        k_axes[self.freq_dir.value] = self.k_read_axis.value
-        k_axes[self.phase_dir.value] = self.k_phase_axis.value[self.lines_to_measure]
+        k_axes[freq_dir] = k_read_axis
+        k_axes[phase_dir] = k_phase_axis[lines_to_measure]
+        return k_axes
+    
+    def k_samples_func(self, k_axes, k_angles):
         k_samples = np.array(np.meshgrid(k_axes[0], k_axes[1])).T
         # rotate samples for each angle:
-        rotmat = np.array([[np.cos(self.k_angles.value), -np.sin(self.k_angles.value)], 
-                           [np.sin(self.k_angles.value),  np.cos(self.k_angles.value)]])
-        self.k_samples = np.einsum('ijk,klm->ijml', k_samples, rotmat) # shape=(Nx, Ny, Nangles, 2)
-
-        if self.is_Cartesian.value:
-            self.k_grid_axes = k_axes
-            self.plain_kspace_comps = recon.resample_kspace_Cartesian(self.phantom, self.k_grid_axes, shape=self.k_samples.shape[:-1])
-        elif self.is_radial.value:
-            for dim in range(2):
-                voxel_size = self.FOV.value[dim]/self.matrix.value[dim]
-                matrix = int(np.ceil(max(self.FOV.value[dim], self.phantom['support'][dim]) / voxel_size))
-                self.k_grid_axes[dim] = recon.get_k_axis(matrix, voxel_size)
-            self.plain_kspace_comps = recon.resample_kspace(self.phantom, self.k_samples)
+        rotmat = np.array([[np.cos(k_angles), -np.sin(k_angles)], 
+                           [np.sin(k_angles),  np.cos(k_angles)]])
+        return np.einsum('ijk,klm->ijml', k_samples, rotmat) # shape=(Nx, Ny, Nangles, 2)
+    
+    def k_grid_axes_func(self, is_radial, k_axes, FOV, matrix):
+        if not is_radial:
+            return k_axes.copy()
+        k_grid_axes = [None, None]
+        for dim in range(2):
+            voxel_size = FOV[dim] / matrix[dim]
+            matrix_dim = int(np.ceil(max(FOV[dim], phantom['support'][dim]) / voxel_size))
+            k_grid_axes[dim] = recon.get_k_axis(matrix_dim, voxel_size)
+        return k_grid_axes
+    
+    def plain_kspace_comps_func(self, is_radial, phantom, k_grid_axes, k_samples):
+        if not is_radial:
+            return recon.resample_kspace_Cartesian(phantom, k_grid_axes, shape=k_samples.shape[:-1])
+        return recon.resample_kspace(phantom, k_samples)
         
+    def thick_kspace_comps_func(self, slice_thickness, k_samples, plain_kspace_comps):
         # Lorenzian line shape to mimic slice thickness
         blur_factor = .5
-        slice_thickness_filter = self.slice_thickness * np.exp(-blur_factor * self.slice_thickness * np.sqrt(np.sum(self.k_samples**2, axis=-1)))
-        for tissue in self.plain_kspace_comps:
-            self.plain_kspace_comps[tissue] *= slice_thickness_filter
+        slice_thickness_filter = slice_thickness * np.exp(-blur_factor * slice_thickness * np.sqrt(np.sum(k_samples**2, axis=-1)))
+        thick_kspace_comps = {}
+        for tissue in plain_kspace_comps:
+            thick_kspace_comps[tissue] = plain_kspace_comps[tissue] * slice_thickness_filter
+        return thick_kspace_comps
         
-        # signal for SNR calculation
-        self.signal = np.sqrt(len(self.k_read_axis.value) * sum(self.lines_to_measure) * self.num_blades.value) * self.slice_thickness * np.prod(self.FOV.value) / np.prod(self.matrix.value)
+    def signal_level_func(self, k_read_axis, lines_to_measure, num_blades, slice_thickness, FOV, matrix):
+        return np.sqrt(len(k_read_axis) * sum(lines_to_measure) * num_blades) * slice_thickness * np.prod(FOV) / np.prod(matrix)
 
-    def update_sampling_time(self):
+    def sampling_time_func(self, pixel_bandwidth, k_read_axis):
         # time of sample along (positive) readout relative to (k-space) center
-        half_read_duration = .5e3 / self.pixel_bandwidth # msec
-        self.sampling_time = np.linspace(-half_read_duration, half_read_duration, len(self.k_read_axis.value))
-        dwell_time = np.diff(self.sampling_time[:2])[0]
-        self.noise_std = self.noise_gain / np.sqrt(dwell_time * self.NSA) / self.field_strength
+        half_read_duration = .5e3 / pixel_bandwidth # msec
+        return np.linspace(-half_read_duration, half_read_duration, len(k_read_axis))
+        
+    def noise_std_func(self, sampling_time, noise_gain, NSA, field_strength):
+        dwell_time = np.diff(sampling_time[:2])[0]
+        return noise_gain / np.sqrt(dwell_time * NSA) / field_strength
 
-    def modulate_kspace(self):
-        pe_table = np.array(self.pe_table)
-        TEs = np.zeros((sum(self.lines_to_measure)))
-        spin_echoes = np.zeros((sum(self.lines_to_measure)))
-        reverse = np.zeros((sum(self.lines_to_measure)), dtype=bool)
-        for ky in range(sum(self.lines_to_measure)):
+    def spin_echoes_func(self, lines_to_measure, pe_table, readtrain_spacing):
+        spin_echoes = np.zeros((sum(lines_to_measure)))
+        for ky in range(sum(lines_to_measure)):
             shot, rf_echo, gr_echo = np.argwhere(pe_table==ky)[0]
-            TEs[ky] = self.boards['frequency']['objects']['readouts'][rf_echo][gr_echo]['center_f']
-            spin_echoes[ky] = (rf_echo + 1) * self.readtrain_spacing
-            reverse[ky] = self.boards['frequency']['objects']['readouts'][rf_echo][gr_echo]['area_f'] < 0
-        sampling_time = np.expand_dims(self.sampling_time, axis=[dim for dim in range(3) if dim != self.freq_dir.value])
-        self.time_after_excitation = sampling_time + np.expand_dims(TEs, axis=[dim for dim in range(3) if dim != self.phase_dir.value])
+            spin_echoes[ky] = (rf_echo + 1) * readtrain_spacing
+        return spin_echoes
+    
+    def time_after_excitation_func(self, lines_to_measure, pe_table, readouts, sampling_time, freq_dir, phase_dir):
+        TEs = np.zeros((sum(lines_to_measure)))
+        reverse = np.zeros((sum(lines_to_measure)), dtype=bool)
+        for ky in range(sum(lines_to_measure)):
+            shot, rf_echo, gr_echo = np.argwhere(pe_table==ky)[0]
+            TEs[ky] = readouts[rf_echo][gr_echo]['center_f']
+            reverse[ky] = readouts[rf_echo][gr_echo]['area_f'] < 0
+        sampling_time = np.expand_dims(sampling_time, axis=[dim for dim in range(3) if dim != freq_dir])
+        time_after_excitation = sampling_time + np.expand_dims(TEs, axis=[dim for dim in range(3) if dim != phase_dir])
         # EPI rowflip:
-        reverse_time_after_excitation = np.flip(self.time_after_excitation, axis=self.freq_dir.value)
-        reverse = np.expand_dims(reverse, axis=[dim for dim in range(3) if dim != self.phase_dir.value])
-        reverse = reverse.repeat(len(self.sampling_time), axis=self.freq_dir.value)
-        self.time_after_excitation[reverse] = reverse_time_after_excitation[reverse]
+        reverse_time_after_excitation = np.flip(time_after_excitation, axis=freq_dir)
+        reverse = np.expand_dims(reverse, axis=[dim for dim in range(3) if dim != phase_dir])
+        reverse = reverse.repeat(len(sampling_time), axis=freq_dir)
+        time_after_excitation[reverse] = reverse_time_after_excitation[reverse]
+        return time_after_excitation
         
-        time_relative_inphase = self.time_after_excitation.copy()
-        if not self.is_gradient_echo.value:
-            spin_echoes = np.expand_dims(spin_echoes, axis=[dim for dim in range(3) if dim != self.phase_dir.value])
-            time_relative_inphase -= spin_echoes # for spinecho, subtract Hahn echo position from time_after_excitation
+    def time_relative_inphase_func(self, time_after_excitation, is_gradient_echo, spin_echoes, phase_dir):
+        time_relative_inphase = time_after_excitation.copy()
+        if not is_gradient_echo:
+            # for spinecho, subtract Hahn echo position from time_after_excitation
+            time_relative_inphase -= np.expand_dims(spin_echoes, axis=[dim for dim in range(3) if dim != phase_dir])
+        return time_relative_inphase
         
-        self.kspace_comps = {}
-        for tissue in self.tissues:
-            T2w = get_T2w(tissue, self.time_after_excitation, time_relative_inphase, self.field_strength)
+    def dephasing_func(self, field_strength, time_relative_inphase):
+        dephasing = {}
+        for component, resonance in constants.FAT_RESONANCES.items():
+            dephasing[component] = np.exp(2j*np.pi * constants.GYRO * field_strength * resonance['shift'] * time_relative_inphase * 1e-3)
+        return dephasing
+
+    def T2w_func(self, tissues, time_after_excitation, time_relative_inphase, field_strength):
+        T2w = {}
+        for tissue in tissues:
+            T2w[tissue] = get_T2w(tissue, time_after_excitation, time_relative_inphase, field_strength)
+            if constants.TISSUES[tissue]['FF'] > 0: # fat containing tissues
+                for component in constants.FAT_RESONANCES:
+                    T2w[tissue + component] = get_T2w(component, time_after_excitation, time_relative_inphase, field_strength)
+        return T2w
+
+    def kspace_comps_func(self, tissues, thick_kspace_comps, T2w, dephasing):
+        kspace_comps = {}
+        for tissue in tissues:
             if constants.TISSUES[tissue]['FF'] == .00:
-                self.kspace_comps[tissue] = self.plain_kspace_comps[tissue] * T2w
+                kspace_comps[tissue] = thick_kspace_comps[tissue] * T2w[tissue]
             else: # fat containing tissues
-                self.kspace_comps[tissue + 'Water'] = self.plain_kspace_comps[tissue] * T2w
-                for component, resonance in constants.FAT_RESONANCES.items():
-                    T2w = get_T2w(component, self.time_after_excitation, time_relative_inphase, self.field_strength)
-                    dephasing = np.exp(2j*np.pi * constants.GYRO * self.field_strength * resonance['shift'] * time_relative_inphase * 1e-3)
-                    self.kspace_comps[tissue + component] = self.plain_kspace_comps[tissue] * dephasing * T2w
-            if tissue==self.reference_tissue:
-                self.decayed_signal = self.signal * np.take(np.take(T2w, np.argmin(np.abs(self.k_read_axis.value)), axis=self.freq_dir.value), np.argmin(np.abs(self.k_phase_axis.value)))
+                kspace_comps[tissue + 'Water'] = thick_kspace_comps[tissue] * T2w[tissue]
+                for component in constants.FAT_RESONANCES:
+                    kspace_comps[tissue + component] = thick_kspace_comps[tissue] * dephasing[component] * T2w[tissue + component]
+        return kspace_comps
+    
+    def decayed_signal_func(self, signal_level, T2w, reference_tissue, k_read_axis, k_phase_axis, freq_dir):
+        return signal_level * np.take(np.take(T2w[reference_tissue], np.argmin(np.abs(k_read_axis)), axis=freq_dir), np.argmin(np.abs(k_phase_axis)))
 
-    def simulate_noise(self):
-        sampled_matrix = self.k_samples.shape[:-1]
-        self.noise = np.random.normal(0, self.noise_std, sampled_matrix) + 1j * np.random.normal(0, self.noise_std, sampled_matrix)
+    def noise_func(self, k_samples, noise_std):
+        sampled_matrix = k_samples.shape[:-1]
+        return np.random.normal(0, noise_std, sampled_matrix) + 1j * np.random.normal(0, noise_std, sampled_matrix)
 
-    def update_PD_and_T1w(self):
-        self.PD_and_T1w = {component: get_PD_and_T1w(component, self.sequence, self.TR, self.TE, self.TI, self.FA, self.field_strength) for component in set(self.tissues).union(set(constants.FAT_RESONANCES.keys()))}
+    def PD_and_T1w_func(self, sequence, TR, TE, TI, FA, field_strength, tissues):
+        return {component: get_PD_and_T1w(component, sequence, TR, TE, TI, FA, field_strength) for component in set(tissues).union(set(constants.FAT_RESONANCES.keys()))}
 
     def set_reference_SNR(self, event=None):
         self.reference_SNR = self.SNR
-        self.set_relative_SNR()
-
-    def set_relative_SNR(self):
-        self.relative_SNR = self.SNR / self.reference_SNR * 100
-
-    def update_SNR(self, signal):
-        self.SNR = signal / self.noise_std
-        self.set_relative_SNR()
 
     def update_scantime(self):
         milliseconds = self.num_shots_node.value * self.NSA * self.TR
         self.scantime = format_scantime(milliseconds)
 
-    def compile_kspace(self):
-        self.measured_kspace = self.noise.copy()
-        for component in self.kspace_comps:
+    def measured_kspace_func(self, noise, kspace_comps, FatSat, PD_and_T1w):
+        measured_kspace = noise.copy()
+        for component in kspace_comps:
             if 'Fat' in component:
                 tissue = component[:component.find('Fat')]
                 resonance = component[component.find('Fat'):]
-                ratio = constants.FAT_RESONANCES[resonance]['ratio_with_FatSat' if self.FatSat else 'ratio']
+                ratio = constants.FAT_RESONANCES[resonance]['ratio_with_FatSat' if FatSat else 'ratio']
                 ratio *= constants.TISSUES[tissue]['FF']
-                self.measured_kspace += self.kspace_comps[component] * self.PD_and_T1w[resonance] * ratio
+                measured_kspace += kspace_comps[component] * PD_and_T1w[resonance] * ratio
             else:
                 if 'Water' in component:
                     tissue = component[:component.find('Water')]
@@ -1434,61 +1650,54 @@ class MRIsimulator(param.Parameterized):
                 else:
                     tissue = component
                     ratio = 1.0
-                self.measured_kspace += self.kspace_comps[component] * self.PD_and_T1w[tissue] * ratio
-        self.update_SNR(self.decayed_signal * np.abs(self.PD_and_T1w[self.reference_tissue]))
-        self.update_scantime()
-        add_to_pipeline(self.sequence_plot_pipeline, ['render_signal_board'])
+                measured_kspace += kspace_comps[component] * PD_and_T1w[tissue] * ratio
+        return measured_kspace
 
-        # Gridding:
-        grid_shape = tuple(len(self.k_grid_axes[dim]) for dim in range(2))
-        if self.is_Cartesian.value:
-            self.gridded_kspace = self.measured_kspace.reshape(grid_shape)
-        else:
-            samples = self.k_samples * self.FOV.value / self.matrix.value
-            self.gridded_kspace = recon.grid(self.measured_kspace, grid_shape, samples)
+    def gridded_kspace_func(self, k_grid_axes, is_radial, measured_kspace, k_samples, FOV, matrix):
+        grid_shape = tuple(len(k_grid_axes[dim]) for dim in range(2))
+        if not is_radial:
+            return measured_kspace.reshape(grid_shape)
+        samples = k_samples * FOV / matrix
+        return recon.grid(measured_kspace, grid_shape, samples)
+    
+    def full_kspace_func(self, num_blank_lines, is_radial, gridded_kspace, phase_dir, homodyne, k_phase_axis):
+        if (num_blank_lines == 0 or is_radial):
+            return np.copy(gridded_kspace)
+        shape_unsampled = tuple(num_blank_lines if dim==phase_dir else n for dim, n in enumerate(gridded_kspace.shape))
+        full_kspace = np.append(gridded_kspace, np.zeros(shape_unsampled), axis=phase_dir) # zerofill
+        if homodyne:
+            full_kspace *= recon.homodyne_weights(len(k_phase_axis), num_blank_lines, phase_dir) # pre-weighting
+            full_kspace += np.conjugate(np.flip(full_kspace))
+        return full_kspace
 
-    def partial_Fourier_recon(self):
-        num_blank = len(self.k_phase_axis.value) - sum(self.lines_to_measure)
-        if (num_blank == 0 or not self.is_Cartesian.value):
-            self.param.homodyne.precedence = -1
-            self.full_kspace = np.copy(self.gridded_kspace)
-            return
-        self.param.homodyne.precedence = 1
-        shape_unsampled = tuple(num_blank if dim==self.phase_dir.value else n for dim, n in enumerate(self.gridded_kspace.shape))
-        self.full_kspace = np.append(self.gridded_kspace, np.zeros(shape_unsampled), axis=self.phase_dir.value) # zerofill
-        if self.homodyne:
-            self.full_kspace *= recon.homodyne_weights(len(self.k_phase_axis.value), num_blank, self.phase_dir.value) # pre-weighting
-            self.full_kspace += np.conjugate(np.flip(self.full_kspace))
+    def apodized_kspace_func(self, full_kspace, do_apodize, apodization_alpha):
+        apodized_kspace = full_kspace.copy()
+        if do_apodize: 
+            apodized_kspace *= recon.radial_Tukey(apodization_alpha, full_kspace.shape)
+        return apodized_kspace
 
-    def apodization(self):
-        self.apodized_kspace = self.full_kspace.copy()
-        if not self.do_apodize: 
-            return
-        self.apodized_kspace *= recon.radial_Tukey(self.apodization_alpha, self.full_kspace.shape)
-
-    def zerofill(self):
-        self.recon_matrix = [self.recon_matrix_P, self.recon_matrix_F] if self.do_zerofill else [self.matrix_P, self.matrix_F]
-        if self.freq_dir.value==0:
-            self.recon_matrix.reverse()
-        self.oversampled_recon_matrix = self.recon_matrix.copy()
-        for dim in range(len(self.oversampled_recon_matrix)):
-            self.oversampled_recon_matrix[dim] = int(np.round(self.recon_matrix[dim] * self.full_kspace.shape[dim] / self.matrix.value[dim]))
-        self.zerofilled_kspace = recon.zerofill(self.apodized_kspace, self.oversampled_recon_matrix)
-
-    def reconstruct(self):
-        pixel_shifts = [0.] * len(self.recon_matrix)
-        sample_shifts = [0.] * len(self.recon_matrix)
-        for dim in range(len(pixel_shifts)):
-            if not self.oversampled_recon_matrix[dim]%2:
+    def oversampled_recon_matrix_func(self, recon_matrix, full_k_matrix, matrix):
+        oversampled_recon_matrix = recon_matrix.copy()
+        for dim in range(2):
+            oversampled_recon_matrix[dim] = int(np.round(recon_matrix[dim] * full_k_matrix[dim] / matrix[dim]))
+    
+    def zerofilled_kspace_func(self, apodized_kspace, oversampled_recon_matrix):
+        return recon.zerofill(apodized_kspace, oversampled_recon_matrix)
+    
+    def image_array_func(self, oversampled_recon_matrix, full_k_matrix, recon_matrix, zerofilled_kspace):
+        pixel_shifts = [0., 0.]
+        sample_shifts = [0., 0.]
+        for dim in range(2):
+            if not oversampled_recon_matrix[dim]%2:
                 pixel_shifts[dim] += 1/2 # half pixel shift for even matrixsize due to fft
-            if (self.oversampled_recon_matrix[dim] - self.recon_matrix[dim])%2:
+            if (oversampled_recon_matrix[dim] - recon_matrix[dim])%2:
                 pixel_shifts[dim] += 1/2 # half pixel shift due to cropping an odd number of pixels in image space
-            if not self.full_kspace.shape[dim]%2:
+            if not full_k_matrix[dim]%2:
                 sample_shifts[dim] += 1/2 # half sample shift for even matrixsize due to fft
-                if (self.oversampled_recon_matrix[dim] - self.full_kspace.shape[dim])%2:
+                if (oversampled_recon_matrix[dim] - full_k_matrix[dim])%2:
                     sample_shifts[dim] -= 1 # sample shift for odd number of zeroes added
-        self.image_array = recon.IFFT(self.zerofilled_kspace, pixel_shifts, sample_shifts)
-        self.image_array = recon.crop(self.image_array, self.recon_matrix)
+        image_array = recon.IFFT(zerofilled_kspace, pixel_shifts, sample_shifts)
+        return recon.crop(image_array, recon_matrix)
 
     def setup_excitation(self):
         FA = self.FA if self.is_gradient_echo.value else 90.
@@ -1610,7 +1819,7 @@ class MRIsimulator(param.Parameterized):
         self.boards['phase']['objects']['blips'] = []
 
         for rf_echo in range(self.turbo_factor):
-            phaser_area = largest_phaser_area + self.pe_table[self.shot-1][rf_echo][0] * phase_step_area
+            phaser_area = largest_phaser_area + self.pe_table[self.shot-1, rf_echo, 0] * phase_step_area
             suffix = f' {rf_echo + 1}' if self.turbo_factor > 1 else ''
             phaser = sequence.get_gradient('phase', total_area=largest_phaser_area, name='phase encode'+suffix, max_amp=self.max_amp, max_slew=self.max_slew)
             if abs(largest_phaser_area) > 1e-5:
@@ -1619,7 +1828,7 @@ class MRIsimulator(param.Parameterized):
             rephaser_area = -phaser_area
             blips = []
             for gr_echo in range(1, self.EPI_factor):
-                blip_area = phase_step_area * (self.pe_table[self.shot-1][rf_echo][gr_echo]-self.pe_table[self.shot-1][rf_echo][gr_echo-1])
+                blip_area = phase_step_area * (self.pe_table[self.shot-1, rf_echo, gr_echo]-self.pe_table[self.shot-1, rf_echo, gr_echo-1])
                 blip = sequence.get_gradient('phase', total_area=blip_area, name='blip', max_amp=self.max_amp, max_slew=self.max_slew)
                 blips.append(blip)
                 rephaser_area -= blip_area
@@ -1722,7 +1931,7 @@ class MRIsimulator(param.Parameterized):
         for rf_echo in range(self.turbo_factor):
             signals = []
             for gr_echo in range(self.EPI_factor):
-                ky = self.pe_table[self.shot-1][rf_echo][gr_echo]
+                ky = self.pe_table[self.shot-1, rf_echo, gr_echo]
                 waveform = np.real(np.take(self.measured_kspace[..., spoke], indices=ky, axis=self.phase_dir.value))
                 t = np.take(self.time_after_excitation[..., spoke if spoke<self.time_after_excitation.shape[-1] else 0], indices=ky, axis=self.phase_dir.value)
                 signal = sequence.get_signal(waveform, t, scale, signal_exponent)
@@ -1816,10 +2025,10 @@ class MRIsimulator(param.Parameterized):
         t = np.unique(np.concatenate((t, np.arange(0., max(t), dt)))) # merge with time grid
         kx = self.get_k_coords(t, *(self.board_plots['frequency']['area'][dim] for dim in ['G read', 'time']), refocus_intervals)
         ky = self.get_k_coords(t, *(self.board_plots['phase']['area'][dim] for dim in ['G phase', 'time']), refocus_intervals)
-        if self.is_Cartesian.value:
+        if not self.is_radial.value:
             if self.phase_dir.value==1:
                 kx, ky = ky, kx
-        elif self.is_radial.value: # rotate by spoke/blade angle
+        else: # rotate by spoke/blade angle
             angle = np.radians(self.spoke_angle_node.value)
             cos, sin = np.cos(angle), np.sin(angle)
             kx, ky = cos * kx - sin * ky, sin * kx + cos * ky
@@ -1839,10 +2048,10 @@ class MRIsimulator(param.Parameterized):
             self.run_recon_pipeline()
             k_axes = []
             for dim in range(2):
-                k_axes.append(recon.get_k_axis(self.oversampled_recon_matrix[dim], self.FOV.value[dim] / self.recon_matrix[dim]))
+                k_axes.append(recon.get_k_axis(self.oversampled_recon_matrix[dim], self.FOV.value[dim] / self.recon_matrix.value[dim]))
                 # half-sample shift axis when odd number of zeroes:
                 if (self.oversampled_recon_matrix[dim] - self.full_kspace.shape[dim])%2:
-                    shift = self.recon_matrix[dim] / (2 * self.oversampled_recon_matrix[dim] * self.FOV.value[dim])
+                    shift = self.recon_matrix.value[dim] / (2 * self.oversampled_recon_matrix[dim] * self.FOV.value[dim])
                     k_axes[-1] -= shift
             ksp = xr.DataArray(
                 operator(self.zerofilled_kspace**self.kspace_exponent), 
@@ -1873,18 +2082,19 @@ class MRIsimulator(param.Parameterized):
             acq_FOV[phase_dir] *= len(k_phase_axis) / matrix[phase_dir]
             acq_FOV_shape = hv.Box(0, 0, tuple(acq_FOV[::-1])).opts(color='lightblue')
         return acq_FOV_shape * rec_FOV_shape
-
-    @param.depends('object', 'field_strength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOV_F', 'FOV_P', 'phase_oversampling', 'num_shots', 'matrix_F', 'matrix_P', 'recon_matrix_F', 'recon_matrix_P', 'slice_thickness', 'trajectory', 'frequency_direction', 'pixel_bandwidth', 'NSA', 'partial_Fourier', 'turbo_factor', 'EPI_factor', 'image_type', 'show_FOV', 'homodyne', 'do_apodize', 'apodization_alpha', 'do_zerofill', 'radial_FOV_oversampling')
-    def display_image(self):
-        self.run_recon_pipeline()
-        operator = constants.OPERATORS[self.image_type]
-        axes = [(np.arange(self.recon_matrix[dim]) - (self.recon_matrix[dim]-1)/2) / self.recon_matrix[dim] * self.FOV.value[dim] for dim in range(2)]
+    
+    def image_func(self, image_type, recon_matrix, FOV, image_array):
+        operator = constants.OPERATORS[image_type]
+        axes = [(np.arange(recon_matrix[dim]) - (recon_matrix[dim]-1)/2) / recon_matrix[dim] * FOV[dim] for dim in range(2)]
         img = xr.DataArray(
-            operator(self.image_array), 
+            operator(image_array), 
             dims=('y', 'x'),
             coords={'x': axes[1], 'y': axes[0][::-1]}
         )
         img.x.attrs['units'] = img.y.attrs['units'] = 'mm'
-        self.image = hv.Overlay([hv.Image(img, vdims=['magnitude'])])
+        return hv.Overlay([hv.Image(img, vdims=['magnitude'])])
 
-        return self.image * self.FOV_box.value
+    @param.depends('object', 'field_strength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOV_F', 'FOV_P', 'phase_oversampling', 'num_shots', 'matrix_F', 'matrix_P', 'recon_matrix_F', 'recon_matrix_P', 'slice_thickness', 'trajectory', 'frequency_direction', 'pixel_bandwidth', 'NSA', 'partial_Fourier', 'turbo_factor', 'EPI_factor', 'image_type', 'show_FOV', 'homodyne', 'do_apodize', 'apodization_alpha', 'do_zerofill', 'radial_FOV_oversampling')
+    def display_image(self):
+        self.run_recon_pipeline()
+        return self.image.value * self.FOV_box.value

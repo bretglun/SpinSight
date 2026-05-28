@@ -48,6 +48,21 @@ class ComputeNode:
             self._valid = True
 
         return self._cache
+    
+
+class ActionNode:
+    def __init__(self, func, parents):
+        self.func = func
+        self.parents = parents
+
+        for parent in self.parents:
+            parent.children.append(self)
+
+    def execute(self):
+        self.func(*[parent.value for parent in self.parents])
+    
+    def invalidate(self):
+        self.execute()
 
 
 class OutputParamNode(ComputeNode):
