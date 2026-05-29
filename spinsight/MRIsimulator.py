@@ -219,7 +219,6 @@ class MRIsimulator(param.Parameterized):
     do_zerofill = param.Boolean(default=True, precedence=4, label='Zerofill')
 
     def __init__(self, **params):
-        self._initialized = False
         
         super().__init__(**params)
 
@@ -840,8 +839,6 @@ class MRIsimulator(param.Parameterized):
         self.set_reference_SNR()
 
         self.derived_params = ['FOV_bandwidth', 'FW_shift', 'SNR', 'name', 'num_shots', 'recon_voxel_F', 'recon_voxel_P', 'reference_SNR', 'relative_SNR', 'scantime', 'spoke_angle', 'voxel_F', 'voxel_P', 'num_shots_label']
-
-        self._initialized = True
 
     def init_bounds(self):
         self.param.object.objects = phantom.get_phantom_names()
