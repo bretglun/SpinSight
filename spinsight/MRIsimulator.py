@@ -1755,7 +1755,7 @@ class MRIsimulator(param.Parameterized):
             return np.copy(gridded_kspace)
         shape_unsampled = tuple(num_blank_lines if dim==phase_dir else n for dim, n in enumerate(gridded_kspace.shape))
         full_kspace = np.append(gridded_kspace, np.zeros(shape_unsampled), axis=phase_dir) # zerofill
-        if homodyne:
+        if homodyne and (num_blank_lines > 0):
             full_kspace *= recon.homodyne_weights(len(k_phase_axis), num_blank_lines, phase_dir) # pre-weighting
             full_kspace += np.conjugate(np.flip(full_kspace))
         return full_kspace

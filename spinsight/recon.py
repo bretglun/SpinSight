@@ -66,8 +66,8 @@ def resample_kspace(phantom, k_samples):
 def homodyne_weights(N, num_blank, dim):
     # create homodyne ramp filter of length N with num_blank unsampled lines
     W = np.ones((N,))
-    W[num_blank-1:-num_blank+1] = np.linspace(1,0, N-2*(num_blank-1))
-    W[-num_blank:] = 0
+    W[num_blank:N-num_blank] = np.linspace(1, 0, N-2*(num_blank-1))[1:-1]
+    W[N-num_blank:] = 0
     shape = (N, 1) if dim==0 else (1, N)
     return W.reshape(shape)
 
