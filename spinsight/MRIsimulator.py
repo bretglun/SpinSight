@@ -830,8 +830,6 @@ class MRIsimulator(param.Parameterized):
 
         self.graph = build_graph(node_specs)
 
-        self.param.watch(lambda _: self._watch_trajectory(), 'trajectory', precedence=1)
-
         self.derived_params = ['FOV_bandwidth', 'FW_shift', 'SNR', 'name', 'num_shots', 'recon_voxel_F', 'recon_voxel_P', 'reference_SNR', 'relative_SNR', 'scantime', 'spoke_angle', 'voxel_F', 'voxel_P', 'num_shots_label']
         
         self.sequence_pipeline = {f: True for f in [
@@ -886,12 +884,6 @@ class MRIsimulator(param.Parameterized):
             'zerofill',
             'set_reference_SNR'
         ]}
-
-        self._watch_object()
-        self._watch_recon_matrix_F()
-        self._watch_recon_matrix_P()
-        self._watch_matrix_F()
-        self._watch_matrix_P()
 
         self.run_sequence_pipeline()
 
@@ -1017,7 +1009,6 @@ class MRIsimulator(param.Parameterized):
             value = getattr(self, par.name)
         setattr(self, par.name, min(values, key=lambda x: abs(x-value)))
 
-    @param.depends('object', watch=True)
     def _watch_object(self):
         if hasattr(self, 'phantom') and self.phantom['name']==self.object:
             return
@@ -1035,7 +1026,6 @@ class MRIsimulator(param.Parameterized):
             self.FOV_F = max(self.FOV_F, min_FOV[0])
             self.FOV_P = max(self.FOV_P, min_FOV[1])
 
-    @param.depends('parameter_style', watch=True)
     def _watch_parameter_style(self):
         for par in [self.param.voxel_F, self.param.voxel_P, self.param.matrix_F, self.param.matrix_P, self.param.recon_voxel_F, self.param.recon_voxel_P, self.param.recon_matrix_F, self.param.recon_matrix_P, self.param.pixel_bandwidth, self.param.FOV_bandwidth, self.param.FW_shift]:
             par.precedence = -1
@@ -1059,7 +1049,6 @@ class MRIsimulator(param.Parameterized):
                 self.param.FOV_bandwidth.precedence = 2
                 self.update_matrix_F_bounds()
 
-    @param.depends('FOV_F', watch=True)
     def _watch_FOV_F(self):
         with param.parameterized.batch_call_watchers(self):
             if self.parameter_style=='voxel_size and Fat/water shift' or self.is_radial.value:
@@ -1075,7 +1064,6 @@ class MRIsimulator(param.Parameterized):
             add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill'])
             add_to_pipeline(self.sequence_pipeline, ['setup_readouts', 'update_BW_bounds', 'update_matrix_F_bounds'])
 
-    @param.depends('FOV_P', watch=True)
     def _watch_FOV_P(self):
         with param.parameterized.batch_call_watchers(self):
             if self.parameter_style=='voxel_size and Fat/water shift' or self.is_radial.value:
@@ -1090,22 +1078,18 @@ class MRIsimulator(param.Parameterized):
             add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill'])
             add_to_pipeline(self.sequence_pipeline, ['setup_phasers', 'update_matrix_P_bounds'])
 
-    @param.depends('phase_oversampling', watch=True)
     def _watch_phase_oversampling(self):
         self._watch_FOV_P()
 
-    @param.depends('radial_factor', watch=True)
     def _watch_radial_factor(self):
         pass
 
-    @param.depends('num_shots', watch=True)
     def _watch_num_shots(self):
         add_to_pipeline(self.acquisition_pipeline, ['sample_kspace', 'modulate_kspace', 'simulate_noise', 'compile_kspace'])
         add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill'])
         add_to_pipeline(self.sequence_pipeline, ['setup_phasers', 'update_FOV_P_bounds', 'update_turbo_factor_bounds', 'update_EPI_factor_objects'])
         add_to_pipeline(self.sequence_plot_pipeline, ['calculate_k_trajectory'])
 
-    @param.depends('matrix_F', watch=True)
     def _watch_matrix_F(self):
         with param.parameterized.batch_call_watchers(self):
             self.update_FOV_bandwidth_objects()
@@ -1126,7 +1110,6 @@ class MRIsimulator(param.Parameterized):
             if self.is_radial.value:
                 self.set_closest(self.param.matrix_P, self.matrix_F * self.FOV_P / self.FOV_F)
 
-    @param.depends('matrix_P', watch=True)
     def _watch_matrix_P(self):
         with param.parameterized.batch_call_watchers(self):
             self.update_voxel_P_objects()
@@ -1141,42 +1124,35 @@ class MRIsimulator(param.Parameterized):
             if self.is_radial.value:
                 self.set_closest(self.param.matrix_F, self.matrix_P * self.FOV_F / self.FOV_P)
 
-    @param.depends('voxel_F', watch=True)
     def _watch_voxel_F(self):
         if self.param.voxel_F.precedence > 0:
             self.set_closest(self.param.matrix_F, self.FOV_F / self.voxel_F)
             add_to_pipeline(self.sequence_pipeline, ['update_FOV_F_bounds'])
 
-    @param.depends('voxel_P', watch=True)
     def _watch_voxel_P(self):
         if self.param.voxel_P.precedence > 0:
             self.set_closest(self.param.matrix_P, self.FOV_P / self.voxel_P)
             add_to_pipeline(self.sequence_pipeline, ['update_FOV_P_bounds'])
 
-    @param.depends('recon_voxel_F', watch=True)
     def _watch_recon_voxel_F(self):
         if self.param.recon_voxel_F.precedence > 0:
             self.set_closest(self.param.recon_matrix_F, self.FOV_F / self.recon_voxel_F)
             add_to_pipeline(self.sequence_pipeline, ['update_FOV_F_bounds'])
 
-    @param.depends('recon_voxel_P', watch=True)
     def _watch_recon_voxel_P(self):
         if self.param.recon_voxel_P.precedence > 0:
             self.set_closest(self.param.recon_matrix_P, self.FOV_P / self.recon_voxel_P)
             add_to_pipeline(self.sequence_pipeline, ['update_FOV_P_bounds'])
 
-    @param.depends('slice_thickness', watch=True)
     def _watch_slice_thickness(self):
         add_to_pipeline(self.acquisition_pipeline, ['sample_kspace', 'update_sampling_time', 'modulate_kspace', 'simulate_noise', 'compile_kspace'])
         add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill'])
         add_to_pipeline(self.sequence_pipeline, ['setup_slice_selection', 'place_FatSat'])
 
-    @param.depends('radial_FOV_oversampling', watch=True)
     def _watch_radial_FOV_oversampling(self):
         add_to_pipeline(self.acquisition_pipeline, ['sample_kspace', 'update_sampling_time', 'modulate_kspace', 'simulate_noise', 'compile_kspace'])
         add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill'])
 
-    @param.depends('frequency_direction', watch=True)
     def _watch_frequency_direction(self):
         add_to_pipeline(self.acquisition_pipeline, ['sample_kspace', 'update_sampling_time', 'modulate_kspace', 'simulate_noise', 'compile_kspace'])
         add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill'])
@@ -1188,7 +1164,7 @@ class MRIsimulator(param.Parameterized):
          # frequency oversampling is adapted to phantom FOV for efficiency
         add_to_pipeline(self.sequence_plot_pipeline, ['calculate_k_trajectory'])
 
-    #@param.depends('trajectory', watch=True)
+
     def _watch_trajectory(self):
         add_to_pipeline(self.acquisition_pipeline, ['sample_kspace', 'update_sampling_time', 'modulate_kspace', 'simulate_noise', 'compile_kspace'])
         add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill'])
@@ -1214,7 +1190,6 @@ class MRIsimulator(param.Parameterized):
         
         add_to_pipeline(self.sequence_plot_pipeline, ['calculate_k_trajectory'])
 
-    @param.depends('field_strength', watch=True)
     def _watch_field_strength(self):
         with param.parameterized.batch_call_watchers(self):
             self.update_FW_shift_objects()
@@ -1224,7 +1199,6 @@ class MRIsimulator(param.Parameterized):
             add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill'])
             self._watch_FatSat() # since fatsat pulse duration depends on field_strength
 
-    @param.depends('pixel_bandwidth', watch=True)
     def _watch_pixel_bandwidth(self):
         with param.parameterized.batch_call_watchers(self):
             self.set_closest(self.param.FW_shift, pixel_BW_to_shift(self.pixel_bandwidth, self.field_strength))
@@ -1233,28 +1207,23 @@ class MRIsimulator(param.Parameterized):
             add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill'])
             add_to_pipeline(self.sequence_pipeline, ['setup_readouts', 'update_matrix_F_bounds', 'update_FOV_F_bounds', 'update_matrix_P_bounds', 'update_FOV_P_bounds'])
 
-    @param.depends('FW_shift', watch=True)
     def _watch_FW_shift(self):
         if self.param.FW_shift.precedence > 0:
             self.set_closest(self.param.pixel_bandwidth, shift_to_pixel_BW(self.FW_shift, self.field_strength))
 
-    @param.depends('FOV_bandwidth', watch=True)
     def _watch_FOV_bandwidth(self):
         if self.param.FOV_bandwidth.precedence > 0:
             self.set_closest(self.param.pixel_bandwidth, FOV_BW_to_pixel_BW(self.FOV_bandwidth, self.matrix_F))
 
-    @param.depends('NSA', watch=True)
     def _watch_NSA(self):
         add_to_pipeline(self.acquisition_pipeline, ['update_sampling_time', 'modulate_kspace', 'simulate_noise', 'compile_kspace'])
         add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill'])
 
-    @param.depends('partial_Fourier', watch=True)
     def _watch_partial_Fourier(self):
         add_to_pipeline(self.acquisition_pipeline, ['sample_kspace', 'update_sampling_time', 'modulate_kspace', 'simulate_noise', 'compile_kspace'])
         add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill'])
         add_to_pipeline(self.sequence_pipeline, ['setup_refocusing', 'setup_readouts', 'setup_phasers', 'update_min_TE', 'update_min_TR', 'update_max_TE', 'update_max_TI', 'update_BW_bounds', 'update_matrix_F_bounds', 'update_matrix_P_bounds', 'update_FOV_F_bounds',  'update_FOV_P_bounds', 'update_slice_thickness_bounds', 'update_turbo_factor_bounds', 'update_EPI_factor_objects'])
 
-    @param.depends('turbo_factor', watch=True)
     def _watch_turbo_factor(self):
         add_to_pipeline(self.acquisition_pipeline, ['sample_kspace', 'update_sampling_time', 'modulate_kspace', 'simulate_noise', 'compile_kspace'])
         add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill'])
@@ -1262,7 +1231,6 @@ class MRIsimulator(param.Parameterized):
         self.update_labels_by_trajectory()
         self.update_EPI_factor_objects()
 
-    @param.depends('EPI_factor', watch=True)
     def _watch_EPI_factor(self):
         add_to_pipeline(self.acquisition_pipeline, ['sample_kspace', 'update_sampling_time', 'modulate_kspace', 'simulate_noise', 'compile_kspace'])
         add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill'])
@@ -1270,12 +1238,10 @@ class MRIsimulator(param.Parameterized):
         self.update_labels_by_trajectory()
         self.update_turbo_factor_bounds()
 
-    @param.depends('shot', watch=True)
     def _watch_shot(self):
         add_to_pipeline(self.sequence_pipeline, ['setup_phasers'])
         add_to_pipeline(self.sequence_plot_pipeline, ['render_signal_board', 'calculate_k_trajectory'])
 
-    @param.depends('sequence', watch=True)
     def _watch_sequence(self):
         add_to_pipeline(self.acquisition_pipeline, ['modulate_kspace', 'update_PD_and_T1w', 'compile_kspace'])
         add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill'])
@@ -1288,42 +1254,35 @@ class MRIsimulator(param.Parameterized):
         else:
             self.param.turbo_factor.precedence = 6
 
-    @param.depends('TE', watch=True)
     def _watch_TE(self):
         add_to_pipeline(self.acquisition_pipeline, ['modulate_kspace', 'update_PD_and_T1w', 'compile_kspace'])
         add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill'])
         add_to_pipeline(self.sequence_pipeline, ['setup_phasers', 'place_refocusing', 'place_readouts', 'update_matrix_F_bounds', 'update_FOV_F_bounds', 'update_matrix_P_bounds', 'update_FOV_P_bounds'])
 
-    @param.depends('TR', watch=True)
     def _watch_TR(self):
         add_to_pipeline(self.acquisition_pipeline, ['update_PD_and_T1w', 'compile_kspace'])
         add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill'])
         add_to_pipeline(self.sequence_pipeline, ['update_max_TE', 'update_max_TI', 'update_BW_bounds', 'update_slice_thickness_bounds'])
         add_to_pipeline(self.sequence_plot_pipeline, ['render_TR_span'])
 
-    @param.depends('TI', watch=True)
     def _watch_TI(self):
         add_to_pipeline(self.acquisition_pipeline, ['update_PD_and_T1w', 'compile_kspace'])
         add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill'])
         add_to_pipeline(self.sequence_pipeline, ['place_inversion'])
 
-    @param.depends('FA', watch=True)
     def _watch_FA(self):
         add_to_pipeline(self.acquisition_pipeline, ['update_PD_and_T1w', 'compile_kspace'])
         add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill'])
         add_to_pipeline(self.sequence_pipeline, ['setup_excitation'])
 
-    @param.depends('FatSat', watch=True)
     def _watch_FatSat(self):
         add_to_pipeline(self.acquisition_pipeline, ['compile_kspace'])
         add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill'])
         add_to_pipeline(self.sequence_pipeline, ['setup_FatSat', 'update_max_TE', 'update_BW_bounds'])
 
-    @param.depends('homodyne', watch=True)
     def _watch_homodyne(self):
         add_to_pipeline(self.recon_pipeline, ['partial_Fourier_recon', 'apodization', 'zerofill'])
 
-    @param.depends('do_apodize', watch=True)
     def _watch_do_apodize(self):
         if self.do_apodize:
             self.param.apodization_alpha.precedence = abs(self.param.apodization_alpha.precedence)
@@ -1331,29 +1290,24 @@ class MRIsimulator(param.Parameterized):
             self.param.apodization_alpha.precedence = -abs(self.param.apodization_alpha.precedence)
         add_to_pipeline(self.recon_pipeline, ['apodization', 'zerofill'])
 
-    @param.depends('apodization_alpha', watch=True)
     def _watch_apodization_alpha(self):
         add_to_pipeline(self.recon_pipeline, ['apodization', 'zerofill'])
 
-    @param.depends('do_zerofill', watch=True)
     def _watch_do_zerofill(self):
         add_to_pipeline(self.recon_pipeline, ['zerofill'])
 
-    @param.depends('recon_matrix_F', watch=True)
     def _watch_recon_matrix_F(self):
         self.rec_acq_ratio_F = self.recon_matrix_F / self.matrix_F
         if self.do_zerofill:
             add_to_pipeline(self.recon_pipeline, ['zerofill'])
         self.set_closest(self.param.recon_voxel_F, self.FOV_F / self.recon_matrix_F)
 
-    @param.depends('recon_matrix_P', watch=True)
     def _watch_recon_matrix_P(self):
         self.rec_acq_ratio_P = self.recon_matrix_P / self.matrix_P
         if self.do_zerofill:
             add_to_pipeline(self.recon_pipeline, ['zerofill'])
         self.set_closest(self.param.recon_voxel_P, self.FOV_P / self.recon_matrix_P)
 
-    @param.depends('reference_tissue', watch=True)
     def _watch_reference_tissue(self):
         add_to_pipeline(self.acquisition_pipeline, ['modulate_kspace', 'compile_kspace'])
         if self._initialized:
