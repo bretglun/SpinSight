@@ -809,6 +809,11 @@ class MRIsimulator(param.Parameterized):
             'parents': ['recon_matrix', 'full_k_matrix', 'matrix']
         }
         
+        node_specs['kspace'] = {
+            'func': self.kspace_func,
+            'parents': ['kspace_type', 'show_processed_kspace', 'oversampled_recon_matrix', 'FOV', 'recon_matrix', 'full_k_matrix', 'zerofilled_kspace', 'kspace_exponent', 'gridded_kspace', 'k_grid_axes']
+        }
+        
         node_specs['zerofilled_kspace'] = {
             'func': self.zerofilled_kspace_func,
             'parents': ['apodized_kspace', 'oversampled_recon_matrix']
@@ -2185,32 +2190,30 @@ class MRIsimulator(param.Parameterized):
         self.sequence_plot = hv.Layout(list([hv.Overlay(list(board_plot.values())).opts(width=1700, height=180 if n==last else 120, border=0, xaxis='bottom' if n==last else None) for n, board_plot in enumerate(self.board_plots.values())])).cols(1).options(toolbar='below')
         return self.sequence_plot
 
-    @param.depends('object', 'field_strength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOV_F', 'FOV_P', 'phase_oversampling', 'num_shots', 'matrix_F', 'matrix_P', 'recon_matrix_F', 'recon_matrix_P', 'slice_thickness', 'trajectory', 'frequency_direction', 'pixel_bandwidth', 'NSA', 'partial_Fourier', 'turbo_factor', 'EPI_factor', 'kspace_type', 'show_processed_kspace', 'kspace_exponent', 'homodyne', 'do_apodize', 'apodization_alpha', 'do_zerofill', 'radial_FOV_oversampling')
-    def display_kspace(self):
-        operator = constants.OPERATORS[self.kspace_type]
-        if self.show_processed_kspace:
+    def kspace_func(self, kspace_type, show_processed_kspace, oversampled_recon_matrix, FOV, recon_matrix, full_k_matrix, zerofilled_kspace, kspace_exponent, gridded_kspace, k_grid_axes):
+        operator = constants.OPERATORS[kspace_type]
+        if show_processed_kspace:
             k_axes = []
             for dim in range(2):
-                k_axes.append(recon.get_k_axis(self.oversampled_recon_matrix[dim], self.FOV.value[dim] / self.recon_matrix.value[dim]))
+                k_axes.append(recon.get_k_axis(oversampled_recon_matrix[dim], FOV[dim] / recon_matrix[dim]))
                 # half-sample shift axis when odd number of zeroes:
-                if (self.oversampled_recon_matrix[dim] - self.full_kspace.shape[dim])%2:
-                    shift = self.recon_matrix.value[dim] / (2 * self.oversampled_recon_matrix[dim] * self.FOV.value[dim])
+                if (oversampled_recon_matrix[dim] - full_k_matrix[dim])%2:
+                    shift = recon_matrix[dim] / (2 * oversampled_recon_matrix[dim] * FOV[dim])
                     k_axes[-1] -= shift
             ksp = xr.DataArray(
-                operator(self.zerofilled_kspace**self.kspace_exponent), 
+                operator(zerofilled_kspace**kspace_exponent), 
                 dims=('ky', 'kx'),
                 coords={'kx': k_axes[1], 'ky': k_axes[0]}
             )
         else:
             ksp = xr.DataArray(
-                operator(self.gridded_kspace**self.kspace_exponent), 
+                operator(gridded_kspace**kspace_exponent), 
                 dims=('ky', 'kx'),
-                coords={'kx': self.k_grid_axes[1], 'ky': self.k_grid_axes[0]}
+                coords={'kx': k_grid_axes[1], 'ky': k_grid_axes[0]}
             )
         ksp.kx.attrs['units'] = ksp.ky.attrs['units'] = '1/mm'
-        lim = 1.12 * max(self.k_grid_axes[1])
-        self.kspace_image = hv.Image(ksp, vdims=['magnitude']).opts(xlim=(-lim,lim), ylim=(-lim,lim))
-        return self.kspace_image
+        lim = 1.12 * max(k_grid_axes[1])
+        return hv.Image(ksp, vdims=['magnitude']).opts(xlim=(-lim,lim), ylim=(-lim,lim))
 
     def FOV_box_func(self, show_FOV, is_radial, FOV, matrix, freq_dir, phase_dir, k_read_axis, k_phase_axis):
         if not show_FOV:
@@ -2235,6 +2238,10 @@ class MRIsimulator(param.Parameterized):
         )
         img.x.attrs['units'] = img.y.attrs['units'] = 'mm'
         return hv.Overlay([hv.Image(img, vdims=['magnitude'])])
+
+    @param.depends('object', 'field_strength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOV_F', 'FOV_P', 'phase_oversampling', 'num_shots', 'matrix_F', 'matrix_P', 'recon_matrix_F', 'recon_matrix_P', 'slice_thickness', 'trajectory', 'frequency_direction', 'pixel_bandwidth', 'NSA', 'partial_Fourier', 'turbo_factor', 'EPI_factor', 'kspace_type', 'show_processed_kspace', 'kspace_exponent', 'homodyne', 'do_apodize', 'apodization_alpha', 'do_zerofill', 'radial_FOV_oversampling')
+    def display_kspace(self):
+        return self.graph['kspace'].value
 
     @param.depends('object', 'field_strength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOV_F', 'FOV_P', 'phase_oversampling', 'num_shots', 'matrix_F', 'matrix_P', 'recon_matrix_F', 'recon_matrix_P', 'slice_thickness', 'trajectory', 'frequency_direction', 'pixel_bandwidth', 'NSA', 'partial_Fourier', 'turbo_factor', 'EPI_factor', 'image_type', 'show_FOV', 'homodyne', 'do_apodize', 'apodization_alpha', 'do_zerofill', 'radial_FOV_oversampling')
     def display_image(self):
