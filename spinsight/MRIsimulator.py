@@ -91,6 +91,11 @@ def get_segment_order(N, Nsym, c):
     return segment_order
 
 
+def get_readtrain_pos(readtrain_spacing, rf_echo_num):
+    # center position of gradient echo readout (train)
+    return readtrain_spacing * (rf_echo_num + 1)
+
+
 def bounds_hook(plot, elem, xbounds=None):
     x_range = plot.handles['plot'].x_range
     if xbounds is not None:
@@ -275,15 +280,28 @@ class MRIsimulator(param.Parameterized):
             #self.param.watch(lambda _: getattr(self, f'_watch_{par}')(), par, precedence=1)
 
         self.phantom = ComputeNode(
-
+            lambda object:
+            phantom.load(object, self.min_voxel_size),
+            [self.object_node]
         )
         
         self.tissues = ComputeNode(
-
+            lambda phantom:
+            list(phantom['shapes'].keys()),
+            [self.phantom]
         )
 
-        self.is_radial = ComputeNode(lambda trajectory: trajectory in ['Radial', 'PROPELLER'], [self.trajectory_node])
-        self.is_gradient_echo = ComputeNode(lambda sequence: 'Gradient Echo' in sequence, [self.sequence_node])
+        self.is_radial = ComputeNode(
+            lambda trajectory: 
+            trajectory in ['Radial', 'PROPELLER'], 
+            [self.trajectory_node]
+        )
+        
+        self.is_gradient_echo = ComputeNode(
+            lambda sequence: 
+            'Gradient Echo' in sequence, 
+            [self.sequence_node]
+        )
 
         self.freq_dir = ComputeNode(
             lambda frequency_direction, is_radial: constants.DIRECTIONS[frequency_direction] if not is_radial else 1,
@@ -311,18 +329,243 @@ class MRIsimulator(param.Parameterized):
             [self.recon_matrix_P_node, self.recon_matrix_F_node, self.freq_dir, self.do_zerofill_node, self.matrix]
         )
 
+        self.RF_excitation = ComputeNode(
+            self.RF_excitation_func,
+            [self.FA_node, self.is_gradient_echo]
+        )
+
+        self.RF_refocusing_floating = ComputeNode(
+            self.RF_refocusing_floating_func,
+            [self.is_gradient_echo, self.turbo_factor_node]
+        )
+
+        self.RF_inversion_floating = ComputeNode(
+            self.RF_inversion_floating_func,
+            [self.sequence_node]
+        )
+
+        self.RF_FatSat_floating = ComputeNode(
+            self.RF_FatSat_floating_func,
+            [self.FatSat_node, self.field_strength_node]
+        )
+
+        self.FatSat_spoiler_floating = ComputeNode(
+            self.FatSat_spoiler_floating_func,
+            [self.FatSat_node]
+        )
+
+        self.slice_select_excitation = ComputeNode(
+            self.slice_select_excitation_func,
+            [self.RF_excitation, self.slice_thickness_node]
+        )
+
+        self.slice_select_rephaser = ComputeNode(
+            self.slice_select_rephaser_func,
+            [self.slice_select_excitation]
+        )
+
+        self.slice_select_refocusing_floating = ComputeNode(
+            self.slice_select_refocusing_floating_func,
+            [self.RF_refocusing_floating, self.slice_thickness_node, self.turbo_factor_node]
+        )
+
+        self.slice_select_inversion_floating = ComputeNode(
+            self.slice_select_inversion_floating_func,
+            [self.sequence_node, self.RF_inversion_floating, self.slice_thickness_node]
+        )
+
+        self.inversion_spoiler_floating = ComputeNode(
+            self.inversion_spoiler_floating_func,
+            [self.sequence_node]
+        )
+
+        self.readouts_floating = ComputeNode(
+            self.readouts_floating_func,
+            [self.k_read_axis, self.pixel_bandwidth_node, self.matrix_F_node, self.FOV_F_node, self.turbo_factor_node, self.EPI_factor_node]
+        )
+        
+        self.sampling_windows_floating = ComputeNode(
+            self.sampling_windows_floating_func,
+            [self.turbo_factor_node, self.EPI_factor_node, self.readouts_floating]
+        )
+
+        self.readout_risetime = ComputeNode(
+            self.readout_risetime_func,
+            [self.readouts_floating]
+        )
+        
+        self.read_prephaser_floating = ComputeNode(
+            self.read_prephaser_floating_func,
+            [self.readouts_floating]
+        )
+        
+        self.phase_step_area = ComputeNode(
+            # uTs/m
+            lambda k_phase_axis:
+            np.mean(np.diff(k_phase_axis)) * 1e3 / constants.GYRO,
+            [self.k_phase_axis]
+        )
+
+        self.largest_phaser_area = ComputeNode(
+            # uTs/m
+            lambda k_phase_axis:
+            np.min(k_phase_axis) * 1e3 / constants.GYRO,
+            [self.k_phase_axis]
+        )
+
+        self.phaser_duration = ComputeNode(
+            self.phaser_duration_func,
+            [self.largest_phaser_area]
+        )
+        
+        self.max_blip_dur = ComputeNode(
+            self.max_blip_dur_func,
+            [self.EPI_factor_node, self.phase_step_area, self.num_shots, self.turbo_factor_node]
+        )
+        
+        self.readout_gap = ComputeNode(
+            lambda max_blip_dur, readouts:
+            max(max_blip_dur - 2 * readouts[0][0]['risetime_f'], 0),
+            [self.max_blip_dur, self.readouts_floating]
+        )
+        
+        self.gr_echo_spacing = ComputeNode(
+            lambda readouts, readout_gap:
+            readouts[0][0]['dur_f'] + readout_gap,
+            [self.readouts_floating, self.readout_gap]
+        )
+
+        self.gre_echo_train_dur = ComputeNode(
+            lambda EPI_factor, gr_echo_spacing, readout_gap:
+            EPI_factor * gr_echo_spacing - readout_gap,
+            [self.EPI_factor_node, self.gr_echo_spacing, self.readout_gap]
+        )
+
+        self.phasers_floating = ComputeNode(
+            self.phasers_floating_func,
+            [self.turbo_factor_node, self.largest_phaser_area, self.pe_table, self.phase_step_area, self.shot_node]
+        )
+        
+        self.blips_floating = ComputeNode(
+            self.blips_floating_func,
+            [self.turbo_factor_node, self.EPI_factor_node, self.phase_step_area, self.pe_table, self.shot_node]
+        )
+        
+        self.rephasers_floating = ComputeNode(
+            self.rephasers_floating_func,
+            [self.turbo_factor_node, self.phasers_floating, self.blips_floating, self.largest_phaser_area]
+        )
+        
+        self.spoiler_floating = ComputeNode(
+            self.spoiler_floating_func,
+            []
+        )
+
+        self.slice_select_refocusing = ComputeNode(
+            self.slice_select_refocusing_func,
+            [self.slice_select_refocusing_floating, self.readtrain_spacing]
+        )
+
+        self.RF_refocusing = ComputeNode(
+            self.RF_refocusing_func,
+            [self.RF_refocusing_floating, self.readtrain_spacing]
+        )
+        
+        self.slice_select_inversion = ComputeNode(
+            self.slice_select_inversion_func,
+            [self.slice_select_inversion_floating, self.TI_node]
+        )
+        
+        self.RF_inversion = ComputeNode(
+            self.RF_inversion_func,
+            [self.RF_inversion_floating, self.TI_node]
+        )
+
+        self.inversion_spoiler = ComputeNode(
+            self.inversion_spoiler_func,
+            [self.inversion_spoiler_floating, self.RF_inversion]
+        )
+        
+        self.FatSat_spoiler = ComputeNode(
+            self.FatSat_spoiler_func,
+            [self.FatSat_spoiler_floating, self.slice_select_excitation]
+        )
+        
+        self.RF_FatSat = ComputeNode(
+            self.RF_FatSat_func,
+            [self.RF_FatSat_floating, self.FatSat_spoiler_floating]
+        )
+
+        self.readouts = ComputeNode(
+            self.readouts_func,
+            [self.turbo_factor_node, self.readtrain_spacing, self.EPI_factor_node, self.gr_echo_spacing, self.readouts_floating]
+        )
+
+        self.readouts = ComputeNode(
+            self.readouts_func,
+            [self.turbo_factor_node, self.readtrain_spacing, self.EPI_factor_node, self.gr_echo_spacing, self.readouts_floating]
+        )
+        
+        self.sampling_windows = ComputeNode(
+            self.sampling_windows_func,
+            [self.turbo_factor_node, self.readtrain_spacing, self.EPI_factor_node, self.gr_echo_spacing, self.sampling_windows_floating]
+        )
+        
+        self.read_prephaser = ComputeNode(
+            self.read_prephaser_func,
+            [self.read_prephaser_floating, self.is_gradient_echo, self.readouts, self.RF_excitation]
+        )
+        
+        self.phasers = ComputeNode(
+            self.phasers_func,
+            [self.turbo_factor_node, self.readtrain_spacing, self.phasers_floating, self.gre_echo_train_dur, self.readout_risetime]
+        )
+        
+        self.rephasers = ComputeNode(
+            self.rephasers_func,
+            [self.turbo_factor_node, self.readtrain_spacing, self.gre_echo_train_dur, self.readout_risetime, self.rephasers_floating]
+        )
+        
+        self.blips = ComputeNode(
+            self.blips_func,
+            [self.turbo_factor_node, self.readtrain_spacing, self.EPI_factor_node, self.gr_echo_spacing, self.blips_floating]
+        )
+
+        self.spoiler = ComputeNode(
+            self.spoiler_func,
+            [self.readouts, self.spoiler_floating]
+        )
+
+        self.centermost_echoes_linear_order = ComputeNode(
+            self.centermost_echoes_linear_order_func,
+            [self.central_segments, self.reverse_linear_order, self.num_segm, self.turbo_factor_node]
+        )
+
+        self.readtrain_spacing_linear_order = ComputeNode(
+            self.readtrain_spacing_linear_order_func,
+            [self.centermost_echoes_linear_order, self.gr_echo_spacing, self.EPI_factor_node, self.TE_node]
+        )
+
         self.k_read_axis = ComputeNode(
             self.k_read_axis_func,
             [self.freq_dir, self.FOV, self.matrix, self.is_radial, self.radial_FOV_oversampling_node]
         )
+        
+        self.reverse_linear_order = ComputeNode(lambda: False, []) # TODO: implement logic (pick forward or reverse order that minimizes readtrin_spacing while respecting minimum spacing and TR)
 
-        self.readtrain_spacing = ComputeNode(
-            
+        self.min_readtrain_spacing = ComputeNode(
+            self.min_readtrain_spacing_func,
+            [self.is_gradient_echo, self.RF_excitation, self.gre_echo_train_dur, self.readout_risetime, self.read_prephaser_floating, self.phaser_duration, self.slice_select_excitation, self.slice_select_rephaser, self.RF_refocusing_floating, self.slice_select_refocusing_floating]
         )
 
-        
-        self.readouts = ComputeNode(
-            
+        self.centermost_rf_echo = ComputeNode(
+            self.centermost_rf_echo_func,
+            [self.EPI_factor_node, self.is_gradient_echo, self.TE_node, self.min_readtrain_spacing, self.split_center, self.turbo_factor_node]
+        )
+
+        self.readtrain_spacing = ComputeNode(
+            self.readtrain_spacing_func,
+            [self.EPI_factor_node, self.readtrain_spacing_linear_order, self.TE_node, self.centermost_rf_echo, self.split_center]
         )
 
         self.num_blades = ComputeNode(
@@ -348,14 +591,6 @@ class MRIsimulator(param.Parameterized):
             [self.turbo_factor_node, self.EPI_factor_node, self.num_shots_node, self.is_radial]
         )
 
-        self.lines_to_measure = ComputeNode(
-            
-        )
-
-        self.pe_table = ComputeNode(
-            
-        )
-
         self.k_phase_axis = ComputeNode(
             self.k_phase_axis_func,
             [self.is_radial, self.num_measured_lines, self.matrix, self.phase_dir, self.phase_oversampling_node, self.FOV]
@@ -368,8 +603,52 @@ class MRIsimulator(param.Parameterized):
         )
 
         ActionNode(
-            self.homodyne_visibility_func,
+            self.set_homodyne_visibility,
             [self.num_blank_lines, self.is_radial]
+        )
+
+        self.lines_to_measure = ComputeNode(
+            self.lines_to_measure_func,
+            [self.k_phase_axis, self.num_measured_lines]
+        )
+
+        self.num_segm = ComputeNode(
+            lambda num_measured_lines, num_blades, num_shots:
+            int(num_measured_lines * num_blades / num_shots),
+            [self.num_measured_lines, self.num_blades, self.num_shots_node]
+        )
+        
+        self.num_sym_lines = ComputeNode(
+            lambda num_measured_lines, k_phase_axis:
+            2 * num_measured_lines - len(k_phase_axis),
+            [self.num_measured_lines, self.k_phase_axis]
+        )
+        
+        self.split_center = ComputeNode(
+            # does center of k-space lie between two segments?
+            lambda num_sym_lines, num_shots:
+            (num_sym_lines % num_shots == 0) and ((num_sym_lines / num_shots) % 2 == 0),
+            [self.num_sym_lines, self.num_shots_node]
+        )
+        
+        self.num_sym_segm = ComputeNode(
+            self.num_sym_segm_func,
+            [self.split_center, self.num_sym_lines, self.num_blades, self.num_shots_node]
+        )
+
+        self.central_segments = ComputeNode(
+            self.central_segments_func,
+            [self.split_center, self.num_segm, self.num_sym_segm]
+        )
+
+        self.pe_table = ComputeNode(
+            self.pe_table_func,
+            [self.EPI_factor_node, self.turbo_factor_node, self.num_sym_segm, self.centermost_rf_echo, self.is_radial, self.num_shots_node, self.reverse_linear_order, self.lines_to_measure]
+        )
+
+        ActionNode(
+            self.set_shot_bounds,
+            [self.num_shots]
         )
 
         self.signal_level = ComputeNode(
@@ -480,6 +759,14 @@ class MRIsimulator(param.Parameterized):
         self.FOV_box = ComputeNode(
             self.FOV_box_func,
             [self.show_FOV_node, self.is_radial, self.FOV, self.matrix, self.freq_dir, self.phase_dir, self.k_read_axis, self.k_phase_axis]
+        )
+
+        self.scantime_node = OutputParamNode(
+            self,
+            'scantime',
+            lambda num_shots, NSA, TR:
+            format_scantime(num_shots * NSA * TR),
+            [self.num_shots_node * self.NSA_node * self.TR_node]
         )
         
         self.measured_kspace = ComputeNode(
@@ -790,7 +1077,7 @@ class MRIsimulator(param.Parameterized):
 
     @param.depends('radial_factor', watch=True)
     def _watch_radial_factor(self):
-        self.setup_phase_encoding()
+        pass
 
     @param.depends('num_shots', watch=True)
     def _watch_num_shots(self):
@@ -879,7 +1166,7 @@ class MRIsimulator(param.Parameterized):
                 p.label = p.label.replace(' x', ' y')
             elif ' y' in p.label:
                 p.label = p.label.replace(' y', ' x')
-        self.setup_phase_encoding() # frequency oversampling is adapted to phantom FOV for efficiency
+         # frequency oversampling is adapted to phantom FOV for efficiency
         add_to_pipeline(self.sequence_plot_pipeline, ['calculate_k_trajectory'])
 
     #@param.depends('trajectory', watch=True)
@@ -905,7 +1192,7 @@ class MRIsimulator(param.Parameterized):
             self.param.phase_oversampling.precedence = 3
             self.param.radial_factor.precedence = -3
         self.update_labels_by_trajectory()
-        self.setup_phase_encoding()
+        
         add_to_pipeline(self.sequence_plot_pipeline, ['calculate_k_trajectory'])
 
     @param.depends('field_strength', watch=True)
@@ -1385,96 +1672,76 @@ class MRIsimulator(param.Parameterized):
         if self.turbo_factor > 1:
             self.param.EPI_factor.objects = [v for v in self.param.EPI_factor.objects if v%2]
 
-    def get_min_readtrain_spacing(self):
-        # Get shortest spacing for (center of) gradient echo trains
-        # Equals center position of gradient echo (train) for gradient echo sequences
-        # Equals rf echo spacing for spin echo sequences
-        if self.is_gradient_echo.value:
-            spacing = (self.boards['RF']['objects']['excitation']['dur_f'] + self.gre_echo_train_dur) / 2 - self.readout_risetime
-            spacing += max(
-                self.boards['frequency']['objects']['read prephaser']['dur_f'] + self.readout_risetime,
-                self.phaser_duration,
-                self.boards['slice']['objects']['slice select excitation']['risetime_f'] + self.boards['slice']['objects']['slice select rephaser']['dur_f']
-            )
-        else: # spin echo
-            # before refocusing pulse:
-            left_side = (self.boards['RF']['objects']['excitation']['dur_f'] + self.boards['RF']['objects']['refocusing'][0]['dur_f']) / 2
-            left_side += max(
-                self.boards['frequency']['objects']['read prephaser']['dur_f'], 
-                self.boards['slice']['objects']['slice select excitation']['risetime_f'] + self.boards['slice']['objects']['slice select rephaser']['dur_f'] + (self.boards['slice']['objects']['slice select refocusing'][0]['risetime_f'])
-            )
-            # after refocusing pulse:
-            right_side = (self.boards['RF']['objects']['refocusing'][0]['dur_f'] + self.gre_echo_train_dur) / 2 - self.readout_risetime
-            right_side += max(
-                self.readout_risetime,
-                self.phaser_duration,
-                self.boards['slice']['objects']['slice select refocusing'][0]['risetime_f']
-            )
-            spacing = max(left_side, right_side) * 2
-        return spacing
-
-    def get_centermost_echoes_linear_order(self, reverse=False):
+    def centermost_echoes_linear_order_func(self, central_segments, reverse_linear_order, num_segm, turbo_factor):
         # get index lists of rf echo(es) and gradient echo(es) closest to k-space center for linear k-space ordering
         centermost_gr_echoes = []
         centermost_rf_echoes = []
-        central_segments = self.central_segments
-        if reverse:
-            central_segments = [self.num_segm - 1 - segm for segm in central_segments]
-        for segm in central_segments:
-            centermost_gr_echoes.append(segm // self.turbo_factor)
-            centermost_rf_echoes.append(segm % self.turbo_factor)
+        central_indices = central_segments.copy()
+        if reverse_linear_order:
+            central_indices = [num_segm - 1 - segm for segm in central_indices]
+        for segm in central_indices:
+            centermost_gr_echoes.append(segm // turbo_factor)
+            centermost_rf_echoes.append(segm % turbo_factor)
         return centermost_gr_echoes, centermost_rf_echoes
 
-    def get_readtrain_spacing_linear_order(self, reverse):
-        centermost_gr_echoes, centermost_rf_echoes = self.get_centermost_echoes_linear_order(reverse)
-        readtrain_shift = self.gr_echo_spacing * (np.mean(centermost_gr_echoes) - (self.EPI_factor-1)/2)
-        central_rf_echo_time = self.TE - readtrain_shift
+    def readtrain_spacing_linear_order_func(self, centermost_echoes_linear_order, gr_echo_spacing, EPI_factor, TE):
+        centermost_gr_echoes, centermost_rf_echoes = centermost_echoes_linear_order
+        readtrain_shift = gr_echo_spacing * (np.mean(centermost_gr_echoes) - (EPI_factor-1)/2)
+        central_rf_echo_time = TE - readtrain_shift
         readtrain_spacing = central_rf_echo_time / (1 + np.mean(centermost_rf_echoes))
         return readtrain_spacing
 
-    def set_readtrain_spacing(self):
+    def min_readtrain_spacing_func(self, is_gradient_echo, RF_excitation, gre_echo_train_dur, readout_risetime, read_prephaser, phaser_duration, slice_select_excitation, slice_select_rephaser, RF_refocusing, slice_select_refocusing):
+        # Get shortest spacing for (center of) gradient echo trains
         # Equals center position of gradient echo (train) for gradient echo sequences
         # Equals rf echo spacing for spin echo sequences
-        min_readtrain_spacing = self.get_min_readtrain_spacing()
-        if self.EPI_factor == 1: # (turbo) spin echo
-            min_TE = min_readtrain_spacing * (1 + .5 * self.split_center)
-            te = max(self.TE, min_TE)
-            self.centermost_rf_echo = int(np.floor(te / min_readtrain_spacing - (1 + .5 * self.split_center)))
-            self.centermost_rf_echo = min(self.centermost_rf_echo, self.turbo_factor - 1 - self.split_center)
-            self.readtrain_spacing = te / (self.centermost_rf_echo + (1 + .5 * self.split_center))
-        else: # linear k-space order for EPI / GRASE
-            # pick forward or reverse order that minimizes spacing while respecting minimum spacing
-            # TODO: respect TR as well
-            cands = sorted([(self.get_readtrain_spacing_linear_order(reverse), reverse) for reverse in [True, False]])
-            (self.readtrain_spacing, self.reverse_linear_order) = cands[0] if cands[0][0]>min_readtrain_spacing and cands[1][0]>min_readtrain_spacing else cands[1]
-        add_to_pipeline(self.sequence_pipeline, ['place_refocusing', 'place_readouts', 'place_phasers'])
-
-    def setup_phase_encoding_table(self):
-        if self.EPI_factor == 1: # (turbo) spin echo
-            segment_order = get_segment_order(self.turbo_factor, self.num_sym_segm, self.centermost_rf_echo)
-            if self.is_radial.value:
-                self.pe_table = [[[segment] for segment in segment_order] for shot in range(self.num_shots_node.value)]
-            else:
-                self.pe_table = [[[segment * self.num_shots_node.value + shot] for segment in segment_order] for shot in range(self.num_shots_node.value)]  
-        else: # EPI and GRASE
-            order = -1 if self.reverse_linear_order else 1
-            if self.is_radial.value:
-                self.pe_table = [[list(range(rf_echo, sum(self.lines_to_measure), self.turbo_factor))[::order] for rf_echo in range(self.turbo_factor)][::order] for shot in range(self.num_shots_node.value)]
-            else:
-                self.pe_table = [[list(range(rf_echo * self.num_shots_node.value + shot, sum(self.lines_to_measure), self.num_shots_node.value * self.turbo_factor))[::order] for rf_echo in range(self.turbo_factor)][::order] for shot in range(self.num_shots_node.value)]
-        self.pe_table = np.array(self.pe_table)
+        if is_gradient_echo:
+            spacing = (RF_excitation['dur_f'] + gre_echo_train_dur) / 2 - readout_risetime
+            spacing += max(
+                read_prephaser['dur_f'] + readout_risetime,
+                phaser_duration,
+                slice_select_excitation['risetime_f'] + slice_select_rephaser['dur_f']
+            )
+        else: # spin echo
+            # before refocusing pulse:
+            left_side = (RF_excitation['dur_f'] + RF_refocusing[0]['dur_f']) / 2
+            left_side += max(
+                read_prephaser['dur_f'], 
+                slice_select_excitation['risetime_f'] + slice_select_rephaser['dur_f'] + (slice_select_refocusing[0]['risetime_f'])
+            )
+            # after refocusing pulse:
+            right_side = (RF_refocusing[0]['dur_f'] + gre_echo_train_dur) / 2 - readout_risetime
+            right_side += max(
+                readout_risetime,
+                phaser_duration,
+                slice_select_refocusing[0]['risetime_f']
+            )
+            spacing = max(left_side, right_side) * 2
+        return spacing
         
-    def k_read_axis_func(self, freq_dir, FOV, matrix, is_radial, radial_FOV_oversampling):
+    def centermost_rf_echo_func(self, EPI_factor, is_gradient_echo, TE, min_readtrain_spacing, split_center, turbo_factor):
+        if EPI_factor > 1 or is_gradient_echo:
+            return None
+        centermost_rf_echo = int(np.floor(TE / min_readtrain_spacing - (1 + .5 * split_center)))
+        return min(centermost_rf_echo, turbo_factor - 1 - split_center)
+            
+    def readtrain_spacing_func(self, EPI_factor, readtrain_spacing_linear_order, TE, centermost_rf_echo, split_center):
+        # Equals center position of gradient echo (train) for gradient echo sequences
+        # Equals rf echo spacing for spin echo sequences
+        if EPI_factor > 1: # linear k-space order for EPI / GRASE
+            return readtrain_spacing_linear_order.copy()
+        # (turbo) spin echo
+        self.readtrain_spacing = TE / (centermost_rf_echo + (1 + .5 * split_center))
+        
+    def k_read_axis_func(self, freq_dir, FOV, matrix, is_radial, phantom, radial_FOV_oversampling):
         voxel_size = FOV[freq_dir] / matrix[freq_dir]
         if not is_radial:
             num_samples = matrix[freq_dir]
             # at least Nyquist sampling wrt phantom if loaded
-            if hasattr(self, 'phantom') and (FOV[freq_dir] < self.phantom['support'][freq_dir]):
-                num_samples = int(np.ceil(self.phantom['support'][freq_dir] / voxel_size))
+            if FOV[freq_dir] < phantom['support'][freq_dir]:
+                num_samples = int(np.ceil(phantom['support'][freq_dir] / voxel_size))
         else:
-            maxFOV = max(FOV)
-            if hasattr(self, 'phantom'):
-                maxFOV = max(max(self.phantom['support']), maxFOV)
+            maxFOV = max(max(phantom['support']), max(FOV))
             num_samples = int(np.ceil(maxFOV / voxel_size * radial_FOV_oversampling))
         return recon.get_k_axis(num_samples, voxel_size)
 
@@ -1486,31 +1753,47 @@ class MRIsimulator(param.Parameterized):
         else:
             num_lines = num_measured_lines # future: take undersampling into account
             voxel_size = max(FOV) / num_lines # corresponding to blade width
-            
         return recon.get_k_axis(num_lines, voxel_size)
 
-    def homodyne_visibility_func(self, num_blank_lines, is_radial):
+    def set_homodyne_visibility(self, num_blank_lines, is_radial):
         self.param.homodyne.precedence = -1 if (num_blank_lines == 0 or is_radial) else 1
 
-    def setup_phase_encoding(self):
-        self.lines_to_measure = np.ones(len(self.k_phase_axis.value), dtype=bool)
+    def lines_to_measure_func(self, k_phase_axis, num_measured_lines):
+        lines_to_measure = np.ones(len(k_phase_axis), dtype=bool)
         # undersample by partial Fourier:
-        self.lines_to_measure[self.num_measured_lines.value:] = False
-        assert(sum(self.lines_to_measure) == self.num_measured_lines.value)
+        lines_to_measure[num_measured_lines:] = False
+        assert(sum(lines_to_measure) == num_measured_lines)
+        return lines_to_measure
 
-        self.num_segm = int(self.num_measured_lines.value * self.num_blades.value / self.num_shots_node.value)
-        num_sym_lines = 2 * self.num_measured_lines.value - len(self.k_phase_axis.value)
-        # check if center of k-space lies between two segments:
-        self.split_center = (num_sym_lines % self.num_shots_node.value == 0) and ((num_sym_lines / self.num_shots_node.value) % 2 == 0)
+    def num_sym_segm_func(self, split_center, num_sym_lines, num_blades, num_shots):
         # number of k-space segments symmetric about center:
-        if self.split_center:
-            self.num_sym_segm = int(num_sym_lines * self.num_blades.value / self.num_shots_node.value)
-            self.central_segments = [self.num_segm - self.num_sym_segm//2 - 1, self.num_segm - self.num_sym_segm//2]
-        else:
-            self.num_sym_segm = int(np.round((num_sym_lines * self.num_blades.value / self.num_shots_node.value - 1) / 2)) * 2 + 1
-            self.central_segments = [self.num_segm - self.num_sym_segm//2 - 1]
-        self.param.shot.bounds=(1, self.num_shots_node.value)
-        self.shot = min(self.shot, self.num_shots_node.value)
+        if split_center:
+            return int(num_sym_lines * num_blades / num_shots)
+        return int(np.round((num_sym_lines * num_blades / num_shots - 1) / 2)) * 2 + 1
+
+    def central_segments_func(self, split_center, num_segm, num_sym_segm):
+        if split_center:
+            return [num_segm - num_sym_segm//2 - 1, num_segm - num_sym_segm//2]
+        return [num_segm - num_sym_segm//2 - 1]
+    
+    def pe_table_func(self, EPI_factor, turbo_factor, num_sym_segm, centermost_rf_echo, is_radial, num_shots, reverse_linear_order, lines_to_measure):
+        if EPI_factor == 1: # (turbo) spin echo
+            segment_order = get_segment_order(turbo_factor, num_sym_segm, centermost_rf_echo)
+            if is_radial:
+                pe_table = [[[segment] for segment in segment_order] for shot in range(num_shots)]
+            else:
+                pe_table = [[[segment * num_shots + shot] for segment in segment_order] for shot in range(num_shots)]
+        else: # EPI and GRASE
+            order = -1 if reverse_linear_order else 1
+            if is_radial:
+                pe_table = [[list(range(rf_echo, sum(lines_to_measure), turbo_factor))[::order] for rf_echo in range(turbo_factor)][::order] for shot in range(num_shots)]
+            else:
+                pe_table = [[list(range(rf_echo * num_shots + shot, sum(lines_to_measure), num_shots * turbo_factor))[::order] for rf_echo in range(turbo_factor)][::order] for shot in range(num_shots)]
+        return np.array(pe_table)
+
+    def set_shot_bounds(self, num_shots):
+        self.param.shot.bounds = (1, num_shots)
+        self.shot = min(self.shot, num_shots)
 
     def k_axes_func(self, freq_dir, phase_dir, k_read_axis, k_phase_axis, lines_to_measure):
         k_axes = [None]*2
@@ -1630,10 +1913,6 @@ class MRIsimulator(param.Parameterized):
     def set_reference_SNR(self, event=None):
         self.reference_SNR = self.SNR
 
-    def update_scantime(self):
-        milliseconds = self.num_shots_node.value * self.NSA * self.TR
-        self.scantime = format_scantime(milliseconds)
-
     def measured_kspace_func(self, noise, kspace_comps, FatSat, PD_and_T1w):
         measured_kspace = noise.copy()
         for component in kspace_comps:
@@ -1699,229 +1978,292 @@ class MRIsimulator(param.Parameterized):
         image_array = recon.IFFT(zerofilled_kspace, pixel_shifts, sample_shifts)
         return recon.crop(image_array, recon_matrix)
 
-    def setup_excitation(self):
-        FA = self.FA if self.is_gradient_echo.value else 90.
-        self.boards['RF']['objects']['excitation'] = sequence.get_RF(flip_angle=FA, time=0., dur=3., shape='hamming_sinc',  name='excitation')
-        add_to_pipeline(self.sequence_pipeline, ['setup_slice_selection', 'setup_phasers', 'place_FatSat', 'update_min_TE', 'update_BW_bounds', 'update_matrix_F_bounds', 'update_FOV_F_bounds', 'update_matrix_P_bounds', 'update_FOV_P_bounds', 'update_slice_thickness_bounds'])
-        add_to_pipeline(self.sequence_plot_pipeline, ['render_RF_board'])
+    def RF_excitation_func(self, FA, is_gradient_echo):
+        flip_angle = FA if is_gradient_echo else 90.
+        return sequence.get_RF(flip_angle=flip_angle, time=0., dur=3., shape='hamming_sinc',  name='excitation')
 
-    def setup_refocusing(self):
-        self.boards['RF']['objects']['refocusing'] = []
-        if not self.is_gradient_echo.value:
-            for rf_echo in range(self.turbo_factor):
-                self.boards['RF']['objects']['refocusing'].append(sequence.get_RF(flip_angle=180., dur=3., shape='hamming_sinc',  name=f'refocusing{" " + str(rf_echo + 1) if self.turbo_factor > 1 else ""}'))
-            add_to_pipeline(self.sequence_pipeline, ['place_refocusing'])
-        add_to_pipeline(self.sequence_pipeline, ['setup_slice_selection', 'update_min_TE', 'update_matrix_P_bounds', 'update_FOV_P_bounds', 'update_slice_thickness_bounds'])
-        add_to_pipeline(self.sequence_plot_pipeline, ['render_RF_board'])
+    def RF_refocusing_floating_func(self, is_gradient_echo, turbo_factor):
+        if is_gradient_echo:
+            return None
+        RF_refocusing = []
+        for rf_echo in range(turbo_factor):
+            RF_refocusing.append(sequence.get_RF(flip_angle=180., dur=3., shape='hamming_sinc',  name=f'refocusing{" " + str(rf_echo + 1) if turbo_factor > 1 else ""}'))
+        return RF_refocusing
 
-    def setup_inversion(self):
-        if self.sequence=='Inversion Recovery':
-            self.boards['RF']['objects']['inversion'] = sequence.get_RF(flip_angle=180., dur=3., shape='hamming_sinc',  name='inversion')
-            add_to_pipeline(self.sequence_pipeline, ['place_inversion'])
-        elif 'inversion' in self.boards['RF']['objects']:
-            del self.boards['RF']['objects']['inversion']
-        add_to_pipeline(self.sequence_pipeline, ['setup_slice_selection', 'update_max_TI', 'update_slice_thickness_bounds'])
-        add_to_pipeline(self.sequence_plot_pipeline, ['render_RF_board'])
+    def RF_inversion_floating_func(self, sequence):
+        if not sequence == 'Inversion Recovery':
+            return None
+        return sequence.get_RF(flip_angle=180., dur=3., shape='hamming_sinc',  name='inversion')
 
-    def setup_FatSat(self):
-        if self.FatSat:
-            self.boards['RF']['objects']['fatsat'] = sequence.get_RF(flip_angle=90, time=0., dur=30./self.field_strength, shape='hamming_sinc',  name='FatSat')
-            spoiler_area = 30. # uTs/m
-            self.boards['slice']['objects']['fatsat spoiler'] = sequence.get_gradient('slice', total_area=spoiler_area, name='FatSat spoiler', max_amp=self.max_amp, max_slew=self.max_slew)
-        elif 'fatsat' in self.boards['RF']['objects']:
-            del self.boards['RF']['objects']['fatsat']
-            del self.boards['slice']['objects']['fatsat spoiler']
-        add_to_pipeline(self.sequence_pipeline, ['place_FatSat'])
-        add_to_pipeline(self.sequence_plot_pipeline, ['render_RF_board', 'render_slice_board'])
+    def RF_FatSat_floating_func(self, FatSat, field_strength):
+        if not FatSat:
+            return None
+        return sequence.get_RF(flip_angle=90, time=0., dur=30./field_strength, shape='hamming_sinc',  name='FatSat')
 
-    def setup_slice_selection(self):
-        flat_dur = self.boards['RF']['objects']['excitation']['dur_f']
-        amp = self.boards['RF']['objects']['excitation']['FWHM_f'] / (self.slice_thickness * constants.GYRO)
-        slice_select_excitation = sequence.get_gradient('slice', 0., max_amp=amp, flat_dur=flat_dur, name='slice select excitation', max_slew=self.max_slew)
+    def FatSat_spoiler_floating_func(self, FatSat):
+        if not FatSat:
+            return None
+        spoiler_area = 30. # uTs/m
+        return sequence.get_gradient('slice', total_area=spoiler_area, name='FatSat spoiler', max_amp=self.max_amp, max_slew=self.max_slew)
+
+    def slice_select_excitation_func(self, RF_excitation, slice_thickness):
+        flat_dur = RF_excitation['dur_f']
+        amp = RF_excitation['FWHM_f'] / (slice_thickness * constants.GYRO)
+        time = 0.
+        return sequence.get_gradient('slice', time, max_amp=amp, flat_dur=flat_dur, name='slice select excitation', max_slew=self.max_slew)
+
+    def slice_select_rephaser_func(self, slice_select_excitation):
         slice_rephaser_area = -slice_select_excitation['area_f']/2
         slice_select_rephaser = sequence.get_gradient('slice', total_area=slice_rephaser_area, name='slice select rephaser', max_amp=self.max_amp, max_slew=self.max_slew)
-        rephaser_time = (slice_select_excitation['dur_f'] + slice_select_rephaser['dur_f']) / 2
-        sequence.move_waveform(slice_select_rephaser, rephaser_time)
-        self.boards['slice']['objects']['slice select excitation'] = slice_select_excitation
-        self.boards['slice']['objects']['slice select rephaser'] = slice_select_rephaser
+        time = (slice_select_excitation['dur_f'] + slice_select_rephaser['dur_f']) / 2
+        sequence.move_waveform(slice_select_rephaser, time)
+        return slice_select_rephaser
 
-        self.boards['slice']['objects']['slice select refocusing'] = []
-        if not self.is_gradient_echo.value:
-            flat_dur = self.boards['RF']['objects']['refocusing'][0]['dur_f']
-            amp = self.boards['RF']['objects']['refocusing'][0]['FWHM_f'] / (self.slice_thickness * constants.GYRO)
-            self.boards['slice']['objects']['slice select refocusing'] = []
-            for rf_echo in range(self.turbo_factor):
-                self.boards['slice']['objects']['slice select refocusing'].append(sequence.get_gradient('slice', max_amp=amp, flat_dur=flat_dur, name='slice select refocusing', max_slew=self.max_slew))
-            add_to_pipeline(self.sequence_pipeline, ['place_refocusing'])
-            
-        if 'inversion' in self.boards['RF']['objects']:
-            flat_dur = self.boards['RF']['objects']['inversion']['dur_f']
-            amp = self.boards['RF']['objects']['inversion']['FWHM_f'] / (self.inversion_thk_factor * self.slice_thickness * constants.GYRO)
-            self.boards['slice']['objects']['slice select inversion'] = sequence.get_gradient('slice', max_amp=amp, flat_dur=flat_dur, name='slice select inversion', max_slew=self.max_slew)
+    def slice_select_refocusing_floating_func(self, RF_refocusing_floating, slice_thickness, turbo_factor):
+        if RF_refocusing_floating is None:
+            return None
+        flat_dur = RF_refocusing_floating[0]['dur_f']
+        amp = RF_refocusing_floating[0]['FWHM_f'] / (slice_thickness * constants.GYRO)
+        slice_select_refocusing = []
+        for rf_echo in range(turbo_factor):
+            slice_select_refocusing.append(sequence.get_gradient('slice', max_amp=amp, flat_dur=flat_dur, name='slice select refocusing', max_slew=self.max_slew))
+        return slice_select_refocusing
 
-            spoiler_area = 30. # uTs/m
-            self.boards['slice']['objects']['inversion spoiler'] = sequence.get_gradient('slice', total_area=spoiler_area, name='inversion spoiler', max_amp=self.max_amp, max_slew=self.max_slew)
-            add_to_pipeline(self.sequence_pipeline, ['place_inversion'])
-        elif 'slice select inversion' in self.boards['slice']['objects']:
-            del self.boards['slice']['objects']['slice select inversion']
-            del self.boards['slice']['objects']['inversion spoiler']
-        
-        add_to_pipeline(self.sequence_pipeline, ['setup_phasers', 'update_min_TE', 'update_max_TI', 'update_min_TR', 'update_BW_bounds'])
-        add_to_pipeline(self.sequence_plot_pipeline, ['render_slice_board', 'render_TR_span'])
+    def slice_select_inversion_floating_func(self, sequence, RF_inversion_floating, slice_thickness):
+        if sequence=='Inversion Recovery':
+            return None
+        flat_dur = RF_inversion_floating['dur_f']
+        amp = RF_inversion_floating['FWHM_f'] / (self.inversion_thk_factor * slice_thickness * constants.GYRO)
+        return sequence.get_gradient('slice', max_amp=amp, flat_dur=flat_dur, name='slice select inversion', max_slew=self.max_slew)
+    
+    def inversion_spoiler_floating_func(self, sequence):
+        if sequence=='Inversion Recovery':
+            return None
+        spoiler_area = 30. # uTs/m
+        return sequence.get_gradient('slice', total_area=spoiler_area, name='inversion spoiler', max_amp=self.max_amp, max_slew=self.max_slew)
 
-    def setup_readouts(self):        
-        pixel_size = (len(self.k_read_axis.value)-1) / len(self.k_read_axis.value) / (max(self.k_read_axis.value)-min(self.k_read_axis.value))
+    def readouts_floating_func(self, k_read_axis, pixel_bandwidth, matrix_F, FOV_F, turbo_factor, EPI_factor):
+        pixel_size = (len(k_read_axis.value)-1) / len(k_read_axis.value) / (max(k_read_axis.value)-min(k_read_axis.value))
         flat_area = 1e3 / pixel_size / constants.GYRO # uTs/m
-        amp = self.pixel_bandwidth * self.matrix_F / (self.FOV_F * constants.GYRO) # mT/m
-        self.boards['frequency']['objects']['readouts'] = []
-        self.boards['ADC']['objects']['samplings'] = []
-        for rf_echo in range(self.turbo_factor):
-            gr_echoes = []
-            samplings = []
-            for gr_echo in range(self.EPI_factor):
-                suffix = ((" " if (self.turbo_factor > 1 or self.EPI_factor > 1) else "")
-                        + (str(rf_echo + 1) if self.turbo_factor > 1 else "")
-                        + ("." if (self.turbo_factor > 1 and self.EPI_factor > 1) else "")
-                        + (str(gr_echo + 1) if self.EPI_factor > 1 else ""))
+        amp = pixel_bandwidth * matrix_F / (FOV_F * constants.GYRO) # mT/m
+        readouts = []
+        for rf_echo in range(turbo_factor):
+            readouts.append([])           
+            for gr_echo in range(EPI_factor):
+                suffix = ((" " if (turbo_factor > 1 or EPI_factor > 1) else "")
+                        + (str(rf_echo + 1) if turbo_factor > 1 else "")
+                        + ("." if (turbo_factor > 1 and EPI_factor > 1) else "")
+                        + (str(gr_echo + 1) if EPI_factor > 1 else ""))
                 readout = sequence.get_gradient('frequency', max_amp=amp, flat_area=flat_area, name='readout'+suffix, max_slew=self.max_slew)
-                gr_echoes.append(readout)
-                adc = sequence.get_ADC(dur=readout['flat_dur_f'], name='sampling'+suffix)
-                samplings.append(adc)
-            self.boards['frequency']['objects']['readouts'].append(gr_echoes)
-            self.boards['ADC']['objects']['samplings'].append(samplings)
-        self.readout_risetime = readout['risetime_f']
-        prephaser = sequence.get_gradient('frequency', total_area=readout['area_f']/2, name='read prephaser', max_amp=self.max_amp, max_slew=self.max_slew)        
-        self.boards['frequency']['objects']['read prephaser'] = prephaser
-        add_to_pipeline(self.sequence_pipeline, ['place_readouts', 'setup_phasers', 'update_min_TE'])
+                readouts[-1].append(readout)
+        return readouts
+    
+    def sampling_windows_floating_func(self, turbo_factor, EPI_factor, readouts_floating):
+        sampling_windows = []
+        for rf_echo in range(turbo_factor):
+            sampling_windows.append([])
+            for gr_echo in range(EPI_factor):
+                suffix = ((" " if (turbo_factor > 1 or EPI_factor > 1) else "")
+                        + (str(rf_echo + 1) if turbo_factor > 1 else "")
+                        + ("." if (turbo_factor > 1 and EPI_factor > 1) else "")
+                        + (str(gr_echo + 1) if EPI_factor > 1 else ""))
+                adc = sequence.get_ADC(dur=readouts_floating[0][0]['flat_dur_f'], name='sampling'+suffix)
+                sampling_windows[-1].append(adc)
+        return sampling_windows
 
-    def setup_phasers(self):
-        self.setup_phase_encoding()
+    def readout_risetime_func(self, readouts_floating):
+        return readouts_floating[0][0]['risetime_f']
+    
+    def read_prephaser_floating_func(self, readouts_floating):
+        return sequence.get_gradient('frequency', total_area=readouts_floating[0][0]['area_f']/2, name='read prephaser', max_amp=self.max_amp, max_slew=self.max_slew)
 
-        phase_step_area = np.mean(np.diff(self.k_phase_axis.value)) * 1e3 / constants.GYRO # uTs/m
-        largest_phaser_area = np.min(self.k_phase_axis.value) * 1e3 / constants.GYRO   # uTs/m
+    def phaser_duration_func(self, largest_phaser_area):
+        largest_phaser = sequence.get_gradient('phase', total_area=largest_phaser_area, max_amp=self.max_amp, max_slew=self.max_slew)
+        return largest_phaser['dur_f']
         
-        self.phaser_duration = sequence.get_gradient('phase', total_area=largest_phaser_area, max_amp=self.max_amp, max_slew=self.max_slew)['dur_f']
-
-        self.max_blip_dur = 0
-        if (self.EPI_factor > 1):
-            max_blip_area = phase_step_area * self.num_shots_node.value * self.turbo_factor
-            self.max_blip_dur = sequence.get_gradient('phase', total_area=max_blip_area, name='dummy blip', max_amp=self.max_amp, max_slew=self.max_slew)['dur_f']
-        readout = self.boards['frequency']['objects']['readouts'][0][0]
-        readout_gap = max(self.max_blip_dur - 2 * readout['risetime_f'], 0)
-        self.gr_echo_spacing = readout['dur_f'] + readout_gap
-        self.gre_echo_train_dur = self.EPI_factor * self.gr_echo_spacing - readout_gap
-       
-        self.set_readtrain_spacing()
-        self.setup_phase_encoding_table()
-
-        self.boards['phase']['objects']['phasers'] = []
-        self.boards['phase']['objects']['rephasers'] = []
-        self.boards['phase']['objects']['blips'] = []
-
-        for rf_echo in range(self.turbo_factor):
-            phaser_area = largest_phaser_area + self.pe_table[self.shot-1, rf_echo, 0] * phase_step_area
-            suffix = f' {rf_echo + 1}' if self.turbo_factor > 1 else ''
+    def max_blip_dur_func(self, EPI_factor, phase_step_area, num_shots, turbo_factor):
+        if (EPI_factor==0):
+            return 0
+        max_blip_area = phase_step_area * num_shots * turbo_factor
+        max_blip = sequence.get_gradient('phase', total_area=max_blip_area, max_amp=self.max_amp, max_slew=self.max_slew)
+        return max_blip['dur_f']
+    
+    def phasers_floating_func(self, turbo_factor, largest_phaser_area, pe_table, phase_step_area, shot):
+        phasers = []
+        for rf_echo in range(turbo_factor):
+            phaser_area = largest_phaser_area + pe_table[shot-1, rf_echo, 0] * phase_step_area
+            suffix = f' {rf_echo + 1}' if turbo_factor > 1 else ''
             phaser = sequence.get_gradient('phase', total_area=largest_phaser_area, name='phase encode'+suffix, max_amp=self.max_amp, max_slew=self.max_slew)
             if abs(largest_phaser_area) > 1e-5:
                 sequence.rescale_gradient(phaser, phaser_area / largest_phaser_area)
-            self.boards['phase']['objects']['phasers'].append(phaser)
-            rephaser_area = -phaser_area
-            blips = []
-            for gr_echo in range(1, self.EPI_factor):
-                blip_area = phase_step_area * (self.pe_table[self.shot-1, rf_echo, gr_echo]-self.pe_table[self.shot-1, rf_echo, gr_echo-1])
+            phasers.append(phaser)
+        return phasers
+    
+    def blips_floating_func(self, turbo_factor, EPI_factor, phase_step_area, pe_table, shot):
+        blips = []
+        for rf_echo in range(turbo_factor):
+            blips.append([])
+            for gr_echo in range(1, EPI_factor):
+                blip_area = phase_step_area * (pe_table[shot-1, rf_echo, gr_echo] - pe_table[shot-1, rf_echo, gr_echo-1])
                 blip = sequence.get_gradient('phase', total_area=blip_area, name='blip', max_amp=self.max_amp, max_slew=self.max_slew)
-                blips.append(blip)
-                rephaser_area -= blip_area
-            self.boards['phase']['objects']['blips'].append(blips)
+                blips[-1].append(blip)
+        return blips
+
+    def rephasers_floating_func(self, turbo_factor, phasers_floating, blips_floating, largest_phaser_area):
+        rephasers = []
+        for rf_echo in range(turbo_factor):
+            suffix = f' {rf_echo + 1}' if turbo_factor > 1 else ''
+            rephaser_area = -phasers_floating[rf_echo]['area_f']
+            for blip in blips_floating[rf_echo]:
+                rephaser_area -= blip['area_f']
             rephaser = sequence.get_gradient('phase', total_area=largest_phaser_area, name='rephaser'+suffix, max_amp=self.max_amp, max_slew=self.max_slew)
             if abs(largest_phaser_area) > 1e-5:
                 sequence.rescale_gradient(rephaser, rephaser_area / largest_phaser_area)
-            self.boards['phase']['objects']['rephasers'].append(rephaser)
-        add_to_pipeline(self.sequence_pipeline, ['place_phasers', 'update_min_TE', 'update_BW_bounds'])
+            rephasers.append(rephaser)
+        return rephasers        
 
-    def setup_spoiler(self):
+    def spoiler_floating_func(self):
         spoiler_area = 30. # uTs/m
-        self.boards['slice']['objects']['spoiler'] = sequence.get_gradient('slice', total_area=spoiler_area, name='spoiler', max_amp=self.max_amp, max_slew=self.max_slew)
-        add_to_pipeline(self.sequence_pipeline, ['place_spoiler'])
+        return sequence.get_gradient('slice', total_area=spoiler_area, name='spoiler', max_amp=self.max_amp, max_slew=self.max_slew)
 
-    def get_readtrain_pos(self, rf_echo_num):
-        # center position of gradient echo readout (train)
-        return self.readtrain_spacing * (rf_echo_num + 1)
+    def slice_select_refocusing_func(self, slice_select_refocusing_floating, readtrain_spacing):
+        if slice_select_refocusing_floating is None:
+            return None
+        slice_select_refocusing = []
+        for rf_echo, grad in enumerate(slice_select_refocusing_floating):
+            slice_select_refocusing.append(grad.copy())
+            time = get_readtrain_pos(readtrain_spacing, rf_echo) - readtrain_spacing/2
+            sequence.move_waveform(slice_select_refocusing[rf_echo], time)
+        return slice_select_refocusing
 
-    def place_refocusing(self):
-        if not self.is_gradient_echo.value:
-            for rf_echo in range(self.turbo_factor):
-                pos = self.get_readtrain_pos(rf_echo) - self.readtrain_spacing/2
-                sequence.move_waveform(self.boards['RF']['objects']['refocusing'][rf_echo], pos)
-                sequence.move_waveform(self.boards['slice']['objects']['slice select refocusing'][rf_echo], pos)
-            add_to_pipeline(self.sequence_pipeline, ['update_BW_bounds'])
-            add_to_pipeline(self.sequence_plot_pipeline, ['render_RF_board', 'render_slice_board', 'calculate_k_trajectory'])
+    def RF_refocusing_func(self, RF_refocusing_floating, readtrain_spacing):
+        if RF_refocusing_floating is None:
+            return None
+        RF_refocusing = []
+        for rf_echo, RF in enumerate(RF_refocusing_floating):
+            RF_refocusing.append(RF.copy())
+            time = get_readtrain_pos(readtrain_spacing, rf_echo) - readtrain_spacing/2
+            sequence.move_waveform(RF_refocusing[rf_echo], time)
+        return RF_refocusing
 
-    def place_inversion(self):
-        for board, name, renderer in [('RF', 'inversion', 'render_RF_board'), ('slice', 'slice select inversion', 'render_slice_board')]:
-            if name in self.boards[board]['objects']:
-                sequence.move_waveform(self.boards[board]['objects'][name], -self.TI)
-                add_to_pipeline(self.sequence_plot_pipeline, [renderer])
-        if 'inversion spoiler' in self.boards['slice']['objects']:
-            spoiler_time = self.boards['RF']['objects']['inversion']['time'][-1] + self.boards['slice']['objects']['inversion spoiler']['dur_f']/2
-            sequence.move_waveform(self.boards['slice']['objects']['inversion spoiler'], spoiler_time)
-        add_to_pipeline(self.sequence_pipeline, ['update_min_TR', 'update_BW_bounds', 'update_slice_thickness_bounds'])
-        add_to_pipeline(self.sequence_plot_pipeline, ['render_slice_board', 'render_RF_board', 'render_TR_span'])
-
-    def place_FatSat(self):
-        if 'fatsat' in self.boards['RF']['objects']:
-            t = self.boards['slice']['objects']['slice select excitation']['time'][0] - self.boards['slice']['objects']['fatsat spoiler']['dur_f']/2
-            sequence.move_waveform(self.boards['slice']['objects']['fatsat spoiler'], t)
-            t -= (self.boards['slice']['objects']['fatsat spoiler']['dur_f'] + self.boards['RF']['objects']['fatsat']['dur_f']) / 2
-            sequence.move_waveform(self.boards['RF']['objects']['fatsat'], t)
-        add_to_pipeline(self.sequence_pipeline, ['update_min_TR'])
-        add_to_pipeline(self.sequence_plot_pipeline, ['render_RF_board', 'render_TR_span'])
-
-    def place_readouts(self):
-        for rf_echo in range(self.turbo_factor):
-            readtrain_pos = self.get_readtrain_pos(rf_echo)
-            for gr_echo in range(self.EPI_factor):
-                pos = readtrain_pos + (gr_echo - (self.EPI_factor-1) / 2) * self.gr_echo_spacing
-                for object in [self.boards['frequency']['objects']['readouts'], self.boards['ADC']['objects']['samplings']]:
-                    sequence.move_waveform(object[rf_echo][gr_echo], pos)
-                if gr_echo%2 and self.boards['frequency']['objects']['readouts'][rf_echo][gr_echo]['area_f'] > 0:
-                    sequence.rescale_gradient(self.boards['frequency']['objects']['readouts'][rf_echo][gr_echo], -1)
-        if self.is_gradient_echo.value:
-            if self.boards['frequency']['objects']['read prephaser']['area_f'] > 0:
-                sequence.rescale_gradient(self.boards['frequency']['objects']['read prephaser'], -1)
-            first_readout = self.boards['frequency']['objects']['readouts'][0][0]
-            prephase_time = first_readout['center_f'] - sum([grad['dur_f'] for grad in [self.boards['frequency']['objects']['read prephaser'], first_readout]])/2
-        else:
-            if self.boards['frequency']['objects']['read prephaser']['area_f'] < 0:
-                sequence.rescale_gradient(self.boards['frequency']['objects']['read prephaser'], -1)
-            prephase_time = sum([self.boards[b]['objects'][name]['dur_f'] for (b, name) in [('RF', 'excitation'), ('frequency', 'read prephaser')]])/2
-        sequence.move_waveform(self.boards['frequency']['objects']['read prephaser'], prephase_time)
-        add_to_pipeline(self.sequence_pipeline, ['place_phasers', 'place_spoiler'])
-        add_to_pipeline(self.sequence_plot_pipeline, ['render_frequency_board', 'render_RF_board'])
-
-    def place_phasers(self):
-        for rf_echo in range(self.turbo_factor):
-            readtrain_pos = self.get_readtrain_pos(rf_echo)
-            
-            phaser_dur = self.boards['phase']['objects']['phasers'][rf_echo]['dur_f']
-            phaser_time = readtrain_pos - (self.gre_echo_train_dur + phaser_dur)/2 + self.readout_risetime
-            sequence.move_waveform(self.boards['phase']['objects']['phasers'][rf_echo], phaser_time)
-
-            for gr_echo in range(self.EPI_factor-1):
-                blip_time = readtrain_pos + self.gr_echo_spacing * (gr_echo - self.EPI_factor/2 + 1)
-                sequence.move_waveform(self.boards['phase']['objects']['blips'][rf_echo][gr_echo], blip_time)
-
-            rephaser_dur = self.boards['phase']['objects']['rephasers'][rf_echo]['dur_f']
-            rephaser_time = readtrain_pos + (self.gre_echo_train_dur + rephaser_dur)/2 - self.readout_risetime
-            sequence.move_waveform(self.boards['phase']['objects']['rephasers'][rf_echo], rephaser_time)
+    def slice_select_inversion_func(self, slice_select_inversion_floating, TI):
+        if slice_select_inversion_floating is None:
+            return None
+        slice_select_inversion = slice_select_inversion_floating.copy()
+        sequence.move_waveform(slice_select_inversion, -TI)
+        return slice_select_inversion
         
-        add_to_pipeline(self.sequence_plot_pipeline, ['render_phase_board'])
+    def RF_inversion_func(self, RF_inversion_floating, TI):
+        if RF_inversion_floating is None:
+            return None
+        RF_inversion = RF_inversion_floating.copy()
+        sequence.move_waveform(RF_inversion, -TI)
+        return RF_inversion
+    
+    def inversion_spoiler_func(self, inversion_spoiler_floating, RF_inversion):
+        if inversion_spoiler_floating is None:
+            return None
+        inversion_spoiler = inversion_spoiler_floating.copy()
+        time = RF_inversion['time'][-1] + inversion_spoiler['dur_f']/2
+        sequence.move_waveform(inversion_spoiler, time)
+        return inversion_spoiler
 
-    def place_spoiler(self):
-        spoiler_time = self.boards['frequency']['objects']['readouts'][-1][-1]['center_f'] + (self.boards['frequency']['objects']['readouts'][-1][-1]['flat_dur_f'] + self.boards['slice']['objects']['spoiler']['dur_f']) / 2
-        sequence.move_waveform(self.boards['slice']['objects']['spoiler'], spoiler_time)
-        add_to_pipeline(self.sequence_pipeline, ['update_min_TR', 'update_slice_thickness_bounds'])
-        add_to_pipeline(self.sequence_plot_pipeline, ['render_slice_board'])
+    def FatSat_spoiler_func(self, FatSat_spoiler_floating, slice_select_excitation):
+        if FatSat_spoiler_floating is None:
+            return None
+        FatSat_spoiler = FatSat_spoiler_floating.copy()
+        time = slice_select_excitation['time'][0] - FatSat_spoiler['dur_f']/2
+        sequence.move_waveform(FatSat_spoiler, time)
+        return FatSat_spoiler
+
+    def RF_FatSat_func(self, RF_FatSat_floating, FatSat_spoiler_floating):
+        if RF_FatSat_floating is None:
+            return None
+        RF_FatSat = RF_FatSat_floating.copy()
+        t = FatSat_spoiler_floating['time'][0] - RF_FatSat['dur_f']/2
+        sequence.move_waveform(RF_FatSat, t)
+        return RF_FatSat
+
+    def readouts_func(self, turbo_factor, readtrain_spacing, EPI_factor, gr_echo_spacing, readouts_floating):
+        readouts = []
+        for rf_echo in range(turbo_factor):
+            readouts.append([])
+            readtrain_pos = get_readtrain_pos(readtrain_spacing, rf_echo)
+            for gr_echo in range(EPI_factor):
+                readout = readouts_floating[rf_echo][gr_echo].copy()
+                pos = readtrain_pos + (gr_echo - (EPI_factor-1) / 2) * gr_echo_spacing
+                sequence.move_waveform(readout, pos)
+                if gr_echo%2 and readout['area_f'] > 0:
+                    sequence.rescale_gradient(readout, -1)
+                readouts[-1].append(readout)
+        return readouts
+                    
+    def sampling_windows_func(self, turbo_factor, readtrain_spacing, EPI_factor, gr_echo_spacing, sampling_windows_floating):
+        sampling_windows = []
+        for rf_echo in range(turbo_factor):
+            readtrain_pos = get_readtrain_pos(readtrain_spacing, rf_echo)
+            sampling_windows.append([])
+            for gr_echo in range(EPI_factor):
+                sampling_window = sampling_windows_floating[rf_echo][gr_echo].copy()
+                pos = readtrain_pos + (gr_echo - (EPI_factor-1) / 2) * gr_echo_spacing
+                sequence.move_waveform(sampling_window, pos)
+                sampling_windows[-1].append(sampling_window)
+        return sampling_windows
+    
+    def read_prephaser_func(self, read_prephaser_floating, is_gradient_echo, readouts, RF_excitation):
+        read_prephaser = read_prephaser_floating.copy()
+                
+        if is_gradient_echo:
+            if read_prephaser['area_f'] > 0:
+                sequence.rescale_gradient(read_prephaser, -1)
+            first_readout = readouts[0][0]
+            prephase_time = first_readout['center_f'] - sum([grad['dur_f'] for grad in [read_prephaser, first_readout]])/2
+        else:
+            if read_prephaser['area_f'] < 0:
+                sequence.rescale_gradient(read_prephaser, -1)
+            prephase_time = sum([object['dur_f'] for object in [RF_excitation, read_prephaser]])/2
+        sequence.move_waveform(read_prephaser, prephase_time)
+        return read_prephaser
+    
+    def phasers_func(self, turbo_factor, readtrain_spacing, phasers_floating, gre_echo_train_dur, readout_risetime):
+        phasers = []
+        for rf_echo in range(turbo_factor):
+            phaser = phasers_floating[rf_echo].copy()
+            readtrain_pos = get_readtrain_pos(readtrain_spacing, rf_echo)
+            phaser_time = readtrain_pos - (gre_echo_train_dur + phaser['dur_f'])/2 + readout_risetime
+            sequence.move_waveform(phaser, phaser_time)
+            phasers.append(phaser)
+        return phasers
+    
+    def rephasers_func(self, turbo_factor, readtrain_spacing, gre_echo_train_dur, readout_risetime, rephasers_floating):
+        rephasers = []
+        for rf_echo in range(turbo_factor):
+            readtrain_pos = get_readtrain_pos(readtrain_spacing, rf_echo)
+            rephaser = rephasers_floating[rf_echo].copy()
+            rephaser_time = readtrain_pos + (gre_echo_train_dur + rephaser['dur_f'])/2 - readout_risetime
+            sequence.move_waveform(rephaser, rephaser_time)
+            rephasers.append(rephaser)
+        return rephasers
+        
+    def blips_func(self, turbo_factor, readtrain_spacing, EPI_factor, gr_echo_spacing, blips_floating):
+        blips = []
+        for rf_echo in range(turbo_factor):
+            readtrain_pos = get_readtrain_pos(readtrain_spacing, rf_echo)
+            blips.append([])
+            for gr_echo in range(EPI_factor-1):
+                blip = blips_floating[rf_echo][gr_echo].copy()
+                blip_time = readtrain_pos + gr_echo_spacing * (gr_echo - EPI_factor/2 + 1)
+                sequence.move_waveform(blip, blip_time)
+                blips[-1].append(blip)
+        return blips
+
+    def spoiler_func(self, readouts, spoiler_floating):
+        spoiler = spoiler_floating.copy()
+        spoiler_time = readouts[-1][-1]['center_f'] + (readouts[-1][-1]['flat_dur_f'] + spoiler['dur_f']) / 2
+        sequence.move_waveform(spoiler, spoiler_time)
+        return spoiler
+
+    # End of node funcs
 
     def add_signals(self):
         self.boards['signal']['objects']['signals'] = []
