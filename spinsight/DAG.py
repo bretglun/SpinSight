@@ -94,6 +94,7 @@ class OutputParamNode(ComputeNode):
         super().__init__(func, parents)
         self.params = params
         self.name = name
+        self._queued = False
 
     @property
     def value(self):
@@ -102,6 +103,16 @@ class OutputParamNode(ComputeNode):
         if current != value:
             setattr(self.params, self.name, value)
         return value
+
+    def execute(self):
+        self.value
+        self._queued = False
+    
+    def invalidate(self):
+        super().invalidate()
+        if not self._queued:
+            scheduler.queue_action(self)
+            self._queued = True
 
 
 def make_node(name, specs, graph):
@@ -121,7 +132,7 @@ def make_node(name, specs, graph):
 
 def initialize_graph(graph):
     for node in graph.values():
-        if isinstance(node, ActionNode):
+        if isinstance(node, ActionNode) or isinstance(node, OutputParamNode):
             node.execute()
 
 
