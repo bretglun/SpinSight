@@ -265,6 +265,7 @@ class MRIsimulator(param.Parameterized):
         hv.opts.defaults(hv.opts.Curve(line_width=5, line_color='peru'))
         hv.opts.defaults(hv.opts.Points(line_color=None, color='peru', size=15))
 
+        # constants
         self.max_amp = 25. # mT/m
         self.max_slew = 80. # T/m/s
         self.inversion_thk_factor = 1.1 # make inversion slice 10% thicker
@@ -272,544 +273,560 @@ class MRIsimulator(param.Parameterized):
         for board in self.boards:
             self.boards[board]['objects'] = {}
 
-        # create InputParamNodes for all params
-        for par in self.param:
-            if par == 'name':
-                continue
-            setattr(self, f'{par}_node', InputParamNode(self, par))
-            #self.param.watch(lambda _: getattr(self, f'_watch_{par}')(), par, precedence=1)
-
-        self.phantom = ComputeNode(
-            lambda object:
-            phantom.load(object, self.min_voxel_size),
-            [self.object_node]
-        )
+        node_specs = {par: {'params': self} for par in self.param if par != 'name'}
         
-        self.tissues = ComputeNode(
-            lambda phantom:
-            list(phantom['shapes'].keys()),
-            [self.phantom]
-        )
-
-        self.is_radial = ComputeNode(
-            lambda trajectory: 
-            trajectory in ['Radial', 'PROPELLER'], 
-            [self.trajectory_node]
-        )
+        node_specs['phantom'] = {
+            'func': lambda object, min_voxel_size:
+                    phantom.load(object, min_voxel_size),
+            'parents': ['object', 'min_voxel_size']
+        }
         
-        self.is_gradient_echo = ComputeNode(
-            lambda sequence: 
-            'Gradient Echo' in sequence, 
-            [self.sequence_node]
-        )
+        node_specs['tissues'] = {
+            'func': lambda phantom:
+                    list(phantom['shapes'].keys()),
+            'parents': ['phantom']
+        }
 
-        self.freq_dir = ComputeNode(
-            lambda frequency_direction, is_radial: constants.DIRECTIONS[frequency_direction] if not is_radial else 1,
-            [self.frequency_direction_node, self.is_radial]
-        )
-
-        self.phase_dir = ComputeNode(
-            lambda freq_dir: 1 - freq_dir,
-            [self.freq_dir]
-        )
-
-        self.FOV = ComputeNode(
-            lambda FOV_F, FOV_P, freq_dir: [FOV_P, FOV_F] if freq_dir else [FOV_F, FOV_P],
-            [self.FOV_F_node, self.FOV_P_node, self.freq_dir]
-        )
+        node_specs['is_radial'] = {
+            'func': lambda trajectory: 
+                    trajectory in ['Radial', 'PROPELLER'],
+            'parents': ['trajectory']
+        }
         
-        self.matrix = ComputeNode(
-            lambda matrix_F, matrix_P, freq_dir: [matrix_P, matrix_F] if freq_dir else [matrix_F, matrix_P],
-            [self.matrix_F_node, self.matrix_P_node, self.freq_dir]
-        )
+        node_specs['is_gradient_echo'] = {
+            'func': lambda sequence: 
+                    'Gradient Echo' in sequence, 
+            'parents': ['sequence']
+        }
 
-        self.recon_matrix = ComputeNode(
-            lambda recon_matrix_P, recon_matrix_F, freq_dir, do_zerofill, matrix:
-            ([recon_matrix_P, recon_matrix_F] if freq_dir else [recon_matrix_F, recon_matrix_P]) if do_zerofill else matrix,
-            [self.recon_matrix_P_node, self.recon_matrix_F_node, self.freq_dir, self.do_zerofill_node, self.matrix]
-        )
+        node_specs['freq_dir'] = {
+            'func': lambda frequency_direction, is_radial: 
+                    constants.DIRECTIONS[frequency_direction] if not is_radial else 1,
+            'parents': ['frequency_direction', 'is_radial']
+        }
 
-        self.RF_excitation = ComputeNode(
-            self.RF_excitation_func,
-            [self.FA_node, self.is_gradient_echo]
-        )
-
-        self.RF_refocusing_floating = ComputeNode(
-            self.RF_refocusing_floating_func,
-            [self.is_gradient_echo, self.turbo_factor_node]
-        )
-
-        self.RF_inversion_floating = ComputeNode(
-            self.RF_inversion_floating_func,
-            [self.sequence_node]
-        )
-
-        self.RF_FatSat_floating = ComputeNode(
-            self.RF_FatSat_floating_func,
-            [self.FatSat_node, self.field_strength_node]
-        )
-
-        self.FatSat_spoiler_floating = ComputeNode(
-            self.FatSat_spoiler_floating_func,
-            [self.FatSat_node]
-        )
-
-        self.slice_select_excitation = ComputeNode(
-            self.slice_select_excitation_func,
-            [self.RF_excitation, self.slice_thickness_node]
-        )
-
-        self.slice_select_rephaser = ComputeNode(
-            self.slice_select_rephaser_func,
-            [self.slice_select_excitation]
-        )
-
-        self.slice_select_refocusing_floating = ComputeNode(
-            self.slice_select_refocusing_floating_func,
-            [self.RF_refocusing_floating, self.slice_thickness_node, self.turbo_factor_node]
-        )
-
-        self.slice_select_inversion_floating = ComputeNode(
-            self.slice_select_inversion_floating_func,
-            [self.sequence_node, self.RF_inversion_floating, self.slice_thickness_node]
-        )
-
-        self.inversion_spoiler_floating = ComputeNode(
-            self.inversion_spoiler_floating_func,
-            [self.sequence_node]
-        )
-
-        self.readouts_floating = ComputeNode(
-            self.readouts_floating_func,
-            [self.k_read_axis, self.pixel_bandwidth_node, self.matrix_F_node, self.FOV_F_node, self.turbo_factor_node, self.EPI_factor_node]
-        )
+        node_specs['phase_dir'] = {
+            'func': lambda freq_dir: 
+                    1 - freq_dir,
+            'parents': ['freq_dir']
+        }
         
-        self.sampling_windows_floating = ComputeNode(
-            self.sampling_windows_floating_func,
-            [self.turbo_factor_node, self.EPI_factor_node, self.readouts_floating]
-        )
+        node_specs['FOV'] = {
+            'func': lambda FOV_F, FOV_P, freq_dir: 
+                    [FOV_P, FOV_F] if freq_dir else [FOV_F, FOV_P],
+            'parents': ['FOV_F', 'FOV_P', 'freq_dir']
+        }
 
-        self.readout_risetime = ComputeNode(
-            self.readout_risetime_func,
-            [self.readouts_floating]
-        )
+
+        node_specs['matrix'] = {
+            'func': lambda matrix_F, matrix_P, freq_dir: 
+                    [matrix_P, matrix_F] if freq_dir else [matrix_F, matrix_P],
+            'parents': ['matrix_F', 'matrix_P', 'freq_dir']
+        }
+
+        node_specs['recon_matrix'] = {
+            'func': lambda recon_matrix_P, recon_matrix_F, freq_dir, do_zerofill, matrix:
+                    ([recon_matrix_P, recon_matrix_F] if freq_dir else [recon_matrix_F, recon_matrix_P]) if do_zerofill else matrix,
+            'parents': ['recon_matrix_P', 'recon_matrix_F', 'freq_dir', 'do_zerofill', 'matrix']
+        }
+
+        node_specs['RF_excitation'] = {
+            'func': self.RF_excitation_func,
+            'parents': ['FA', 'is_gradient_echo']
+        }
+
+        node_specs['RF_refocusing_floating'] = {
+            'func': self.RF_refocusing_floating_func,
+            'parents': ['is_gradient_echo', 'turbo_factor']
+        }
+
+        node_specs['RF_inversion_floating'] = {
+            'func': self.RF_inversion_floating_func,
+            'parents': ['sequence']
+        }
+
+        node_specs['RF_FatSat_floating'] = {
+            'func': self.RF_FatSat_floating_func,
+            'parents': ['FatSat', 'field_strength']
+        }
+
+        node_specs['FatSat_spoiler_floating'] = {
+            'func': self.FatSat_spoiler_floating_func,
+            'parents': ['FatSat']
+        }
+
+        node_specs['slice_select_excitation'] = {
+            'func': self.slice_select_excitation_func,
+            'parents': ['RF_excitation', 'slice_thickness']
+        }
+
+        node_specs['slice_select_rephaser'] = {
+            'func': self.slice_select_rephaser_func,
+            'parents': ['slice_select_excitation']
+        }
+
+        node_specs['slice_select_refocusing_floating'] = {
+            'func': self.slice_select_refocusing_floating_func,
+            'parents': ['RF_refocusing_floating', 'slice_thickness', 'turbo_factor']
+        }
+
+        node_specs['slice_select_inversion_floating'] = {
+            'func': self.slice_select_inversion_floating_func,
+            'parents': ['sequence', 'RF_inversion_floating', 'slice_thickness']
+        }
+
+        node_specs['inversion_spoiler_floating'] = {
+            'func': self.inversion_spoiler_floating_func,
+            'parents': ['sequence']
+        }
+
+        node_specs['readouts_floating'] = {
+            'func': self.readouts_floating_func,
+            'parents': ['k_read_axis', 'pixel_bandwidth', 'matrix_F', 'FOV_F', 'turbo_factor', 'EPI_factor']
+        }
+
+        node_specs['sampling_windows_floating'] = {
+            'func': self.sampling_windows_floating_func,
+            'parents': ['turbo_factor', 'EPI_factor', 'readouts_floating']
+        }
+
+        node_specs['readout_risetime'] = {
+            'func': self.readout_risetime_func,
+            'parents': ['readouts_floating']
+        }
+
+        node_specs['read_prephaser_floating'] = {
+            'func': self.read_prephaser_floating_func,
+            'parents': ['readouts_floating']
+        }
+
+        node_specs['phase_step_area'] = {
+            'func': lambda k_phase_axis:
+                    np.mean(np.diff(k_phase_axis)) * 1e3 / constants.GYRO, # uTs/m
+            'parents': ['k_phase_axis']
+        }
         
-        self.read_prephaser_floating = ComputeNode(
-            self.read_prephaser_floating_func,
-            [self.readouts_floating]
-        )
+        node_specs['largest_phaser_area'] = {
+            'func': lambda k_phase_axis:
+                    np.min(k_phase_axis) * 1e3 / constants.GYRO, # uTs/m
+            'parents': ['k_phase_axis']
+        }
         
-        self.phase_step_area = ComputeNode(
-            # uTs/m
-            lambda k_phase_axis:
-            np.mean(np.diff(k_phase_axis)) * 1e3 / constants.GYRO,
-            [self.k_phase_axis]
-        )
-
-        self.largest_phaser_area = ComputeNode(
-            # uTs/m
-            lambda k_phase_axis:
-            np.min(k_phase_axis) * 1e3 / constants.GYRO,
-            [self.k_phase_axis]
-        )
-
-        self.phaser_duration = ComputeNode(
-            self.phaser_duration_func,
-            [self.largest_phaser_area]
-        )
+        node_specs['phaser_duration'] = {
+            'func': self.phaser_duration_func,
+            'parents': ['largest_phaser_area']
+        }
         
-        self.max_blip_dur = ComputeNode(
-            self.max_blip_dur_func,
-            [self.EPI_factor_node, self.phase_step_area, self.num_shots, self.turbo_factor_node]
-        )
+        node_specs['max_blip_dur'] = {
+            'func': self.max_blip_dur_func,
+            'parents': ['EPI_factor', 'phase_step_area', 'num_shots', 'turbo_factor']
+        }
         
-        self.readout_gap = ComputeNode(
-            lambda max_blip_dur, readouts:
-            max(max_blip_dur - 2 * readouts[0][0]['risetime_f'], 0),
-            [self.max_blip_dur, self.readouts_floating]
-        )
+        node_specs['readout_gap'] = {
+            'func': lambda max_blip_dur, readouts:
+                    max(max_blip_dur - 2 * readouts[0][0]['risetime_f'], 0),
+            'parents': ['max_blip_dur', 'readouts_floating']
+        }
         
-        self.gr_echo_spacing = ComputeNode(
-            lambda readouts, readout_gap:
-            readouts[0][0]['dur_f'] + readout_gap,
-            [self.readouts_floating, self.readout_gap]
-        )
-
-        self.gre_echo_train_dur = ComputeNode(
-            lambda EPI_factor, gr_echo_spacing, readout_gap:
-            EPI_factor * gr_echo_spacing - readout_gap,
-            [self.EPI_factor_node, self.gr_echo_spacing, self.readout_gap]
-        )
-
-        self.phasers_floating = ComputeNode(
-            self.phasers_floating_func,
-            [self.turbo_factor_node, self.largest_phaser_area, self.pe_table, self.phase_step_area, self.shot_node]
-        )
+        node_specs['gr_echo_spacing'] = {
+            'func': lambda readouts, readout_gap:
+                    readouts[0][0]['dur_f'] + readout_gap,
+            'parents': ['readouts_floating', 'readout_gap']
+        }
         
-        self.blips_floating = ComputeNode(
-            self.blips_floating_func,
-            [self.turbo_factor_node, self.EPI_factor_node, self.phase_step_area, self.pe_table, self.shot_node]
-        )
+        node_specs['gre_echo_train_dur'] = {
+            'func': lambda EPI_factor, gr_echo_spacing, readout_gap:
+                    EPI_factor * gr_echo_spacing - readout_gap,
+            'parents': ['EPI_factor', 'gr_echo_spacing', 'readout_gap']
+        }
         
-        self.rephasers_floating = ComputeNode(
-            self.rephasers_floating_func,
-            [self.turbo_factor_node, self.phasers_floating, self.blips_floating, self.largest_phaser_area]
-        )
+        node_specs['phasers_floating'] = {
+            'func': self.phasers_floating_func,
+            'parents': ['turbo_factor', 'largest_phaser_area', 'pe_table', 'phase_step_area', 'shot']
+        }
         
-        self.spoiler_floating = ComputeNode(
-            self.spoiler_floating_func,
-            []
-        )
-
-        self.slice_select_refocusing = ComputeNode(
-            self.slice_select_refocusing_func,
-            [self.slice_select_refocusing_floating, self.readtrain_spacing]
-        )
-
-        self.RF_refocusing = ComputeNode(
-            self.RF_refocusing_func,
-            [self.RF_refocusing_floating, self.readtrain_spacing]
-        )
+        node_specs['blips_floating'] = {
+            'func': self.blips_floating_func,
+            'parents': ['turbo_factor', 'EPI_factor', 'phase_step_area', 'pe_table', 'shot']
+        }
         
-        self.slice_select_inversion = ComputeNode(
-            self.slice_select_inversion_func,
-            [self.slice_select_inversion_floating, self.TI_node]
-        )
+        node_specs['rephasers_floating'] = {
+            'func': self.rephasers_floating_func,
+            'parents': ['turbo_factor', 'phasers_floating', 'blips_floating', 'largest_phaser_area']
+        }
         
-        self.RF_inversion = ComputeNode(
-            self.RF_inversion_func,
-            [self.RF_inversion_floating, self.TI_node]
-        )
-
-        self.inversion_spoiler = ComputeNode(
-            self.inversion_spoiler_func,
-            [self.inversion_spoiler_floating, self.RF_inversion]
-        )
+        node_specs['spoiler_floating'] = {
+            'func': self.spoiler_floating_func,
+            'parents': []
+        }
         
-        self.FatSat_spoiler = ComputeNode(
-            self.FatSat_spoiler_func,
-            [self.FatSat_spoiler_floating, self.slice_select_excitation]
-        )
+        node_specs['slice_select_refocusing'] = {
+            'func': self.slice_select_refocusing_func,
+            'parents': ['slice_select_refocusing_floating', 'readtrain_spacing']
+        }
         
-        self.RF_FatSat = ComputeNode(
-            self.RF_FatSat_func,
-            [self.RF_FatSat_floating, self.FatSat_spoiler_floating]
-        )
-
-        self.readouts = ComputeNode(
-            self.readouts_func,
-            [self.turbo_factor_node, self.readtrain_spacing, self.EPI_factor_node, self.gr_echo_spacing, self.readouts_floating]
-        )
-
-        self.readouts = ComputeNode(
-            self.readouts_func,
-            [self.turbo_factor_node, self.readtrain_spacing, self.EPI_factor_node, self.gr_echo_spacing, self.readouts_floating]
-        )
+        node_specs['RF_refocusing'] = {
+            'func': self.RF_refocusing_func,
+            'parents': ['RF_refocusing_floating', 'readtrain_spacing']
+        }
         
-        self.sampling_windows = ComputeNode(
-            self.sampling_windows_func,
-            [self.turbo_factor_node, self.readtrain_spacing, self.EPI_factor_node, self.gr_echo_spacing, self.sampling_windows_floating]
-        )
+        node_specs['slice_select_inversion'] = {
+            'func': self.slice_select_inversion_func,
+            'parents': ['slice_select_inversion_floating', 'TI']
+        }
         
-        self.read_prephaser = ComputeNode(
-            self.read_prephaser_func,
-            [self.read_prephaser_floating, self.is_gradient_echo, self.readouts, self.RF_excitation]
-        )
+        node_specs['RF_inversion'] = {
+            'func': self.RF_inversion_func,
+            'parents': ['RF_inversion_floating', 'TI']
+        }
         
-        self.phasers = ComputeNode(
-            self.phasers_func,
-            [self.turbo_factor_node, self.readtrain_spacing, self.phasers_floating, self.gre_echo_train_dur, self.readout_risetime]
-        )
+        node_specs['inversion_spoiler'] = {
+            'func': self.inversion_spoiler_func,
+            'parents': ['inversion_spoiler_floating', 'RF_inversion']
+        }
         
-        self.rephasers = ComputeNode(
-            self.rephasers_func,
-            [self.turbo_factor_node, self.readtrain_spacing, self.gre_echo_train_dur, self.readout_risetime, self.rephasers_floating]
-        )
+        node_specs['FatSat_spoiler'] = {
+            'func': self.FatSat_spoiler_func,
+            'parents': ['FatSat_spoiler_floating', 'slice_select_excitation']
+        }
         
-        self.blips = ComputeNode(
-            self.blips_func,
-            [self.turbo_factor_node, self.readtrain_spacing, self.EPI_factor_node, self.gr_echo_spacing, self.blips_floating]
-        )
-
-        self.spoiler = ComputeNode(
-            self.spoiler_func,
-            [self.readouts, self.spoiler_floating]
-        )
-
-        self.centermost_echoes_linear_order = ComputeNode(
-            self.centermost_echoes_linear_order_func,
-            [self.central_segments, self.reverse_linear_order, self.num_segm, self.turbo_factor_node]
-        )
-
-        self.readtrain_spacing_linear_order = ComputeNode(
-            self.readtrain_spacing_linear_order_func,
-            [self.centermost_echoes_linear_order, self.gr_echo_spacing, self.EPI_factor_node, self.TE_node]
-        )
-
-        self.k_read_axis = ComputeNode(
-            self.k_read_axis_func,
-            [self.freq_dir, self.FOV, self.matrix, self.is_radial, self.radial_FOV_oversampling_node]
-        )
+        node_specs['RF_FatSat'] = {
+            'func': self.RF_FatSat_func,
+            'parents': ['RF_FatSat_floating', 'FatSat_spoiler_floating']
+        }
         
-        self.reverse_linear_order = ComputeNode(lambda: False, []) # TODO: implement logic (pick forward or reverse order that minimizes readtrin_spacing while respecting minimum spacing and TR)
+        node_specs['readouts'] = {
+            'func': self.readouts_func,
+            'parents': ['turbo_factor', 'readtrain_spacing', 'EPI_factor', 'gr_echo_spacing', 'readouts_floating']
+        }
 
-        self.min_readtrain_spacing = ComputeNode(
-            self.min_readtrain_spacing_func,
-            [self.is_gradient_echo, self.RF_excitation, self.gre_echo_train_dur, self.readout_risetime, self.read_prephaser_floating, self.phaser_duration, self.slice_select_excitation, self.slice_select_rephaser, self.RF_refocusing_floating, self.slice_select_refocusing_floating]
-        )
+        node_specs['sampling_windows'] = {
+            'func': self.sampling_windows_func,
+            'parents': ['turbo_factor', 'readtrain_spacing', 'EPI_factor', 'gr_echo_spacing', 'sampling_windows_floating']
+        }
 
-        self.centermost_rf_echo = ComputeNode(
-            self.centermost_rf_echo_func,
-            [self.EPI_factor_node, self.is_gradient_echo, self.TE_node, self.min_readtrain_spacing, self.split_center, self.turbo_factor_node]
-        )
+        node_specs['read_prephaser'] = {
+            'func': self.read_prephaser_func,
+            'parents': ['read_prephaser_floating', 'is_gradient_echo', 'readouts', 'RF_excitation']
+        }
 
-        self.readtrain_spacing = ComputeNode(
-            self.readtrain_spacing_func,
-            [self.EPI_factor_node, self.readtrain_spacing_linear_order, self.TE_node, self.centermost_rf_echo, self.split_center]
-        )
+        node_specs['phasers'] = {
+            'func': self.phasers_func,
+            'parents': ['turbo_factor', 'readtrain_spacing', 'phasers_floating', 'gre_echo_train_dur', 'readout_risetime']
+        }
 
-        self.num_blades = ComputeNode(
-            lambda is_radial, matrix, radial_factor, turbo_factor, EPI_factor:
-            int(np.ceil(max(matrix) * radial_factor / turbo_factor / EPI_factor * np.pi / 2)) if is_radial else 1,
-            [self.is_radial, self.matrix, self.radial_factor_node, self.turbo_factor_node, self.EPI_factor_node]
-        )
+        node_specs['rephasers'] = {
+            'func': self.rephasers_func,
+            'parents': ['turbo_factor', 'readtrain_spacing', 'gre_echo_train_dur', 'readout_risetime', 'rephasers_floating']
+        }
+
+        node_specs['rephasers'] = {
+            'func': self.rephasers_func,
+            'parents': ['turbo_factor', 'readtrain_spacing', 'gre_echo_train_dur', 'readout_risetime', 'rephasers_floating']
+        }
         
-        self.k_angles = ComputeNode(lambda num_blades: np.linspace(0, np.pi, num_blades, endpoint=False), [self.num_blades])
-        self.spoke_angle_node = OutputParamNode(self, 'spoke_angle', lambda k_angles, shot: np.degrees(k_angles[shot-1]), [self.k_angles, self.shot_node])
-
-        self.num_shots_node = OutputParamNode(
-            self,
-            'num_shots',
-            lambda matrix_P, phase_oversampling, partial_Fourier, turbo_factor, EPI_factor, is_radial, num_blades:
-            int(np.ceil(matrix_P * (1 + phase_oversampling / 100) * partial_Fourier / turbo_factor / EPI_factor)) if not is_radial else num_blades,
-            [self.matrix_P_node, self.phase_oversampling_node, self.partial_Fourier_node, self.turbo_factor_node, self.EPI_factor_node, self.is_radial, self.num_blades]
-        )
-
-        self.num_measured_lines = ComputeNode(
-            lambda turbo_factor, EPI_factor, num_shots, is_radial:
-            turbo_factor * EPI_factor * (num_shots if not is_radial else 1), # measured lines per blade
-            [self.turbo_factor_node, self.EPI_factor_node, self.num_shots_node, self.is_radial]
-        )
-
-        self.k_phase_axis = ComputeNode(
-            self.k_phase_axis_func,
-            [self.is_radial, self.num_measured_lines, self.matrix, self.phase_dir, self.phase_oversampling_node, self.FOV]
-        )
-
-        self.num_blank_lines = ComputeNode(
-            lambda k_phase_axis, lines_to_measure:
-            len(k_phase_axis) - sum(lines_to_measure),
-            [self.k_phase_axis, self.lines_to_measure]
-        )
-
-        ActionNode(
-            self.set_homodyne_visibility,
-            [self.num_blank_lines, self.is_radial]
-        )
-
-        self.lines_to_measure = ComputeNode(
-            self.lines_to_measure_func,
-            [self.k_phase_axis, self.num_measured_lines]
-        )
-
-        self.num_segm = ComputeNode(
-            lambda num_measured_lines, num_blades, num_shots:
-            int(num_measured_lines * num_blades / num_shots),
-            [self.num_measured_lines, self.num_blades, self.num_shots_node]
-        )
+        node_specs['blips'] = {
+            'func': self.blips_func,
+            'parents': ['turbo_factor', 'readtrain_spacing', 'EPI_factor', 'gr_echo_spacing', 'blips_floating']
+        }
         
-        self.num_sym_lines = ComputeNode(
-            lambda num_measured_lines, k_phase_axis:
-            2 * num_measured_lines - len(k_phase_axis),
-            [self.num_measured_lines, self.k_phase_axis]
-        )
+        node_specs['spoiler'] = {
+            'func': self.spoiler_func,
+            'parents': ['readouts', 'spoiler_floating']
+        }
         
-        self.split_center = ComputeNode(
+        node_specs['centermost_echoes_linear_order'] = {
+            'func': self.centermost_echoes_linear_order_func,
+            'parents': ['central_segments', 'reverse_linear_order', 'num_segm', 'turbo_factor']
+        }
+        
+        node_specs['readtrain_spacing_linear_order'] = {
+            'func': self.readtrain_spacing_linear_order_func,
+            'parents': ['centermost_echoes_linear_order', 'gr_echo_spacing', 'EPI_factor', 'TE']
+        }
+
+        node_specs['k_read_axis'] = {
+            'func': self.k_read_axis_func,
+            'parents': ['freq_dir', 'FOV', 'matrix', 'is_radial', 'radial_FOV_oversampling']
+        }
+
+        node_specs['reverse_linear_order'] = {
+             # TODO: implement logic (pick forward or reverse order that minimizes readtrin_spacing while respecting minimum spacing and TR)
+            'func': lambda: False,
+            'parents': []
+        }
+
+        node_specs['min_readtrain_spacing'] = {
+            'func': self.min_readtrain_spacing_func,
+            'parents': ['is_gradient_echo', 'RF_excitation', 'gre_echo_train_dur', 'readout_risetime', 'read_prephaser_floating', 'phaser_duration', 'slice_select_excitation', 'slice_select_rephaser', 'RF_refocusing_floating', 'slice_select_refocusing_floating']
+        }
+
+        node_specs['centermost_rf_echo'] = {
+            'func': self.centermost_rf_echo_func,
+            'parents': ['EPI_factor', 'is_gradient_echo', 'TE', 'min_readtrain_spacing', 'split_center', 'turbo_factor']
+        }
+
+        node_specs['readtrain_spacing'] = {
+            'func': self.readtrain_spacing_func,
+            'parents': ['EPI_factor', 'readtrain_spacing_linear_order', 'TE', 'centermost_rf_echo', 'split_center']
+        }
+
+        node_specs['num_blades'] = {
+            'func': lambda is_radial, matrix, radial_factor, turbo_factor, EPI_factor:
+                    int(np.ceil(max(matrix) * radial_factor / turbo_factor / EPI_factor * np.pi / 2)) if is_radial else 1,
+            'parents': ['is_radial', 'matrix', 'radial_factor', 'turbo_factor', 'EPI_factor']
+        }
+
+        node_specs['k_angles'] = {
+            'func': lambda num_blades: 
+                    np.linspace(0, np.pi, num_blades, endpoint=False),
+            'parents': ['num_blades']
+        }
+
+        node_specs['spoke_angle'] = {
+            'params': self,
+            'func': lambda k_angles, shot: 
+                    np.degrees(k_angles[shot-1]),
+            'parents': ['k_angles', 'shot']
+        }
+
+        node_specs['num_shots'] = {
+            'params': self,
+            'func': lambda matrix_P, phase_oversampling, partial_Fourier, turbo_factor, EPI_factor, is_radial, num_blades:
+                    int(np.ceil(matrix_P * (1 + phase_oversampling / 100) * partial_Fourier / turbo_factor / EPI_factor)) if not is_radial else num_blades,
+            'parents': ['matrix_P', 'phase_oversampling', 'partial_Fourier', 'turbo_factor', 'EPI_factor', 'is_radial', 'num_blades']
+        }
+
+        node_specs['num_measured_lines'] = {
+            # measured lines per blade
+            'func': lambda turbo_factor, EPI_factor, num_shots, is_radial:
+                    turbo_factor * EPI_factor * (num_shots if not is_radial else 1),
+            'parents': ['turbo_factor', 'EPI_factor', 'num_shots', 'is_radial']
+        }
+
+        node_specs['k_phase_axis'] = {
+            'func': self.k_phase_axis_func,
+            'parents': ['is_radial', 'num_measured_lines', 'matrix', 'phase_dir', 'phase_oversampling', 'FOV']
+        }
+
+        node_specs['num_blank_lines'] = {
+            'func': lambda k_phase_axis, lines_to_measure:
+                    len(k_phase_axis) - sum(lines_to_measure),
+            'parents': ['k_phase_axis', 'lines_to_measure']
+        }
+
+        node_specs['set_homodyne_visibility'] = {
+            'action': True,
+            'func': self.set_homodyne_visibility,
+            'parents': ['num_blank_lines', 'is_radial']
+        }
+
+        node_specs['lines_to_measure'] = {
+            'func': self.lines_to_measure_func,
+            'parents': ['k_phase_axis', 'num_measured_lines']
+        }
+
+        node_specs['num_segm'] = {
+            'func': lambda num_measured_lines, num_blades, num_shots:
+                    int(num_measured_lines * num_blades / num_shots),
+            'parents': ['num_measured_lines', 'num_blades', 'num_shots']
+        }
+
+        node_specs['num_sym_lines'] = {
+            'func': lambda num_measured_lines, k_phase_axis:
+                    2 * num_measured_lines - len(k_phase_axis),
+            'parents': ['num_measured_lines', 'k_phase_axis']
+        }
+
+        node_specs['split_center'] = {
             # does center of k-space lie between two segments?
-            lambda num_sym_lines, num_shots:
-            (num_sym_lines % num_shots == 0) and ((num_sym_lines / num_shots) % 2 == 0),
-            [self.num_sym_lines, self.num_shots_node]
-        )
+            'func': lambda num_sym_lines, num_shots:
+                    (num_sym_lines % num_shots == 0) and ((num_sym_lines / num_shots) % 2 == 0),
+            'parents': ['num_sym_lines', 'num_shots']
+        }
+
+        node_specs['num_sym_segm'] = {
+            'func': self.num_sym_segm_func,
+            'parents': ['split_center', 'num_sym_lines', 'num_blades', 'num_shots']
+        }
+
+        node_specs['central_segments'] = {
+            'func': self.central_segments_func,
+            'parents': ['split_center', 'num_segm', 'num_sym_segm']
+        }
+
+        node_specs['pe_table'] = {
+            'func': self.pe_table_func,
+            'parents': ['EPI_factor', 'turbo_factor', 'num_sym_segm', 'centermost_rf_echo', 'is_radial', 'num_shots', 'reverse_linear_order', 'lines_to_measure']
+        }
         
-        self.num_sym_segm = ComputeNode(
-            self.num_sym_segm_func,
-            [self.split_center, self.num_sym_lines, self.num_blades, self.num_shots_node]
-        )
+        node_specs['set_shot_bounds'] = {
+            'action': True,
+            'func': self.set_shot_bounds,
+            'parents': ['num_shots']
+        }
 
-        self.central_segments = ComputeNode(
-            self.central_segments_func,
-            [self.split_center, self.num_segm, self.num_sym_segm]
-        )
+        node_specs['signal_level'] = {
+            'func': self.signal_level_func,
+            'parents': ['k_read_axis', 'lines_to_measure', 'num_blades', 'slice_thickness', 'FOV', 'matrix']
+        }
 
-        self.pe_table = ComputeNode(
-            self.pe_table_func,
-            [self.EPI_factor_node, self.turbo_factor_node, self.num_sym_segm, self.centermost_rf_echo, self.is_radial, self.num_shots_node, self.reverse_linear_order, self.lines_to_measure]
-        )
+        node_specs['spin_echoes'] = {
+            'func': self.spin_echoes_func,
+            'parents': ['lines_to_measure', 'pe_table', 'readtrain_spacing']
+        }
 
-        ActionNode(
-            self.set_shot_bounds,
-            [self.num_shots]
-        )
+        node_specs['sampling_time'] = {
+            'func': self.sampling_time_func,
+            'parents': ['pixel_bandwidth', 'k_read_axis']
+        }
 
-        self.signal_level = ComputeNode(
-            self.signal_level_func,
-            [self.k_read_axis, self.lines_to_measure, self.num_blades, self.slice_thickness_node, self.FOV, self.matrix]
-        )
+        node_specs['time_after_excitation'] = {
+            'func': self.time_after_excitation_func,
+            'parents': ['lines_to_measure', 'pe_table', 'readouts', 'sampling_time', 'freq_dir', 'phase_dir']
+        }
 
-        self.spin_echoes = ComputeNode(
-            self.spin_echoes_func,
-            [self.lines_to_measure, self.pe_table, self.readtrain_spacing]
-        )
+        node_specs['time_relative_inphase'] = {
+            'func': self.time_relative_inphase_func,
+            'parents': ['time_after_excitation', 'is_gradient_echo', 'spin_echoes', 'phase_dir']
+        }
+
+        node_specs['dephasing'] = {
+            'func': self.dephasing_func,
+            'parents': ['field_strength', 'time_relative_inphase']
+        }
+
+        node_specs['T2w'] = {
+            'func': self.T2w_func,
+            'parents': ['tissues', 'time_after_excitation', 'time_relative_inphase', 'field_strength']
+        }
+
+        node_specs['k_axes'] = {
+            'func': self.k_axes_func,
+            'parents': ['freq_dir', 'phase_dir', 'k_read_axis', 'k_phase_axis', 'lines_to_measure']
+        }
         
-        self.sampling_time = ComputeNode(
-            self.sampling_time_func,
-            [self.pixel_bandwidth_node, self.k_read_axis]
-        )
+        node_specs['k_grid_axes'] = {
+            'func': self.k_grid_axes_func,
+            'parents': ['is_radial', 'k_axes', 'FOV', 'matrix']
+        }
         
-        self.time_after_excitation = ComputeNode(
-            self.time_after_excitation_func,
-            [self.lines_to_measure, self.pe_table, self.readouts, self.sampling_time, self.freq_dir, self.phase_dir]
-        )
-
-        self.time_relative_inphase = ComputeNode(
-            self.time_relative_inphase_func,
-            [self.time_after_excitation, self.is_gradient_echo, self.spin_echoes, self.phase_dir]
-        )
+        node_specs['k_samples'] = {
+            'func': self.k_samples_func,
+            'parents': ['k_axes', 'k_angles']
+        }
         
-        self.dephasing = ComputeNode(
-            self.dephasing_func,
-            [self.field_strength_node, self.time_relative_inphase]
-        )
+        node_specs['plain_kspace_comps'] = {
+            'func': self.plain_kspace_comps_func,
+            'parents': ['is_radial', 'phantom', 'k_grid_axes', 'k_samples']
+        }
         
-        self.T2w = ComputeNode(
-            self.T2w_func,
-            [self.tissues, self.time_after_excitation, self.time_relative_inphase, self.field_strength_node]
-        )
-
-        self.k_axes = ComputeNode(
-            self.k_axes_func,
-            [self.freq_dir, self.phase_dir, self.k_read_axis, self.k_phase_axis, self.lines_to_measure]
-        )
+        node_specs['thick_kspace_comps'] = {
+            'func': self.thick_kspace_comps_func,
+            'parents': ['slice_thickness', 'k_samples', 'plain_kspace_comps']
+        }
         
-        self.k_grid_axes = ComputeNode(
-            self.k_grid_axes_func,
-            [self.is_radial, self.k_axes, self.FOV, self.matrix]
-        )
-
-        self.k_samples = ComputeNode(
-            self.k_samples_func,
-            [self.k_axes, self.k_angles]
-        )
-
-        self.plain_kspace_comps = ComputeNode(
-            self.plain_kspace_comps_func,
-            [self.is_radial, self.phantom, self.k_grid_axes, self.k_samples]
-        )
+        node_specs['kspace_comps'] = {
+            'func': self.kspace_comps_func,
+            'parents': ['tissues', 'thick_kspace_comps', 'T2w', 'dephasing']
+        }
         
-        self.thick_kspace_comps = ComputeNode(
-            self.thick_kspace_comps_func,
-            [self.slice_thickness_node, self.k_samples, self.plain_kspace_comps]
-        )
+        node_specs['decayed_signal'] = {
+            'func': self.decayed_signal_func,
+            'parents': ['signal_level', 'T2w', 'reference_tissue', 'k_read_axis', 'k_phase_axis', 'freq_dir']
+        }
 
-        self.kspace_comps = ComputeNode(
-            self.kspace_comps_func,
-            [self.tissues, self.thick_kspace_comps, self.T2w, self.dephasing]
-        )
+        node_specs['PD_and_T1w'] = {
+            'func': self.PD_and_T1w_func,
+            'parents': ['sequence', 'TR', 'TE', 'TI', 'FA', 'field_strength', 'tissues']
+        }
+
+        node_specs['reference_signal'] = {
+            'func': lambda decayed_signal, PD_and_T1w, reference_tissue:
+                    decayed_signal * np.abs(PD_and_T1w[reference_tissue]),
+            'parents': ['decayed_signal', 'PD_and_T1w', 'reference_tissue']
+        }
+
+        node_specs['noise_std'] = {
+            'func': self.noise_std_func,
+            'parents': ['sampling_time', 'noise_gain', 'NSA', 'field_strength']
+        }
+
+        node_specs['noise'] = {
+            'func': self.noise_func,
+            'parents': ['k_samples', 'noise_std']
+        }
+
+        node_specs['SNR'] = {
+            'func': lambda signal, noise_std:
+                    signal / noise_std,
+            'parents': ['reference_signal', 'noise_std']
+        }
+
+        node_specs['relative_SNR'] = {
+            'params': self,
+            'func': lambda SNR, reference_SNR:
+                    SNR / reference_SNR * 100,
+            'parents': ['SNR', 'reference_SNR']
+        }
         
-        self.decayed_signal = ComputeNode(
-            self.decayed_signal_func,
-            [self.signal_level, self.T2w, self.reference_tissue_node, self.k_read_axis, self.k_phase_axis, self.freq_dir]
-        )
+        node_specs['FOV_box'] = {
+            'func': self.FOV_box_func,
+            'parents': ['show_FOV', 'is_radial', 'FOV', 'matrix', 'freq_dir', 'phase_dir', 'k_read_axis', 'k_phase_axis']
+        }
         
-        self.PD_and_T1w = ComputeNode(
-            self.PD_and_T1w_func,
-            [self.sequence_node, self.TR_node, self.TE_node, self.TI_node, self.FA_node, self.field_strength_node, self.tissues]
-        )
-
-        self.reference_signal = ComputeNode(
-            lambda decayed_signal, PD_and_T1w, reference_tissue:
-            decayed_signal * np.abs(PD_and_T1w[reference_tissue]),
-            [self.decayed_signal, self.PD_and_T1w, self.reference_tissue_node]
-        )
-
-        self.noise_std = ComputeNode(
-            self.noise_std_func,
-            [self.sampling_time, self.noise_gain_node, self.NSA_node, self.field_strength_node]
-        )
-
-        self.noise = ComputeNode(
-            self.noise_func,
-            [self.k_samples, self.noise_std]
-        )
-
-        self.SNR = ComputeNode(
-            lambda signal, noise_std:
-            signal / noise_std,
-            [self.reference_signal, self.noise_std]
-        )
+        node_specs['scantime'] = {
+            'params': self,
+            'func': lambda num_shots, NSA, TR:
+                    format_scantime(num_shots * NSA * TR),
+            'parents': ['num_shots', 'NSA', 'TR']
+        }
         
-        self.relative_SNR_node = OutputParamNode(
-            self,
-            'relative_SNR',
-            lambda SNR, reference_SNR:
-            SNR / reference_SNR * 100,
-            [self.SNR, self.reference_SNR_node]
-        )
-
-        self.FOV_box = ComputeNode(
-            self.FOV_box_func,
-            [self.show_FOV_node, self.is_radial, self.FOV, self.matrix, self.freq_dir, self.phase_dir, self.k_read_axis, self.k_phase_axis]
-        )
-
-        self.scantime_node = OutputParamNode(
-            self,
-            'scantime',
-            lambda num_shots, NSA, TR:
-            format_scantime(num_shots * NSA * TR),
-            [self.num_shots_node * self.NSA_node * self.TR_node]
-        )
+        node_specs['measured_kspace'] = {
+            'func': self.measured_kspace_func,
+            'parents': ['noise', 'kspace_comps', 'FatSat', 'PD_and_T1w']
+        }
         
-        self.measured_kspace = ComputeNode(
-            self.measured_kspace_func,
-            [self.noise, self.kspace_comps, self.FatSat_node, self.PD_and_T1w]
-        )
-
-        self.gridded_kspace = ComputeNode(
-            self.gridded_kspace_func,
-            [self.k_grid_axes, self.is_radial, self.measured_kspace, self.k_samples, self.FOV, self.matrix]
-        )
-
-        self.full_kspace = ComputeNode(
-            self.full_kspace_func,
-            [self.num_blank_lines, self.is_radial, self.gridded_kspace, self.phase_dir, self.homodyne_node, self.k_phase_axis]
-        )
-
-        self.full_k_matrix = ComputeNode(lambda full_kspace: full_kspace.shape, [self.full_kspace])
+        node_specs['gridded_kspace'] = {
+            'func': self.gridded_kspace_func,
+            'parents': ['k_grid_axes', 'is_radial', 'measured_kspace', 'k_samples', 'FOV', 'matrix']
+        }
         
-        self.apodized_kspace = ComputeNode(
-            self.apodized_kspace_func,
-            [self.full_kspace, self.do_apodize_node, self.apodization_alpha_node]
-        )
-
-        self.oversampled_recon_matrix = ComputeNode(
-            self.oversampled_recon_matrix_func,
-            [self.recon_matrix, self.full_k_matrix, self.matrix]
-        )
-
-        self.zerofilled_kspace = ComputeNode(
-            self.zerofilled_kspace_func,
-            [self.apodized_kspace, self.oversampled_recon_matrix]
-        )
+        node_specs['full_kspace'] = {
+            'func': self.full_kspace_func,
+            'parents': ['num_blank_lines', 'is_radial', 'gridded_kspace', 'phase_dir', 'homodyne', 'k_phase_axis']
+        }
         
-        self.image_array = ComputeNode(
-            self.image_array_func,
-            [self.oversampled_recon_matrix, self.full_k_matrix, self.recon_matrix, self.zerofilled_kspace]
-        )
+        node_specs['full_k_matrix'] = {
+            'func': lambda full_kspace: 
+                    full_kspace.shape, 
+            'parents': ['full_kspace']
+        }
         
-        self.image = ComputeNode(
-            self.image_func,
-            [self.image_type_node, self.recon_matrix, self.FOV, self.image_array]
-        )
+        node_specs['apodized_kspace'] = {
+            'func': self.apodized_kspace_func,
+            'parents': ['full_kspace', 'do_apodize', 'apodization_alpha']
+        }
+        
+        node_specs['oversampled_recon_matrix'] = {
+            'func': self.oversampled_recon_matrix_func,
+            'parents': ['recon_matrix', 'full_k_matrix', 'matrix']
+        }
+        
+        node_specs['zerofilled_kspace'] = {
+            'func': self.zerofilled_kspace_func,
+            'parents': ['apodized_kspace', 'oversampled_recon_matrix']
+        }
+        
+        node_specs['image_array'] = {
+            'func': self.image_array_func,
+            'parents': ['oversampled_recon_matrix', 'full_k_matrix', 'recon_matrix', 'zerofilled_kspace']
+        }
+        
+        node_specs['image'] = {
+            'func': self.image_func,
+            'parents': ['image_type', 'recon_matrix', 'FOV', 'image_array']
+        }
 
         self.param.watch(lambda _: self._watch_trajectory(), 'trajectory', precedence=1)
 
