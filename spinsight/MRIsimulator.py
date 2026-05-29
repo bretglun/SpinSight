@@ -543,7 +543,7 @@ class MRIsimulator(param.Parameterized):
 
         node_specs['k_read_axis'] = {
             'func': self.k_read_axis_func,
-            'parents': ['freq_dir', 'FOV', 'matrix', 'is_radial', 'radial_FOV_oversampling']
+            'parents': ['freq_dir', 'FOV', 'matrix', 'is_radial', 'phantom', 'radial_FOV_oversampling']
         }
 
         node_specs['reverse_linear_order'] = {
@@ -1537,7 +1537,7 @@ class MRIsimulator(param.Parameterized):
         if EPI_factor > 1: # linear k-space order for EPI / GRASE
             return readtrain_spacing_linear_order.copy()
         # (turbo) spin echo
-        self.readtrain_spacing = TE / (centermost_rf_echo + (1 + .5 * split_center))
+        return TE / (centermost_rf_echo + (1 + .5 * split_center))
         
     def k_read_axis_func(self, freq_dir, FOV, matrix, is_radial, phantom, radial_FOV_oversampling):
         voxel_size = FOV[freq_dir] / matrix[freq_dir]
@@ -1765,6 +1765,7 @@ class MRIsimulator(param.Parameterized):
         oversampled_recon_matrix = recon_matrix.copy()
         for dim in range(2):
             oversampled_recon_matrix[dim] = int(np.round(recon_matrix[dim] * full_k_matrix[dim] / matrix[dim]))
+        return oversampled_recon_matrix
     
     def zerofilled_kspace_func(self, apodized_kspace, oversampled_recon_matrix):
         return recon.zerofill(apodized_kspace, oversampled_recon_matrix)
@@ -1849,7 +1850,7 @@ class MRIsimulator(param.Parameterized):
         return sequence.get_gradient('slice', total_area=spoiler_area, name='inversion spoiler', max_amp=self.max_amp, max_slew=self.max_slew)
 
     def readouts_floating_func(self, k_read_axis, pixel_bandwidth, matrix_F, FOV_F, turbo_factor, EPI_factor):
-        pixel_size = (len(k_read_axis.value)-1) / len(k_read_axis.value) / (max(k_read_axis.value)-min(k_read_axis.value))
+        pixel_size = (len(k_read_axis)-1) / len(k_read_axis) / (max(k_read_axis)-min(k_read_axis))
         flat_area = 1e3 / pixel_size / constants.GYRO # uTs/m
         amp = pixel_bandwidth * matrix_F / (FOV_F * constants.GYRO) # mT/m
         readouts = []
@@ -2237,4 +2238,4 @@ class MRIsimulator(param.Parameterized):
 
     @param.depends('object', 'field_strength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOV_F', 'FOV_P', 'phase_oversampling', 'num_shots', 'matrix_F', 'matrix_P', 'recon_matrix_F', 'recon_matrix_P', 'slice_thickness', 'trajectory', 'frequency_direction', 'pixel_bandwidth', 'NSA', 'partial_Fourier', 'turbo_factor', 'EPI_factor', 'image_type', 'show_FOV', 'homodyne', 'do_apodize', 'apodization_alpha', 'do_zerofill', 'radial_FOV_oversampling')
     def display_image(self):
-        return self.image.value * self.FOV_box.value
+        return self.graph['image'].value * self.graph['FOV_box'].value
