@@ -278,8 +278,8 @@ class MRIsimulator(param.Parameterized):
         }
         
         node_specs['tissues'] = {
-            'func': lambda phantom:
-                    list(phantom['shapes'].keys()),
+            'func': lambda fantom:
+                    list(fantom['shapes'].keys()),
             'parents': ['phantom']
         }
 
@@ -704,7 +704,7 @@ class MRIsimulator(param.Parameterized):
         
         node_specs['k_grid_axes'] = {
             'func': self.k_grid_axes_func,
-            'parents': ['is_radial', 'k_axes', 'FOV', 'matrix']
+            'parents': ['is_radial', 'k_axes', 'FOV', 'matrix', 'phantom']
         }
         
         node_specs['k_samples'] = {
@@ -1544,15 +1544,15 @@ class MRIsimulator(param.Parameterized):
         # (turbo) spin echo
         return TE / (centermost_rf_echo + (1 + .5 * split_center))
         
-    def k_read_axis_func(self, freq_dir, FOV, matrix, is_radial, phantom, radial_FOV_oversampling):
+    def k_read_axis_func(self, freq_dir, FOV, matrix, is_radial, fantom, radial_FOV_oversampling):
         voxel_size = FOV[freq_dir] / matrix[freq_dir]
         if not is_radial:
             num_samples = matrix[freq_dir]
             # at least Nyquist sampling wrt phantom if loaded
-            if FOV[freq_dir] < phantom['support'][freq_dir]:
-                num_samples = int(np.ceil(phantom['support'][freq_dir] / voxel_size))
+            if FOV[freq_dir] < fantom['support'][freq_dir]:
+                num_samples = int(np.ceil(fantom['support'][freq_dir] / voxel_size))
         else:
-            maxFOV = max(max(phantom['support']), max(FOV))
+            maxFOV = max(max(fantom['support']), max(FOV))
             num_samples = int(np.ceil(maxFOV / voxel_size * radial_FOV_oversampling))
         return recon.get_k_axis(num_samples, voxel_size)
 
@@ -1619,20 +1619,20 @@ class MRIsimulator(param.Parameterized):
                            [np.sin(k_angles),  np.cos(k_angles)]])
         return np.einsum('ijk,klm->ijml', k_samples, rotmat) # shape=(Nx, Ny, Nangles, 2)
     
-    def k_grid_axes_func(self, is_radial, k_axes, FOV, matrix):
+    def k_grid_axes_func(self, is_radial, k_axes, FOV, matrix, fantom):
         if not is_radial:
             return k_axes.copy()
         k_grid_axes = [None, None]
         for dim in range(2):
             voxel_size = FOV[dim] / matrix[dim]
-            matrix_dim = int(np.ceil(max(FOV[dim], phantom['support'][dim]) / voxel_size))
+            matrix_dim = int(np.ceil(max(FOV[dim], fantom['support'][dim]) / voxel_size))
             k_grid_axes[dim] = recon.get_k_axis(matrix_dim, voxel_size)
         return k_grid_axes
     
-    def plain_kspace_comps_func(self, is_radial, phantom, k_grid_axes, k_samples):
+    def plain_kspace_comps_func(self, is_radial, fantom, k_grid_axes, k_samples):
         if not is_radial:
-            return recon.resample_kspace_Cartesian(phantom, k_grid_axes, shape=k_samples.shape[:-1])
-        return recon.resample_kspace(phantom, k_samples)
+            return recon.resample_kspace_Cartesian(fantom, k_grid_axes, shape=k_samples.shape[:-1])
+        return recon.resample_kspace(fantom, k_samples)
         
     def thick_kspace_comps_func(self, slice_thickness, k_samples, plain_kspace_comps):
         # Lorenzian line shape to mimic slice thickness
@@ -1669,8 +1669,8 @@ class MRIsimulator(param.Parameterized):
             shot, rf_echo, gr_echo = np.argwhere(pe_table==ky)[0]
             TEs[ky] = readouts[rf_echo][gr_echo]['center_f']
             reverse[ky] = readouts[rf_echo][gr_echo]['area_f'] < 0
-        sampling_time = np.expand_dims(sampling_time, axis=[dim for dim in range(3) if dim != freq_dir])
-        time_after_excitation = sampling_time + np.expand_dims(TEs, axis=[dim for dim in range(3) if dim != phase_dir])
+        sampling_offset = np.expand_dims(sampling_time, axis=[dim for dim in range(3) if dim != freq_dir])
+        time_after_excitation = np.expand_dims(TEs, axis=[dim for dim in range(3) if dim != phase_dir]) + sampling_offset
         # EPI rowflip:
         reverse_time_after_excitation = np.flip(time_after_excitation, axis=freq_dir)
         reverse = np.expand_dims(reverse, axis=[dim for dim in range(3) if dim != phase_dir])
@@ -1894,7 +1894,7 @@ class MRIsimulator(param.Parameterized):
         return largest_phaser['dur_f']
         
     def max_blip_dur_func(self, EPI_factor, phase_step_area, num_shots, turbo_factor):
-        if (EPI_factor==0):
+        if (EPI_factor <= 1):
             return 0
         max_blip_area = phase_step_area * num_shots * turbo_factor
         max_blip = sequence.get_gradient('phase', total_area=max_blip_area, max_amp=self.max_amp, max_slew=self.max_slew)
