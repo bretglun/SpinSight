@@ -6,7 +6,7 @@ import math
 from pathlib import Path
 import xarray as xr
 from spinsight import constants, sequence, recon, phantom
-from spinsight.DAG import InputParamNode, ComputeNode, ActionNode, OutputParamNode
+from spinsight.DAG import build_graph
 from bokeh.models import HoverTool, CustomJS, ColumnDataSource
 from functools import partial
 import warnings
@@ -827,6 +827,8 @@ class MRIsimulator(param.Parameterized):
             'func': self.image_func,
             'parents': ['image_type', 'recon_matrix', 'FOV', 'image_array']
         }
+
+        self.graph = build_graph(node_specs)
 
         self.param.watch(lambda _: self._watch_trajectory(), 'trajectory', precedence=1)
 

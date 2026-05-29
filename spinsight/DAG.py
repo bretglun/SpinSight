@@ -1,3 +1,6 @@
+from graphlib import TopologicalSorter
+
+
 class InputParamNode:
     def __init__(self, params, name):
         self.params = params
@@ -83,3 +86,31 @@ class OutputParamNode(ComputeNode):
             setattr(self.params, self.name, value)
 
         return value
+
+
+def make_node(name, specs, graph):
+    if 'parents' not in specs:
+        if 'params' not in specs:
+            raise ValueError(f'A node must have "parents" or "params" (for input nodes). Node "{name}" does not.')
+        return InputParamNode(specs['params'], name)
+    if 'func' not in specs:
+        raise ValueError(f'A node with "parents" must also have "func". Node "{name}" does not.')
+    parents = [graph[parent] for parent in specs['parents']]
+    if getattr(specs, 'action', False):
+        return ActionNode(specs['func'], parents)
+    elif 'params' not in specs:
+        return ComputeNode(specs['func'], parents)
+    return OutputParamNode(specs['params'], name, specs['func'], parents)
+
+
+def build_graph(node_specs):
+    ts = TopologicalSorter()
+    for name, spec in node_specs.items():
+        if 'parents' in spec:
+            ts.add(name, *spec['parents'])
+        else:
+            ts.add(name)
+    graph = {}
+    for name in list(ts.static_order()):
+        graph[name] = make_node(name, node_specs[name], graph)
+    return graph
