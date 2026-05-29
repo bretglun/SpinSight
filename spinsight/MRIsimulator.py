@@ -289,13 +289,6 @@ class MRIsimulator(param.Parameterized):
             'parents': ['tissues']
         }
 
-        node_specs['reference_tissue'] = {
-            'params': self,
-            'func': lambda tissues: 
-                    tissues[0],
-            'parents': ['tissues']
-        }
-
         node_specs['is_radial'] = {
             'func': lambda trajectory: 
                     trajectory in ['Radial', 'PROPELLER'],
@@ -843,6 +836,8 @@ class MRIsimulator(param.Parameterized):
         }
 
         self.graph = build_graph(node_specs)
+
+        self.set_reference_SNR()
 
         self.derived_params = ['FOV_bandwidth', 'FW_shift', 'SNR', 'name', 'num_shots', 'recon_voxel_F', 'recon_voxel_P', 'reference_SNR', 'relative_SNR', 'scantime', 'spoke_angle', 'voxel_F', 'voxel_P', 'num_shots_label']
 
@@ -1732,7 +1727,7 @@ class MRIsimulator(param.Parameterized):
         return {component: get_PD_and_T1w(component, sequence, TR, TE, TI, FA, field_strength) for component in set(tissues).union(set(constants.FAT_RESONANCES.keys()))}
 
     def set_reference_SNR(self, event=None):
-        self.reference_SNR = self.SNR
+        self.reference_SNR = self.graph['SNR'].value
 
     def measured_kspace_func(self, noise, kspace_comps, FatSat, PD_and_T1w):
         measured_kspace = noise.copy()
@@ -1802,6 +1797,7 @@ class MRIsimulator(param.Parameterized):
 
     def set_reference_tissue_objects(self, tissues):
         self.param.reference_tissue.objects = tissues
+        self.reference_tissue = tissues[0]
     
     def RF_excitation_func(self, FA, is_gradient_echo):
         flip_angle = FA if is_gradient_echo else 90.
