@@ -1,45 +1,64 @@
 from graphlib import TopologicalSorter
 
 
+class GraphScheduler:
+
+    def __init__(self):
+        self.pending_actions = []
+        self.invalidating = False
+
+    def begin_invalidation(self):
+        self.invalidating = True
+
+    def end_invalidation(self):
+        self.invalidating = False
+        self.flush_actions()
+
+    def queue_action(self, action_node):
+        if action_node not in self.pending_actions:
+            self.pending_actions.append(action_node)
+
+    def flush_actions(self):
+        while self.pending_actions:
+            action_node = self.pending_actions.pop(0)
+            action_node.execute()
+
+
+scheduler = GraphScheduler()
+
+
 class InputParamNode:
     def __init__(self, params, name):
         self.params = params
         self.name = name
-
         self.children = []
-
-        params.param.watch(
-            self._on_change,
-            name
-        )
+        params.param.watch(self._on_change, name)
 
     @property
     def value(self):
         return getattr(self.params, self.name)
 
     def _on_change(self, event):
+        scheduler.begin_invalidation()
         for child in self.children:
             child.invalidate()
+        scheduler.end_invalidation()
 
 
 class ComputeNode:
     def __init__(self, func, parents=[]):
         self.func = func
         self.parents = parents
-
         self._valid = False
         self._cache = None
         self.children = []
-
         for parent in self.parents:
             parent.children.append(self)
 
     def invalidate(self):
         if not self._valid:
             return
-
         self._valid = False
-
         for child in self.children:
             child.invalidate()
 
@@ -49,7 +68,6 @@ class ComputeNode:
             inputs = [parent.value for parent in self.parents]
             self._cache = self.func(*inputs)
             self._valid = True
-
         return self._cache
     
 
@@ -57,34 +75,32 @@ class ActionNode:
     def __init__(self, func, parents):
         self.func = func
         self.parents = parents
-
+        self._queued = False
         for parent in self.parents:
             parent.children.append(self)
 
     def execute(self):
         self.func(*[parent.value for parent in self.parents])
+        self._queued = False
     
     def invalidate(self):
-        self.execute()
+        if not self._queued:
+            scheduler.queue_action(self)
+            self._queued = True
 
 
 class OutputParamNode(ComputeNode):
     def __init__(self, params, name, func, parents):
         super().__init__(func, parents)
-
         self.params = params
         self.name = name
 
     @property
     def value(self):
-
         value = super().value
-
         current = getattr(self.params, self.name)
-
         if current != value:
             setattr(self.params, self.name, value)
-
         return value
 
 
@@ -96,11 +112,17 @@ def make_node(name, specs, graph):
     if 'func' not in specs:
         raise ValueError(f'A node with "parents" must also have "func". Node "{name}" does not.')
     parents = [graph[parent] for parent in specs['parents']]
-    if getattr(specs, 'action', False):
+    if specs.get('action', False):
         return ActionNode(specs['func'], parents)
     elif 'params' not in specs:
         return ComputeNode(specs['func'], parents)
     return OutputParamNode(specs['params'], name, specs['func'], parents)
+
+
+def initialize_graph(graph):
+    for node in graph.values():
+        if isinstance(node, ActionNode):
+            node.execute()
 
 
 def build_graph(node_specs):
@@ -113,4 +135,5 @@ def build_graph(node_specs):
     graph = {}
     for name in list(ts.static_order()):
         graph[name] = make_node(name, node_specs[name], graph)
+    initialize_graph(graph)
     return graph
