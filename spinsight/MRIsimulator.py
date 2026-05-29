@@ -283,6 +283,19 @@ class MRIsimulator(param.Parameterized):
             'parents': ['phantom']
         }
 
+        node_specs['set_reference_tissue_objects'] = {
+            'action': True,
+            'func': self.set_reference_tissue_objects,
+            'parents': ['tissues']
+        }
+
+        node_specs['reference_tissue'] = {
+            'params': self,
+            'func': lambda tissues: 
+                    tissues[0],
+            'parents': ['tissues']
+        }
+
         node_specs['is_radial'] = {
             'func': lambda trajectory: 
                     trajectory in ['Radial', 'PROPELLER'],
@@ -925,9 +938,6 @@ class MRIsimulator(param.Parameterized):
         if hasattr(self, 'phantom') and self.phantom['name']==self.object:
             return
         self.phantom = phantom.load(self.object, self.min_voxel_size)
-        self.tissues = list(self.phantom['shapes'].keys())
-        self.param.reference_tissue.objects = self.tissues
-        self.reference_tissue = self.tissues[0]
         min_FOV = self.phantom['support']
         if self.frequency_direction=='left-right':
             min_FOV = min_FOV.reverse()
@@ -1790,6 +1800,9 @@ class MRIsimulator(param.Parameterized):
         image_array = recon.IFFT(zerofilled_kspace, pixel_shifts, sample_shifts)
         return recon.crop(image_array, recon_matrix)
 
+    def set_reference_tissue_objects(self, tissues):
+        self.param.reference_tissue.objects = tissues
+    
     def RF_excitation_func(self, FA, is_gradient_echo):
         flip_angle = FA if is_gradient_echo else 90.
         return sequence.get_RF(flip_angle=flip_angle, time=0., dur=3., shape='hamming_sinc',  name='excitation')
