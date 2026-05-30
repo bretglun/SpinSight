@@ -14,6 +14,18 @@ import warnings
 hv.extension('bokeh')
 
 
+BOARD_COLORS = {
+    'frequency': 'cadetblue',
+    'phase': 'cadetblue',
+    'slice': 'cadetblue',
+    'RF': 'red',
+    'signal': 'orange',
+    'ADC': 'peru',
+}
+
+def hline(time_dim, amp_dim):
+        return hv.HLine(0.0, kdims=[time_dim, amp_dim]).opts(tools=['xwheel_zoom', 'xpan', 'reset'], default_tools=[], active_tools=['xwheel_zoom', 'xpan'])
+
 def pixel_BW_to_shift(pixel_BW, B0=1.5):
     ''' Get fat/water chemical shift [pixels] from pixel bandwidth [Hz/pixel] and B0 [T]'''
     return np.abs(constants.FAT_RESONANCES['Fat2']['shift'] * constants.GYRO * B0 / pixel_BW)
@@ -238,35 +250,21 @@ class MRIsimulator(param.Parameterized):
         
         self.outbound_params = set()
 
-        self.time_dim = hv.Dimension('time', label='time', unit='ms')
-
-        self.boards = { 'frequency': {'dim': hv.Dimension('frequency', label='G read', unit='mT/m', range=(-30, 30)), 'color': 'cadetblue'}, 
-                        'phase': {'dim': hv.Dimension('phase', label='G phase', unit='mT/m', range=(-30, 30)), 'color': 'cadetblue'}, 
-                        'slice': {'dim': hv.Dimension('slice', label='G slice', unit='mT/m', range=(-30, 30)), 'color': 'cadetblue'}, 
-                        'RF': {'dim': hv.Dimension('RF', label='RF', unit='μT', range=(-5, 25)), 'color': 'red'},
-                        'signal': {'dim': hv.Dimension('signal', label='signal', unit='a.u.', range=(-1, 1)), 'color': 'orange'},
-                        'ADC': {'dim': hv.Dimension('ADC', label='ADC', unit=''), 'color': 'peru'} }
-        
-        self.board_plots = {board: {'hline': hv.HLine(0.0, kdims=[self.time_dim, self.boards[board]['dim']]).opts(tools=['xwheel_zoom', 'xpan', 'reset'], default_tools=[], active_tools=['xwheel_zoom', 'xpan'])} for board in self.boards if board != 'ADC'}
-
         hv.opts.defaults(hv.opts.Image(width=500, height=500, invert_yaxis=False, toolbar='below', cmap='gray', aspect='equal'))
         hv.opts.defaults(hv.opts.HLine(line_width=1.5, line_color='gray'))
         hv.opts.defaults(hv.opts.VSpan(color='orange', fill_alpha=.1, hover_fill_alpha=.8, default_tools=[]))
-        hv.opts.defaults(hv.opts.Rectangles(color=self.boards['ADC']['color'], line_color=self.boards['ADC']['color'], fill_alpha=.1, line_alpha=.3, hover_fill_alpha=.8, default_tools=[]))
+        hv.opts.defaults(hv.opts.Rectangles(color=BOARD_COLORS['ADC'], line_color=BOARD_COLORS['ADC'], fill_alpha=.1, line_alpha=.3, hover_fill_alpha=.8, default_tools=[]))
         hv.opts.defaults(hv.opts.Box(line_width=3))
         hv.opts.defaults(hv.opts.Ellipse(line_width=3))
         hv.opts.defaults(hv.opts.Area(fill_alpha=.5, line_width=1.5, line_color='gray', default_tools=[]))
         hv.opts.defaults(hv.opts.Polygons(line_width=1.5, fill_alpha=0, line_alpha=0, line_color='gray', selection_line_color='black', hover_fill_alpha=.8, hover_line_alpha=1, selection_fill_alpha=.8, selection_line_alpha=1, nonselection_line_alpha=0, default_tools=[]))
-        hv.opts.defaults(hv.opts.Curve(line_width=5, line_color='peru'))
-        hv.opts.defaults(hv.opts.Points(line_color=None, color='peru', size=15))
+        hv.opts.defaults(hv.opts.Curve(line_width=5, line_color=BOARD_COLORS['ADC']))
+        hv.opts.defaults(hv.opts.Points(line_color=None, color=BOARD_COLORS['ADC'], size=15))
 
         # constants
         self.max_amp = 25. # mT/m
         self.max_slew = 80. # T/m/s
         self.inversion_thk_factor = 1.1 # make inversion slice 10% thicker
-
-        for board in self.boards:
-            self.boards[board]['objects'] = {}
 
         node_specs = {par: {'params': self} for par in self.param if par != 'name'}
         
@@ -534,6 +532,16 @@ class MRIsimulator(param.Parameterized):
         node_specs['spoiler'] = {
             'func': self.spoiler_func,
             'parents': ['readouts', 'spoiler_floating']
+        }
+        
+        node_specs['sequence_start'] = {
+            'func': self.sequence_start_func,
+            'parents': ['sequence', 'slice_select_inversion', 'RF_FatSat', 'slice_select_excitation']
+        }
+
+        node_specs['signal_curves'] = {
+            'func': self.signal_curves_func,
+            'parents': ['measured_kspace', 'shot', 'is_radial', 'turbo_factor', 'EPI_factor', 'pe_table', 'phase_dir', 'time_after_excitation']
         }
         
         node_specs['centermost_echoes_linear_order'] = {
@@ -812,6 +820,106 @@ class MRIsimulator(param.Parameterized):
         node_specs['oversampled_recon_matrix'] = {
             'func': self.oversampled_recon_matrix_func,
             'parents': ['recon_matrix', 'full_k_matrix', 'matrix']
+        }
+        
+        node_specs['time_dim'] = {
+            'func': self.time_dim_func,
+            'parents': []
+        }
+
+        node_specs['frequency_dim'] = {
+            'func': self.frequency_dim_func,
+            'parents': []
+        }
+
+        node_specs['phase_dim'] = {
+            'func': self.phase_dim_func,
+            'parents': []
+        }
+
+        node_specs['slice_dim'] = {
+            'func': self.slice_dim_func,
+            'parents': []
+        }
+
+        node_specs['RF_dim'] = {
+            'func': self.RF_dim_func,
+            'parents': []
+        }
+
+        node_specs['signal_dim'] = {
+            'func': self.signal_dim_func,
+            'parents': []
+        }
+
+        node_specs['ADC_dim'] = {
+            'func': self.ADC_dim_func,
+            'parents': []
+        }
+
+        node_specs['frequency_objects'] = {
+            'func': self.frequency_objects_func,
+            'parents': ['read_prephaser', 'readouts']
+        }
+
+        node_specs['phase_objects'] = {
+            'func': self.phase_objects_func,
+            'parents': ['phasers', 'rephasers', 'blips']
+        }
+        
+        node_specs['slice_objects'] = {
+            'func': self.slice_objects_func,
+            'parents': ['slice_select_inversion', 'inversion_spoiler', 'FatSat_spoiler', 'slice_select_excitation', 'slice_select_rephaser', 'slice_select_refocusing', 'spoiler']
+        }
+        
+        node_specs['RF_objects'] = {
+            'func': self.RF_objects_func,
+            'parents': ['RF_inversion', 'RF_FatSat', 'RF_excitation', 'RF_refocusing']
+        }
+        
+        node_specs['signal_objects'] = {
+            'func': self.signal_objects_func,
+            'parents': ['signal_curves']
+        }
+        
+        node_specs['ADC_objects'] = {
+            'func': self.ADC_objects_func,
+            'parents': ['sampling_windows']
+        }
+        
+        node_specs['TR_span'] = {
+            'func': self.TR_span_func,
+            'parents': ['sequence_start', 'TR', 'time_dim', 'frequency_dim', 'phase_dim', 'slice_dim', 'RF_dim', 'signal_dim']
+        }
+        
+        node_specs['frequency_board'] = {
+            'func': self.frequency_board_func,
+            'parents': ['time_dim', 'frequency_dim', 'frequency_objects', 'TR_span']
+        }
+
+        node_specs['phase_board'] = {
+            'func': self.phase_board_func,
+            'parents': ['time_dim', 'phase_dim', 'phase_objects', 'TR_span']
+        }
+
+        node_specs['slice_board'] = {
+            'func': self.slice_board_func,
+            'parents': ['time_dim', 'slice_dim', 'slice_objects', 'TR_span']
+        }
+
+        node_specs['RF_board'] = {
+            'func': self.RF_board_func,
+            'parents': ['time_dim', 'RF_dim', 'RF_objects', 'TR_span']
+        }
+
+        node_specs['signal_board'] = {
+            'func': self.signal_board_func,
+            'parents': ['time_dim', 'signal_dim', 'signal_objects', 'ADC_objects', 'TR_span']
+        }
+
+        node_specs['sequence_plot'] = {
+            'func': self.sequence_plot_func,
+            'parents': ['frequency_board', 'phase_board', 'slice_board', 'RF_board', 'signal_board']
         }
         
         node_specs['kspace'] = {
@@ -1155,14 +1263,6 @@ class MRIsimulator(param.Parameterized):
 
     def _watch_reference_tissue(self):
         pass
-
-    def get_sequence_start(self):
-        if self.sequence == 'Inversion Recovery': 
-            return self.boards['slice']['objects']['slice select inversion']['time'][0]
-        elif self.FatSat:
-            return self.boards['RF']['objects']['fatsat']['time'][0]
-        else:
-            return self.boards['slice']['objects']['slice select excitation']['time'][0]
 
     def get_TE_from_centermost_echoes(self, readtrain_spacing, centermost_gr_echoes, centermost_rf_echoes):
         TE = readtrain_spacing * (1 + np.mean(centermost_rf_echoes))
@@ -1848,14 +1948,14 @@ class MRIsimulator(param.Parameterized):
         return slice_select_refocusing
 
     def slice_select_inversion_floating_func(self, sequence, RF_inversion_floating, slice_thickness):
-        if sequence=='Inversion Recovery':
+        if sequence!='Inversion Recovery':
             return None
         flat_dur = RF_inversion_floating['dur_f']
         amp = RF_inversion_floating['FWHM_f'] / (self.inversion_thk_factor * slice_thickness * constants.GYRO)
         return sequence.get_gradient('slice', max_amp=amp, flat_dur=flat_dur, name='slice select inversion', max_slew=self.max_slew)
     
     def inversion_spoiler_floating_func(self, sequence):
-        if sequence=='Inversion Recovery':
+        if sequence!='Inversion Recovery':
             return None
         spoiler_area = 30. # uTs/m
         return sequence.get_gradient('slice', total_area=spoiler_area, name='inversion spoiler', max_amp=self.max_amp, max_slew=self.max_slew)
@@ -2081,23 +2181,29 @@ class MRIsimulator(param.Parameterized):
         sequence.move_waveform(spoiler, spoiler_time)
         return spoiler
 
-    # End of node funcs
+    def sequence_start_func(self, sequence, slice_select_inversion, RF_FatSat, slice_select_excitation):
+        if sequence == 'Inversion Recovery': 
+            return slice_select_inversion['time'][0]
+        elif self.FatSat:
+            return RF_FatSat['time'][0]
+        else:
+            return slice_select_excitation['time'][0]
 
-    def add_signals(self):
-        self.boards['signal']['objects']['signals'] = []
-        scale = 1/np.max(np.abs(np.real(self.measured_kspace)))
+    def signal_curves_func(self, measured_kspace, shot, is_radial, turbo_factor, EPI_factor, pe_table, phase_dir, time_after_excitation):
+        signal_curves = []
+        scale = 1 / np.max(np.abs(np.real(measured_kspace)))
         signal_exponent = .5
-        spoke = self.shot-1 if self.is_radial.value else 0
-        for rf_echo in range(self.turbo_factor):
-            signals = []
-            for gr_echo in range(self.EPI_factor):
-                ky = self.pe_table[self.shot-1, rf_echo, gr_echo]
-                waveform = np.real(np.take(self.measured_kspace[..., spoke], indices=ky, axis=self.phase_dir.value))
-                t = np.take(self.time_after_excitation[..., spoke if spoke<self.time_after_excitation.shape[-1] else 0], indices=ky, axis=self.phase_dir.value)
+        spoke = shot-1 if is_radial else 0
+        for rf_echo in range(turbo_factor):
+            signal_curves.append([])
+            for gr_echo in range(EPI_factor):
+                ky = pe_table[shot-1, rf_echo, gr_echo]
+                waveform = np.real(np.take(measured_kspace[..., spoke], indices=ky, axis=phase_dir))
+                t = np.take(time_after_excitation[..., spoke if spoke<time_after_excitation.shape[-1] else 0], indices=ky, axis=phase_dir)
                 signal = sequence.get_signal(waveform, t, scale, signal_exponent)
-                signals.append(signal)
-            self.boards['signal']['objects']['signals'].append(signals)
-
+                signal_curves[-1].append(signal)
+        return signal_curves
+    
     def update_k_line_coords(self, attr, old, hover_index):
         if len(hover_index['index']) > 0:
             object = self.boards[hover_index['board'][0]]['object_list'][hover_index['index'][0]]
@@ -2106,7 +2212,7 @@ class MRIsimulator(param.Parameterized):
             self.k_line.event(coords=[None])
 
     def get_hover_tool(self, board, obj):
-        attributes = [attr for attr in obj.keys() if attr not in ['time', board] and '_f' not in attr]
+        attributes = [attr for attr in obj.keys() if attr not in ['time', board, 'c1', 'c2', 'c3', 'c4'] and '_f' not in attr]
         if board in ['frequency', 'phase', 'RF', 'ADC']:
             with open(Path(__file__).parent / 'hoverCallback.js', 'r') as file:
                 hover_callback = CustomJS(args={'hover_index': self.hover_index, 'board': board}, code=file.read())
@@ -2114,47 +2220,6 @@ class MRIsimulator(param.Parameterized):
             hover_callback = None
         hover = HoverTool(tooltips=[(attr, f'@{attr}') for attr in attributes], attachment='below', callback=hover_callback)
         return hover, attributes
-
-    def render_polygons(self, board, hoverTool=True):
-        if self.boards[board]['objects']:
-            object_list = flatten_dicts(self.boards[board]['objects'].values())
-            self.boards[board]['object_list'] = object_list
-            self.board_plots[board]['area'] = hv.Area(sequence.accumulate_waveforms(object_list, board), self.time_dim, self.boards[board]['dim']).opts(color=self.boards[board]['color'])
-            hover, attributes = self.get_hover_tool(board, object_list[0])
-            tools = [hover] if hoverTool else []
-            self.board_plots[board]['polygons'] = hv.Polygons(object_list, kdims=[self.time_dim, self.boards[board]['dim']], vdims=attributes).opts(tools=tools, cmap=[self.boards[board]['color']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=(-19000, 19000))])
-
-    def render_ADC_windows(self, hoverTool=True):
-        object_list = flatten_dicts(self.boards['ADC']['objects'].values())
-        self.boards['ADC']['object_list'] = object_list
-        hover, attributes = self.get_hover_tool('ADC', object_list[0])
-        tools = [hover] if hoverTool else []
-        for obj in object_list:
-            obj.update({'c1': obj['time'][0], 'c2': -2, 'c3': obj['time'][-1], 'c4': 2})
-        self.board_plots['signal']['ADC'] = hv.Rectangles(object_list, kdims=['c1', 'c2', 'c3', 'c4'], vdims=attributes).opts(tools=tools)
-
-    def render_TR_span(self):
-        t0 = self.get_sequence_start()
-        for board in ['frequency', 'phase', 'slice', 'RF', 'signal']:
-            self.board_plots[board]['TRspan'] = hv.VSpan(-20000, t0, kdims=[self.time_dim, self.boards[board]['dim']]).opts(color='gray', fill_alpha=.3)
-            self.board_plots[board]['TRspan'] *= hv.VSpan(t0 + self.TR, 20000, kdims=[self.time_dim, self.boards[board]['dim']]).opts(color='gray', fill_alpha=.3)
-
-    def render_frequency_board(self):
-        self.render_polygons('frequency', hoverTool=True)
-
-    def render_phase_board(self):
-        self.render_polygons('phase', hoverTool=True)
-
-    def render_slice_board(self):
-        self.render_polygons('slice', hoverTool=True)
-
-    def render_RF_board(self):
-        self.render_polygons('RF', hoverTool=True)
-
-    def render_signal_board(self):
-        self.add_signals()
-        self.render_polygons('signal', hoverTool=False)
-        self.render_ADC_windows(hoverTool=True)
 
     def get_k_on_interval(self, interval):
         t = np.arange(*interval[[0, -1]], self.k_trajectory['dt'])
@@ -2190,11 +2255,108 @@ class MRIsimulator(param.Parameterized):
             kx, ky = cos * kx - sin * ky, sin * kx + cos * ky
         self.k_trajectory = {'kx': kx, 'ky': ky, 't': t, 'dt': dt}
 
-    @param.depends('sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOV_F', 'FOV_P', 'phase_oversampling', 'num_shots', 'matrix_F', 'matrix_P', 'slice_thickness', 'trajectory', 'frequency_direction', 'pixel_bandwidth', 'partial_Fourier', 'turbo_factor', 'EPI_factor', 'shot')
-    def display_sequence_plot(self):
-        last = len(self.board_plots)-1
-        self.sequence_plot = hv.Layout(list([hv.Overlay(list(board_plot.values())).opts(width=1700, height=180 if n==last else 120, border=0, xaxis='bottom' if n==last else None) for n, board_plot in enumerate(self.board_plots.values())])).cols(1).options(toolbar='below')
-        return self.sequence_plot
+    def time_dim_func(self):
+        return hv.Dimension('time', label='time', unit='ms')
+    
+    def frequency_dim_func(self):
+        return hv.Dimension('frequency', label='G read', unit='mT/m', range=(-30, 30))
+    
+    def phase_dim_func(self):
+        return hv.Dimension('phase', label='G phase', unit='mT/m', range=(-30, 30))
+    
+    def slice_dim_func(self):
+        return hv.Dimension('slice', label='G slice', unit='mT/m', range=(-30, 30))
+        
+    def RF_dim_func(self):
+        return hv.Dimension('RF', label='RF', unit='μT', range=(-5, 25))
+    
+    def signal_dim_func(self):
+        return hv.Dimension('signal', label='signal', unit='a.u.', range=(-1, 1))
+    
+    def ADC_dim_func(self):
+        return hv.Dimension('ADC', label='ADC', unit='')
+    
+    def frequency_objects_func(self, read_prephaser, readouts):
+        objects = [read_prephaser, *flatten_dicts(readouts)]
+        return [obj for obj in objects if obj is not None]
+    
+    def phase_objects_func(self, phasers, rephasers, blips):
+        objects = [*flatten_dicts(phasers), *flatten_dicts(rephasers), *flatten_dicts(blips)]
+        return [obj for obj in objects if obj is not None]
+        
+    def slice_objects_func(self, slice_select_inversion, inversion_spoiler, FatSat_spoiler, slice_select_excitation, slice_select_rephaser, slice_select_refocusing, spoiler):
+        objects = [slice_select_inversion, inversion_spoiler, FatSat_spoiler, slice_select_excitation, slice_select_rephaser, *flatten_dicts(slice_select_refocusing), spoiler]
+        return [obj for obj in objects if obj is not None]
+    
+    def RF_objects_func(self, RF_inversion, RF_FatSat, RF_excitation, RF_refocusing):
+        objects = [RF_inversion, RF_FatSat, RF_excitation, *flatten_dicts(RF_refocusing)]
+        return [obj for obj in objects if obj is not None]
+    
+    def signal_objects_func(self, signal_curves):
+        return flatten_dicts(signal_curves)
+    
+    def ADC_objects_func(self, sampling_windows):
+        objects = flatten_dicts(sampling_windows)
+        for obj in objects:
+            obj.update({'c1': obj['time'][0], 'c2': -2, 'c3': obj['time'][-1], 'c4': 2})
+        return objects
+    
+    def TR_span_func(self, sequence_start, TR, time_dim, frequency_dim, phase_dim, slice_dim, RF_dim, signal_dim):
+        TR_span = {}
+        for board_dim in [frequency_dim, phase_dim, slice_dim, RF_dim, signal_dim]:
+            TR_span[board_dim.name] = hv.VSpan(-20000, sequence_start, kdims=[time_dim, board_dim]).opts(color='gray', fill_alpha=.3)
+            TR_span[board_dim.name] *= hv.VSpan(sequence_start + TR, 20000, kdims=[time_dim, board_dim]).opts(color='gray', fill_alpha=.3)
+        return TR_span
+    
+    def frequency_board_func(self, time_dim, frequency_dim, frequency_objects, TR_span):
+        hover, attributes = self.get_hover_tool('frequency', frequency_objects[0])
+        specs = [hline(time_dim, frequency_dim),
+                 hv.Area(sequence.accumulate_waveforms(frequency_objects, 'frequency'), time_dim, frequency_dim).opts(color=BOARD_COLORS['frequency']),
+                 hv.Polygons(frequency_objects, kdims=[time_dim, frequency_dim], vdims=attributes).opts(tools=[hover], cmap=[BOARD_COLORS['frequency']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=(-19000, 19000))]),
+                 TR_span['frequency']]
+        return specs
+        
+    def phase_board_func(self, time_dim, phase_dim, phase_objects, TR_span):
+        hover, attributes = self.get_hover_tool('phase', phase_objects[0])
+        specs = [hline(time_dim, phase_dim),
+                 hv.Area(sequence.accumulate_waveforms(phase_objects, 'phase'), time_dim, phase_dim).opts(color=BOARD_COLORS['phase']),
+                 hv.Polygons(phase_objects, kdims=[time_dim, phase_dim], vdims=attributes).opts(tools=[hover], cmap=[BOARD_COLORS['phase']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=(-19000, 19000))]),
+                 TR_span['phase']]
+        return specs
+    
+    def slice_board_func(self, time_dim, slice_dim, slice_objects, TR_span):
+        hover, attributes = self.get_hover_tool('slice', slice_objects[0])
+        specs = [hline(time_dim, slice_dim),
+                 hv.Area(sequence.accumulate_waveforms(slice_objects, 'slice'), time_dim, slice_dim).opts(color=BOARD_COLORS['slice']),
+                 hv.Polygons(slice_objects, kdims=[time_dim, slice_dim], vdims=attributes).opts(tools=[hover], cmap=[BOARD_COLORS['slice']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=(-19000, 19000))]),
+                 TR_span['slice']]
+        return specs
+    
+    def RF_board_func(self, time_dim, RF_dim, RF_objects, TR_span):
+        hover, attributes = self.get_hover_tool('RF', RF_objects[0])
+        specs = [hline(time_dim, RF_dim),
+                 hv.Area(sequence.accumulate_waveforms(RF_objects, 'RF'), time_dim, RF_dim).opts(color=BOARD_COLORS['RF']),
+                 hv.Polygons(RF_objects, kdims=[time_dim, RF_dim], vdims=attributes).opts(tools=[hover], cmap=[BOARD_COLORS['RF']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=(-19000, 19000))]),
+                 TR_span['RF']]
+        return specs
+    
+    def signal_board_func(self, time_dim, signal_dim, signal_objects, ADC_objects, TR_span):
+        _, signal_attributes = self.get_hover_tool('signal', signal_objects[0])
+        hover, ADC_attributes = self.get_hover_tool('ADC', ADC_objects[0])
+        specs = [hline(time_dim, signal_dim),
+                 hv.Area(sequence.accumulate_waveforms(signal_objects, 'signal'), time_dim, signal_dim).opts(color=BOARD_COLORS['signal']),
+                 hv.Polygons(signal_objects, kdims=[time_dim, signal_dim], vdims=signal_attributes).opts(tools=[], cmap=[BOARD_COLORS['signal']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=(-19000, 19000))]),
+                 hv.Rectangles(ADC_objects, kdims=['c1', 'c2', 'c3', 'c4'], vdims=ADC_attributes).opts(tools=[hover]),
+                 TR_span['signal']]
+        return specs
+
+    def sequence_plot_func(self, frequency_board, phase_board, slice_board, RF_board, signal_board):
+        boards = [frequency_board, phase_board, slice_board, RF_board, signal_board]
+        board_plots = []
+        for board in boards[:-1]:
+            board_plots.append(hv.Overlay(board).opts(width=1700, height=120, border=0, xaxis=None))
+        board_plots.append(hv.Overlay(boards[-1]).opts(width=1700, height=180, border=0, xaxis='bottom'))
+        return hv.Layout(list(board_plots)).cols(1).options(toolbar='below')
 
     def kspace_func(self, kspace_type, show_processed_kspace, oversampled_recon_matrix, FOV, recon_matrix, full_k_matrix, zerofilled_kspace, kspace_exponent, gridded_kspace, k_grid_axes):
         operator = constants.OPERATORS[kspace_type]
@@ -2245,6 +2407,10 @@ class MRIsimulator(param.Parameterized):
         img.x.attrs['units'] = img.y.attrs['units'] = 'mm'
         return hv.Overlay([hv.Image(img, vdims=['magnitude'])])
 
+    @param.depends('sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOV_F', 'FOV_P', 'phase_oversampling', 'num_shots', 'matrix_F', 'matrix_P', 'slice_thickness', 'trajectory', 'frequency_direction', 'pixel_bandwidth', 'partial_Fourier', 'turbo_factor', 'EPI_factor', 'shot')
+    def display_sequence_plot(self):
+        return self.graph['sequence_plot'].value
+    
     @param.depends('object', 'field_strength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOV_F', 'FOV_P', 'phase_oversampling', 'num_shots', 'matrix_F', 'matrix_P', 'recon_matrix_F', 'recon_matrix_P', 'slice_thickness', 'trajectory', 'frequency_direction', 'pixel_bandwidth', 'NSA', 'partial_Fourier', 'turbo_factor', 'EPI_factor', 'kspace_type', 'show_processed_kspace', 'kspace_exponent', 'homodyne', 'do_apodize', 'apodization_alpha', 'do_zerofill', 'radial_FOV_oversampling')
     def display_kspace(self):
         return self.graph['kspace'].value
