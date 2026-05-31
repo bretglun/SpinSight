@@ -562,16 +562,6 @@ class MRIsimulator(param.Parameterized):
             'func': self.signal_curves_func,
             'parents': ['measured_kspace', 'shot', 'is_radial', 'turbo_factor', 'EPI_factor', 'pe_table', 'phase_dir', 'time_after_excitation']
         }
-        
-        node_specs['centermost_echoes_linear_order'] = {
-            'func': self.centermost_echoes_linear_order_func,
-            'parents': ['central_segments', 'reverse_linear_order', 'num_segm', 'turbo_factor']
-        }
-        
-        node_specs['readtrain_spacing_linear_order'] = {
-            'func': self.readtrain_spacing_linear_order_func,
-            'parents': ['centermost_echoes_linear_order', 'gr_echo_spacing', 'EPI_factor', 'TE']
-        }
 
         node_specs['k_read_axis'] = {
             'func': self.k_read_axis_func,
@@ -589,14 +579,19 @@ class MRIsimulator(param.Parameterized):
             'parents': ['is_gradient_echo', 'RF_excitation', 'gre_echo_train_dur', 'readout_risetime', 'read_prephaser_floating', 'phaser_duration', 'slice_select_excitation', 'slice_select_rephaser', 'RF_refocusing_floating', 'slice_select_refocusing_floating']
         }
 
+        node_specs['centermost_gr_echo'] = {
+            'func': self.centermost_gr_echo_func,
+            'parents': ['central_segment', 'reverse_linear_order', 'num_segm', 'turbo_factor']
+        }
+        
         node_specs['centermost_rf_echo'] = {
             'func': self.centermost_rf_echo_func,
-            'parents': ['EPI_factor', 'is_gradient_echo', 'TE', 'min_readtrain_spacing', 'split_center', 'turbo_factor']
+            'parents': ['is_gradient_echo', 'EPI_factor', 'central_segment', 'turbo_factor', 'TE', 'min_readtrain_spacing']
         }
 
         node_specs['readtrain_spacing'] = {
             'func': self.readtrain_spacing_func,
-            'parents': ['EPI_factor', 'readtrain_spacing_linear_order', 'TE', 'centermost_rf_echo', 'split_center']
+            'parents': ['EPI_factor', 'gr_echo_spacing', 'TE', 'centermost_gr_echo', 'centermost_rf_echo']
         }
 
         node_specs['num_blades'] = {
@@ -655,21 +650,17 @@ class MRIsimulator(param.Parameterized):
         }
 
         node_specs['num_segm'] = {
-            'func': lambda num_measured_lines, num_blades, num_shots:
-                    int(num_measured_lines * num_blades / num_shots),
+            'func': self.num_segm_func,
             'parents': ['num_measured_lines', 'num_blades', 'num_shots']
         }
 
         node_specs['num_sym_lines'] = {
-            'func': lambda num_measured_lines, k_phase_axis:
-                    2 * num_measured_lines - len(k_phase_axis),
+            'func': self.num_sym_lines_func,
             'parents': ['num_measured_lines', 'k_phase_axis']
         }
 
         node_specs['split_center'] = {
-            # does center of k-space lie between two segments?
-            'func': lambda num_sym_lines, num_shots:
-                    (num_sym_lines % num_shots == 0) and ((num_sym_lines / num_shots) % 2 == 0),
+            'func': self.split_center_func,
             'parents': ['num_sym_lines', 'num_shots']
         }
 
@@ -678,9 +669,9 @@ class MRIsimulator(param.Parameterized):
             'parents': ['split_center', 'num_sym_lines', 'num_blades', 'num_shots']
         }
 
-        node_specs['central_segments'] = {
-            'func': self.central_segments_func,
-            'parents': ['split_center', 'num_segm', 'num_sym_segm']
+        node_specs['central_segment'] = {
+            'func': self.central_segment_func,
+            'parents': ['num_segm', 'num_sym_segm']
         }
 
         node_specs['pe_table'] = {
@@ -1634,25 +1625,6 @@ class MRIsimulator(param.Parameterized):
         if self.turbo_factor > 1:
             self.param.EPI_factor.objects = [v for v in self.param.EPI_factor.objects if v%2]
 
-    def centermost_echoes_linear_order_func(self, central_segments, reverse_linear_order, num_segm, turbo_factor):
-        # get index lists of rf echo(es) and gradient echo(es) closest to k-space center for linear k-space ordering
-        centermost_gr_echoes = []
-        centermost_rf_echoes = []
-        central_indices = central_segments.copy()
-        if reverse_linear_order:
-            central_indices = [num_segm - 1 - segm for segm in central_indices]
-        for segm in central_indices:
-            centermost_gr_echoes.append(segm // turbo_factor)
-            centermost_rf_echoes.append(segm % turbo_factor)
-        return centermost_gr_echoes, centermost_rf_echoes
-
-    def readtrain_spacing_linear_order_func(self, centermost_echoes_linear_order, gr_echo_spacing, EPI_factor, TE):
-        centermost_gr_echoes, centermost_rf_echoes = centermost_echoes_linear_order
-        readtrain_shift = gr_echo_spacing * (np.mean(centermost_gr_echoes) - (EPI_factor-1)/2)
-        central_rf_echo_time = TE - readtrain_shift
-        readtrain_spacing = central_rf_echo_time / (1 + np.mean(centermost_rf_echoes))
-        return readtrain_spacing
-
     def min_readtrain_spacing_func(self, is_gradient_echo, RF_excitation, gre_echo_train_dur, readout_risetime, read_prephaser, phaser_duration, slice_select_excitation, slice_select_rephaser, RF_refocusing, slice_select_refocusing):
         # Get shortest spacing for (center of) gradient echo trains
         # Equals center position of gradient echo (train) for gradient echo sequences
@@ -1680,20 +1652,30 @@ class MRIsimulator(param.Parameterized):
             )
             spacing = max(left_side, right_side) * 2
         return spacing
-        
-    def centermost_rf_echo_func(self, EPI_factor, is_gradient_echo, TE, min_readtrain_spacing, split_center, turbo_factor):
-        if EPI_factor > 1 or is_gradient_echo:
-            return None
-        centermost_rf_echo = int(np.floor(TE / min_readtrain_spacing - (1 + .5 * split_center)))
-        return min(centermost_rf_echo, turbo_factor - 1 - split_center)
-            
-    def readtrain_spacing_func(self, EPI_factor, readtrain_spacing_linear_order, TE, centermost_rf_echo, split_center):
+    
+    def centermost_gr_echo_func(self, central_segment, reverse_linear_order, num_segm, turbo_factor):
+        # get index of gradient echo closest to k-space center
+        #TODO: opposite gre order or different rounding (ceil/floor) may minimize TE
+        centermost_gr_echo = central_segment // turbo_factor
+        return centermost_gr_echo
+
+    def centermost_rf_echo_func(self, is_gradient_echo, EPI_factor, central_segment, turbo_factor, TE, min_readtrain_spacing):
+        # get index if RF echo closest to k-space center
+        if is_gradient_echo:
+            return 0
+        if EPI_factor > 1: # linear segment order for EPI and GRASE
+            #TODO: opposite rfe order or different rounding (ceil/floor) may minimize TE
+            return central_segment % turbo_factor
+        return min(int(np.floor(TE / min_readtrain_spacing)) - 1, turbo_factor - 1)
+    
+    def readtrain_spacing_func(self, EPI_factor, gr_echo_spacing, TE, centermost_gr_echo, centermost_rf_echo):
         # Equals center position of gradient echo (train) for gradient echo sequences
         # Equals rf echo spacing for spin echo sequences
-        if EPI_factor > 1: # linear k-space order for EPI / GRASE
-            return readtrain_spacing_linear_order.copy()
-        # (turbo) spin echo
-        return TE / (centermost_rf_echo + (1 + .5 * split_center))
+        spin_echo_time = TE
+        if EPI_factor > 1:
+            readtrain_shift = gr_echo_spacing * (centermost_gr_echo - (EPI_factor-1)/2)
+            spin_echo_time -= readtrain_shift
+        return spin_echo_time / (centermost_rf_echo + 1)
         
     def k_read_axis_func(self, freq_dir, FOV, matrix, is_radial, fantom, radial_FOV_oversampling):
         voxel_size = FOV[freq_dir] / matrix[freq_dir]
@@ -1727,17 +1709,26 @@ class MRIsimulator(param.Parameterized):
         assert(sum(lines_to_measure) == num_measured_lines)
         return lines_to_measure
 
+    def num_segm_func(self, num_measured_lines, num_blades, num_shots):
+        # number of k-space segments
+        return int(num_measured_lines * num_blades / num_shots)
+
+    def num_sym_lines_func(self, num_measured_lines, k_phase_axis):
+        return 2 * num_measured_lines - len(k_phase_axis)
+
+    def split_center_func(self, num_sym_lines, num_shots):
+        # does center of k-space lie between two segments?
+        return (num_sym_lines % num_shots == 0) and ((num_sym_lines / num_shots) % 2 == 0)
+
     def num_sym_segm_func(self, split_center, num_sym_lines, num_blades, num_shots):
         # number of k-space segments symmetric about center:
         if split_center:
             return int(num_sym_lines * num_blades / num_shots)
         return int(np.round((num_sym_lines * num_blades / num_shots - 1) / 2)) * 2 + 1
 
-    def central_segments_func(self, split_center, num_segm, num_sym_segm):
-        if split_center:
-            return [num_segm - num_sym_segm//2 - 1, num_segm - num_sym_segm//2]
-        return [num_segm - num_sym_segm//2 - 1]
-    
+    def central_segment_func(self, num_segm, num_sym_segm):
+        return num_segm - np.ceil(num_sym_segm / 2)
+        
     def pe_table_func(self, EPI_factor, turbo_factor, num_sym_segm, centermost_rf_echo, is_radial, num_shots, reverse_linear_order, lines_to_measure):
         if EPI_factor == 1: # (turbo) spin echo
             segment_order = get_segment_order(turbo_factor, num_sym_segm, centermost_rf_echo)
