@@ -892,29 +892,54 @@ class MRIsimulator(param.Parameterized):
             'parents': ['sequence_start', 'TR', 'time_dim', 'frequency_dim', 'phase_dim', 'slice_dim', 'RF_dim', 'signal_dim']
         }
         
+        node_specs['frequency_hover'] = {
+            'func': self.frequency_hover_func,
+            'parents': []
+        }
+        
+        node_specs['phase_hover'] = {
+            'func': self.phase_hover_func,
+            'parents': []
+        }
+        
+        node_specs['slice_hover'] = {
+            'func': self.slice_hover_func,
+            'parents': []
+        }
+        
+        node_specs['RF_hover'] = {
+            'func': self.RF_hover_func,
+            'parents': []
+        }
+        
+        node_specs['signal_hover'] = {
+            'func': self.signal_hover_func,
+            'parents': []
+        }
+        
         node_specs['frequency_board'] = {
             'func': self.frequency_board_func,
-            'parents': ['time_dim', 'frequency_dim', 'frequency_objects', 'TR_span']
+            'parents': ['time_dim', 'frequency_dim', 'frequency_objects', 'TR_span', 'frequency_hover']
         }
 
         node_specs['phase_board'] = {
             'func': self.phase_board_func,
-            'parents': ['time_dim', 'phase_dim', 'phase_objects', 'TR_span']
+            'parents': ['time_dim', 'phase_dim', 'phase_objects', 'TR_span', 'phase_hover']
         }
 
         node_specs['slice_board'] = {
             'func': self.slice_board_func,
-            'parents': ['time_dim', 'slice_dim', 'slice_objects', 'TR_span']
+            'parents': ['time_dim', 'slice_dim', 'slice_objects', 'TR_span', 'slice_hover']
         }
 
         node_specs['RF_board'] = {
             'func': self.RF_board_func,
-            'parents': ['time_dim', 'RF_dim', 'RF_objects', 'TR_span']
+            'parents': ['time_dim', 'RF_dim', 'RF_objects', 'TR_span', 'RF_hover']
         }
 
         node_specs['signal_board'] = {
             'func': self.signal_board_func,
-            'parents': ['time_dim', 'signal_dim', 'signal_objects', 'ADC_objects', 'TR_span']
+            'parents': ['time_dim', 'signal_dim', 'signal_objects', 'ADC_objects', 'TR_span', 'signal_hover']
         }
 
         node_specs['sequence_plot'] = {
@@ -2211,15 +2236,10 @@ class MRIsimulator(param.Parameterized):
         else:
             self.k_line.event(coords=[None])
 
-    def get_hover_tool(self, board, obj):
-        attributes = [attr for attr in obj.keys() if attr not in ['time', board, 'c1', 'c2', 'c3', 'c4'] and '_f' not in attr]
-        if board in ['frequency', 'phase', 'RF', 'ADC']:
-            with open(Path(__file__).parent / 'hoverCallback.js', 'r') as file:
-                hover_callback = CustomJS(args={'hover_index': self.hover_index, 'board': board}, code=file.read())
-        else:
-            hover_callback = None
-        hover = HoverTool(tooltips=[(attr, f'@{attr}') for attr in attributes], attachment='below', callback=hover_callback)
-        return hover, attributes
+    def get_hover_tool(self, board, attributes):
+        with open(Path(__file__).parent / 'hoverCallback.js', 'r') as file:
+            hover_callback = CustomJS(args={'hover_index': self.hover_index, 'board': board}, code=file.read())
+        return HoverTool(tooltips=[(attr, f'@{attr}') for attr in attributes], attachment='below', callback=hover_callback)
 
     def get_k_on_interval(self, interval):
         t = np.arange(*interval[[0, -1]], self.k_trajectory['dt'])
@@ -2307,46 +2327,60 @@ class MRIsimulator(param.Parameterized):
             TR_span[board_dim.name] = hv.VSpan(-20000, sequence_start, kdims=[time_dim, board_dim]).opts(color='gray', fill_alpha=.3)
             TR_span[board_dim.name] *= hv.VSpan(sequence_start + TR, 20000, kdims=[time_dim, board_dim]).opts(color='gray', fill_alpha=.3)
         return TR_span
+
+    def frequency_hover_func(self):
+        return self.get_hover_tool('frequency', ['name', 'center', 'duration', 'area'])
     
-    def frequency_board_func(self, time_dim, frequency_dim, frequency_objects, TR_span):
-        hover, attributes = self.get_hover_tool('frequency', frequency_objects[0])
+    def phase_hover_func(self):
+        return self.get_hover_tool('phase', ['name', 'center', 'duration', 'area'])
+    
+    def slice_hover_func(self):
+        return self.get_hover_tool('slice', ['name', 'center', 'duration', 'area'])
+    
+    def RF_hover_func(self):
+        return self.get_hover_tool('RF', ['name', 'center', 'duration', 'flip_angle'])
+    
+    def signal_hover_func(self):
+        return self.get_hover_tool('signal', ['name', 'center', 'duration'])
+    
+    def frequency_board_func(self, time_dim, frequency_dim, frequency_objects, TR_span, frequency_hover):
+        vdims = [tip[0] for tip in frequency_hover.tooltips]
         specs = [hline(time_dim, frequency_dim),
                  hv.Area(sequence.accumulate_waveforms(frequency_objects, 'frequency'), time_dim, frequency_dim).opts(color=BOARD_COLORS['frequency']),
-                 hv.Polygons(frequency_objects, kdims=[time_dim, frequency_dim], vdims=attributes).opts(tools=[hover], cmap=[BOARD_COLORS['frequency']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=(-19000, 19000))]),
+                 hv.Polygons(frequency_objects, kdims=[time_dim, frequency_dim], vdims=vdims).opts(tools=[frequency_hover], cmap=[BOARD_COLORS['frequency']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=(-19000, 19000))]),
                  TR_span['frequency']]
         return specs
         
-    def phase_board_func(self, time_dim, phase_dim, phase_objects, TR_span):
-        hover, attributes = self.get_hover_tool('phase', phase_objects[0])
+    def phase_board_func(self, time_dim, phase_dim, phase_objects, TR_span, phase_hover):
+        vdims = [tip[0] for tip in phase_hover.tooltips]
         specs = [hline(time_dim, phase_dim),
                  hv.Area(sequence.accumulate_waveforms(phase_objects, 'phase'), time_dim, phase_dim).opts(color=BOARD_COLORS['phase']),
-                 hv.Polygons(phase_objects, kdims=[time_dim, phase_dim], vdims=attributes).opts(tools=[hover], cmap=[BOARD_COLORS['phase']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=(-19000, 19000))]),
+                 hv.Polygons(phase_objects, kdims=[time_dim, phase_dim], vdims=vdims).opts(tools=[phase_hover], cmap=[BOARD_COLORS['phase']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=(-19000, 19000))]),
                  TR_span['phase']]
         return specs
     
-    def slice_board_func(self, time_dim, slice_dim, slice_objects, TR_span):
-        hover, attributes = self.get_hover_tool('slice', slice_objects[0])
+    def slice_board_func(self, time_dim, slice_dim, slice_objects, TR_span, slice_hover):
+        vdims = [tip[0] for tip in slice_hover.tooltips]
         specs = [hline(time_dim, slice_dim),
                  hv.Area(sequence.accumulate_waveforms(slice_objects, 'slice'), time_dim, slice_dim).opts(color=BOARD_COLORS['slice']),
-                 hv.Polygons(slice_objects, kdims=[time_dim, slice_dim], vdims=attributes).opts(tools=[hover], cmap=[BOARD_COLORS['slice']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=(-19000, 19000))]),
+                 hv.Polygons(slice_objects, kdims=[time_dim, slice_dim], vdims=vdims).opts(tools=[slice_hover], cmap=[BOARD_COLORS['slice']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=(-19000, 19000))]),
                  TR_span['slice']]
         return specs
     
-    def RF_board_func(self, time_dim, RF_dim, RF_objects, TR_span):
-        hover, attributes = self.get_hover_tool('RF', RF_objects[0])
+    def RF_board_func(self, time_dim, RF_dim, RF_objects, TR_span, RF_hover):
+        vdims = [tip[0] for tip in RF_hover.tooltips]
         specs = [hline(time_dim, RF_dim),
                  hv.Area(sequence.accumulate_waveforms(RF_objects, 'RF'), time_dim, RF_dim).opts(color=BOARD_COLORS['RF']),
-                 hv.Polygons(RF_objects, kdims=[time_dim, RF_dim], vdims=attributes).opts(tools=[hover], cmap=[BOARD_COLORS['RF']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=(-19000, 19000))]),
+                 hv.Polygons(RF_objects, kdims=[time_dim, RF_dim], vdims=vdims).opts(tools=[RF_hover], cmap=[BOARD_COLORS['RF']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=(-19000, 19000))]),
                  TR_span['RF']]
         return specs
     
-    def signal_board_func(self, time_dim, signal_dim, signal_objects, ADC_objects, TR_span):
-        _, signal_attributes = self.get_hover_tool('signal', signal_objects[0])
-        hover, ADC_attributes = self.get_hover_tool('ADC', ADC_objects[0])
+    def signal_board_func(self, time_dim, signal_dim, signal_objects, ADC_objects, TR_span, signal_hover):
+        vdims = [tip[0] for tip in signal_hover.tooltips]
         specs = [hline(time_dim, signal_dim),
                  hv.Area(sequence.accumulate_waveforms(signal_objects, 'signal'), time_dim, signal_dim).opts(color=BOARD_COLORS['signal']),
-                 hv.Polygons(signal_objects, kdims=[time_dim, signal_dim], vdims=signal_attributes).opts(tools=[], cmap=[BOARD_COLORS['signal']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=(-19000, 19000))]),
-                 hv.Rectangles(ADC_objects, kdims=['c1', 'c2', 'c3', 'c4'], vdims=ADC_attributes).opts(tools=[hover]),
+                 hv.Polygons(signal_objects, kdims=[time_dim, signal_dim], vdims='signal').opts(tools=[], cmap=[BOARD_COLORS['signal']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=(-19000, 19000))]),
+                 hv.Rectangles(ADC_objects, kdims=['c1', 'c2', 'c3', 'c4'], vdims=vdims).opts(tools=[signal_hover]),
                  TR_span['signal']]
         return specs
 
