@@ -107,6 +107,23 @@ def get_readtrain_pos(readtrain_spacing, rf_echo_num):
     # center position of gradient echo readout (train)
     return readtrain_spacing * (rf_echo_num + 1)
 
+def get_k_coords(t, gp, tp, refocus_intervals):
+    g = np.interp(t, tp, gp)
+    dk = np.diff(t) * (g[:-1] + np.diff(g)/2) * constants.GYRO * 1e-3
+    k = np.insert(np.cumsum(dk), 0, 0.) # start at k=0
+    for (ref_start, ref_stop) in refocus_intervals:
+        # k inversion of refocusing pulse corresponds to negative shift of 2k:
+        k_before = k[t<=ref_start][-1]
+        refocus_times = t[(t>ref_start) & (t<ref_stop)]
+        k[(t>ref_start) & (t<ref_stop)] -= 2 * k_before * (refocus_times - ref_start) / (ref_stop - ref_start)
+        k[t>=ref_stop] -= 2 * k_before
+    return k
+
+def get_k_on_interval(interval, k_trajectory):
+    t = np.arange(*interval[[0, -1]], k_trajectory['dt'])
+    kx = np.interp(t, k_trajectory['t'], k_trajectory['kx'])
+    ky = np.interp(t, k_trajectory['t'], k_trajectory['ky'])
+    return zip(kx, ky)
 
 def bounds_hook(plot, elem, xbounds=None):
     x_range = plot.handles['plot'].x_range
@@ -822,6 +839,11 @@ class MRIsimulator(param.Parameterized):
             'parents': ['recon_matrix', 'full_k_matrix', 'matrix']
         }
         
+        node_specs['k_trajectory'] = {
+            'func': self.k_trajectory_func,
+            'parents': ['RF_refocusing', 'frequency_board', 'phase_board', 'is_radial', 'phase_dir', 'spoke_angle']
+        }
+
         node_specs['time_dim'] = {
             'func': self.time_dim_func,
             'parents': []
@@ -2228,52 +2250,41 @@ class MRIsimulator(param.Parameterized):
                 signal = sequence.get_signal(waveform, t, scale, signal_exponent)
                 signal_curves[-1].append(signal)
         return signal_curves
-    
-    def update_k_line_coords(self, attr, old, hover_index):
-        if len(hover_index['index']) > 0:
-            object = self.boards[hover_index['board'][0]]['object_list'][hover_index['index'][0]]
-            self.k_line.event(coords=list(self.get_k_on_interval(object['time'][[0, -1]])))
-        else:
-            self.k_line.event(coords=[None])
 
     def get_hover_tool(self, board, attributes):
         with open(Path(__file__).parent / 'hoverCallback.js', 'r') as file:
             hover_callback = CustomJS(args={'hover_index': self.hover_index, 'board': board}, code=file.read())
+        if board == 'slice':
+            hover_callback = None
         return HoverTool(tooltips=[(attr, f'@{attr}') for attr in attributes], attachment='below', callback=hover_callback)
+    
+    def update_k_line_coords(self, attr, old, hover_index):
+        if len(hover_index['index']) == 0:
+            self.k_line.event(coords=[None])
+            return
+        board = hover_index['board'][0]
+        index = hover_index['index'][0]
+        object = self.graph[f'{board}_objects'].value[index]
+        k_trajectory = self.graph['k_trajectory'].value
+        self.k_line.event(coords=list(get_k_on_interval(object['time'][[0, -1]], k_trajectory)))
 
-    def get_k_on_interval(self, interval):
-        t = np.arange(*interval[[0, -1]], self.k_trajectory['dt'])
-        kx = np.interp(t, self.k_trajectory['t'], self.k_trajectory['kx'])
-        ky = np.interp(t, self.k_trajectory['t'], self.k_trajectory['ky'])
-        return zip(kx, ky)
-
-    def get_k_coords(self, t, gp, tp, refocus_intervals):
-        g = np.interp(t, tp, gp)
-        dk = np.diff(t) * (g[:-1] + np.diff(g)/2) * constants.GYRO * 1e-3
-        k = np.insert(np.cumsum(dk), 0, 0.) # start at k=0
-        for (ref_start, ref_stop) in refocus_intervals:
-            # k inversion of refocusing pulse corresponds to negative shift of 2k:
-            k_before = k[t<=ref_start][-1]
-            refocus_times = t[(t>ref_start) & (t<ref_stop)]
-            k[(t>ref_start) & (t<ref_stop)] -= 2 * k_before * (refocus_times - ref_start) / (ref_stop - ref_start)
-            k[t>=ref_stop] -= 2 * k_before
-        return k
-
-    def calculate_k_trajectory(self):
+    def k_trajectory_func(self, RF_refocusing, frequency_board, phase_board, is_radial, phase_dir, spoke_angle):
+        frequency_area = frequency_board[1] # TODO: avoid hard-coding
+        phase_area = phase_board[1] # TODO: avoid hard-coding
         dt = .01
-        refocus_intervals = [list(rf['time'][[0, -1]]) for rf in self.boards['RF']['objects']['refocusing']]
-        t = np.concatenate((*(self.board_plots[board]['area']['time'] for board in ['frequency', 'phase']), [t for ref in refocus_intervals for t in ref])) # k event times
+        refocus_intervals = [list(rf['time'][[0, -1]]) for rf in RF_refocusing]
+        t = np.concatenate((*(area['time'] for area in [frequency_area, phase_area]), [t for ref in refocus_intervals for t in ref])) # k event times
         t = np.unique(np.concatenate((t, np.arange(0., max(t), dt)))) # merge with time grid
-        kx = self.get_k_coords(t, *(self.board_plots['frequency']['area'][dim] for dim in ['G read', 'time']), refocus_intervals)
-        ky = self.get_k_coords(t, *(self.board_plots['phase']['area'][dim] for dim in ['G phase', 'time']), refocus_intervals)
-        if not self.is_radial.value:
-            if self.phase_dir.value==1:
+        kx = get_k_coords(t, *(frequency_area[dim] for dim in ['G read', 'time']), refocus_intervals)
+        ky = get_k_coords(t, *(phase_area[dim] for dim in ['G phase', 'time']), refocus_intervals)
+        if not is_radial:
+            if phase_dir==1:
                 kx, ky = ky, kx
         else: # rotate by spoke/blade angle
-            angle = np.radians(self.spoke_angle_node.value)
+            angle = np.radians(spoke_angle)
             cos, sin = np.cos(angle), np.sin(angle)
             kx, ky = cos * kx - sin * ky, sin * kx + cos * ky
-        self.k_trajectory = {'kx': kx, 'ky': ky, 't': t, 'dt': dt}
+        return {'kx': kx, 'ky': ky, 't': t, 'dt': dt}
 
     def time_dim_func(self):
         return hv.Dimension('time', label='time', unit='ms')
