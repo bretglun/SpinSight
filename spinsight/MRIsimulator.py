@@ -595,7 +595,7 @@ class MRIsimulator(param.Parameterized):
         node_specs['spoke_angle'] = {
             'params': self,
             'func': lambda k_angles, shot: 
-                    np.degrees(k_angles[shot-1]),
+                    np.degrees(k_angles[min(shot-1, len(k_angles)-1)]),
             'parents': ['k_angles', 'shot']
         }
 
