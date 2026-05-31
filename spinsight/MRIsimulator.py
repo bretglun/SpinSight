@@ -107,6 +107,17 @@ def get_readtrain_pos(readtrain_spacing, rf_echo_num):
     # center position of gradient echo readout (train)
     return readtrain_spacing * (rf_echo_num + 1)
 
+
+def readtrain_shift(gr_echo_spacing, centermost_gr_echo, num_gr_echoes):
+    return gr_echo_spacing * (centermost_gr_echo - (num_gr_echoes-1)/2)
+
+
+def TE_from_centermost_echoes(readtrain_spacing, centermost_rf_echo, gr_echo_spacing, centermost_gr_echo, EPI_factor):
+    TE = readtrain_spacing * (1 + centermost_rf_echo)
+    TE += readtrain_shift(gr_echo_spacing, centermost_gr_echo, EPI_factor)
+    return TE
+
+
 def get_k_coords(t, gp, tp, refocus_intervals):
     g = np.interp(t, tp, gp)
     dk = np.diff(t) * (g[:-1] + np.diff(g)/2) * constants.GYRO * 1e-3
@@ -119,11 +130,13 @@ def get_k_coords(t, gp, tp, refocus_intervals):
         k[t>=ref_stop] -= 2 * k_before
     return k
 
+
 def get_k_on_interval(interval, k_trajectory):
     t = np.arange(*interval[[0, -1]], k_trajectory['dt'])
     kx = np.interp(t, k_trajectory['t'], k_trajectory['kx'])
     ky = np.interp(t, k_trajectory['t'], k_trajectory['ky'])
     return zip(kx, ky)
+
 
 def bounds_hook(plot, elem, xbounds=None):
     x_range = plot.handles['plot'].x_range
@@ -209,7 +222,7 @@ class MRIsimulator(param.Parameterized):
     phase_oversampling = param.Selector(default=0, precedence=3, label='Phase oversampling')
     radial_factor = param.Number(default=1., precedence=-3, label='Spoke sampling factor')
     num_shots = param.Integer(precedence=-3)
-    num_shots_label = param.String('# shots')
+    shot_label = param.String('shot')
     voxel_P = param.Selector(default=1.333, precedence=-4, label='Voxel size x')
     voxel_F = param.Selector(default=1.333, precedence=-4, label='Voxel size y')
     matrix_P = param.Selector(default=180, precedence=4, label='Acquisition matrix x')
@@ -286,6 +299,138 @@ class MRIsimulator(param.Parameterized):
         self.inversion_thk_factor = 1.1 # make inversion slice 10% thicker
 
         node_specs = {par: {'params': self} for par in self.param if par != 'name'}
+
+        node_specs['set_min_TR'] = {
+            'action': True,
+            'func': self.set_min_TR,
+            'parents': ['min_TR']
+        }
+        
+        node_specs['set_TE_bounds'] = {
+            'action': True,
+            'func': self.set_TE_bounds,
+            'parents': ['TR', 'min_TR', 'TE', 'min_TE']
+        }
+        
+        node_specs['set_max_TI'] = {
+            'action': True,
+            'func': self.set_max_TI,
+            'parents': ['sequence_type', 'TR', 'min_TR', 'TI']
+        }
+        
+        node_specs['set_labels_by_trajectory'] = {
+            'action': True,
+            'func': self.set_labels_by_trajectory,
+            'parents': ['shot_label']
+        }
+        
+        node_specs['set_trajectory_objects'] = {
+            'action': True,
+            'func': self.set_trajectory_objects,
+            'parents': ['EPI_factor', 'turbo_factor']
+        }
+
+        node_specs['set_BW_bounds'] = {
+            'action': True,
+            'func': self.set_BW_bounds,
+            'parents': ['matrix_F', 'FOV_F', 'is_gradient_echo', 'gre_max_read_duration', 'RF_refocusing', 'turbo_factor', 'EPI_factor', 'TE', 'RF_excitation', 'readtrain_spacing', 'phaser_duration', 'max_blip_dur', 'slice_select_refocusing', 'TR', 'sequence_start', 'spoiler']
+        }
+        
+        node_specs['set_matrix_F_bounds'] = {
+            'action': True,
+            'func': self.set_matrix_F_bounds,
+            'parents': ['max_readout_area', 'FOV_F', 'parameter_style', 'FOV_bandwidth']
+        }
+        
+        node_specs['set_matrix_P_bounds'] = {
+            'action': True,
+            'func': self.set_matrix_P_bounds,
+            'parents': ['max_phaser_area', 'FOV_P']
+        }
+        
+        node_specs['set_FOV_F_bounds'] = {
+            'action': True,
+            'func': self.set_FOV_F_bounds,
+            'parents': ['matrix_F', 'max_readout_area', 'parameter_style', 'voxel_F', 'recon_voxel_F']
+        }
+        
+        node_specs['set_FOV_P_bounds'] = {
+            'action': True,
+            'func': self.set_FOV_P_bounds,
+            'parents': ['matrix_P', 'max_phaser_area', 'parameter_style', 'voxel_P', 'recon_voxel_P']
+        }
+        
+        node_specs['set_FW_shift_objects'] = {
+            'action': True,
+            'func': self.set_FW_shift_objects,
+            'parents': ['field_strength']
+        }
+        
+        node_specs['set_FOV_bandwidth_objects'] = {
+            'action': True,
+            'func': self.set_FOV_bandwidth_objects,
+            'parents': ['matrix_F']
+        }
+        
+        node_specs['set_voxel_F_objects'] = {
+            'action': True,
+            'func': self.set_voxel_F_objects,
+            'parents': ['FOV_F']
+        }
+        
+        node_specs['set_voxel_P_objects'] = {
+            'action': True,
+            'func': self.set_voxel_P_objects,
+            'parents': ['FOV_P']
+        }
+        
+        node_specs['set_recon_voxel_F_objects'] = {
+            'action': True,
+            'func': self.set_recon_voxel_F_objects,
+            'parents': ['FOV_F']
+        }
+        
+        node_specs['set_recon_voxel_P_objects'] = {
+            'action': True,
+            'func': self.set_recon_voxel_P_objects,
+            'parents': ['FOV_P']
+        }
+        
+        node_specs['set_slice_thickness_bounds'] = {
+            'action': True,
+            'func': self.set_slice_thickness_bounds,
+            'parents': ['RF_excitation', 'is_gradient_echo', 'RF_refocusing', 'sequence_type', 'RF_inversion', 'TR', 'spoiler', 'sampling_windows']
+        }
+        
+        node_specs['set_turbo_factor_bounds'] = {
+            'action': True,
+            'func': self.set_turbo_factor_bounds,
+            'parents': ['matrix', 'phase_dir', 'partial_Fourier', 'EPI_factor']
+        }
+
+        node_specs['set_EPI_factor_objects'] = {
+            'action': True,
+            'func': self.set_EPI_factor_objects,
+            'parents': ['matrix', 'phase_dir', 'partial_Fourier', 'turbo_factor']
+        }
+        
+        node_specs['set_homodyne_visibility'] = {
+            'action': True,
+            'func': self.set_homodyne_visibility,
+            'parents': ['num_blank_lines', 'is_radial']
+        }
+
+        node_specs['set_reference_tissue_objects'] = {
+            'action': True,
+            'func': self.set_reference_tissue_objects,
+            'parents': ['tissues']
+        }
+        
+        node_specs['set_shot_bounds'] = {
+            'action': True,
+            'func': self.set_shot_bounds,
+            'parents': ['num_shots']
+        }
         
         node_specs['phantom'] = {
             'func': lambda object, min_voxel_size:
@@ -297,12 +442,6 @@ class MRIsimulator(param.Parameterized):
             'func': lambda fantom:
                     list(fantom['shapes'].keys()),
             'parents': ['phantom']
-        }
-
-        node_specs['set_reference_tissue_objects'] = {
-            'action': True,
-            'func': self.set_reference_tissue_objects,
-            'parents': ['tissues']
         }
 
         node_specs['is_radial'] = {
@@ -574,6 +713,41 @@ class MRIsimulator(param.Parameterized):
             'parents': []
         }
 
+        node_specs['min_TE'] = {
+            'func': self.min_TE_func,
+            'parents': ['EPI_factor', 'centermost_rf_echo', 'centermost_gr_echo', 'min_readtrain_spacing', 'gr_echo_spacing']
+        }
+        
+        node_specs['min_TR'] = {
+            'func': self.min_TR_func,
+            'parents': ['spoiler', 'sequence_start']
+        }
+        
+        node_specs['gre_read_start_to_kcenter'] = {
+            'func': self.gre_read_start_to_kcenter_func,
+            'parents': ['is_gradient_echo', 'phasers', 'rephasers', 'TE', 'RF_excitation', 'read_prephaser', 'readout_risetime', 'slice_select_excitation', 'slice_select_rephaser']
+        }
+
+        node_specs['gre_kcenter_to_read_end'] = {
+            'func': self.gre_kcenter_to_read_end_func,
+            'parents': ['is_gradient_echo', 'TR', 'sequence_start', 'spoiler', 'TE']
+        }
+
+        node_specs['gre_max_read_duration'] = {
+            'func': self.gre_max_read_duration_func,
+            'parents': ['gre_read_start_to_kcenter', 'gre_kcenter_to_read_end', 'centermost_gr_echo', 'readout_risetime', 'EPI_factor']
+        }
+
+        node_specs['max_readout_area'] = {
+            'func': self.max_readout_area_func,
+            'parents': ['pixel_bandwidth', 'is_gradient_echo', 'centermost_gr_echo', 'RF_excitation', 'phaser_duration', 'slice_select_excitation', 'slice_select_rephaser', 'max_blip_dur', 'readtrain_spacing', 'RF_refocusing_floating', 'EPI_factor']
+        }
+
+        node_specs['max_phaser_area'] = {
+            'func': self.max_phaser_area_func,
+            'parents': ['is_gradient_echo', 'readtrain_spacing', 'RF_excitation', 'gre_echo_train_dur', 'readout_risetime', 'RF_refocusing']
+        }
+
         node_specs['min_readtrain_spacing'] = {
             'func': self.min_readtrain_spacing_func,
             'parents': ['is_gradient_echo', 'RF_excitation', 'gre_echo_train_dur', 'readout_risetime', 'read_prephaser_floating', 'phaser_duration', 'slice_select_excitation', 'slice_select_rephaser', 'RF_refocusing_floating', 'slice_select_refocusing_floating']
@@ -620,6 +794,13 @@ class MRIsimulator(param.Parameterized):
             'parents': ['matrix_P', 'phase_oversampling', 'partial_Fourier', 'turbo_factor', 'EPI_factor', 'is_radial', 'num_blades']
         }
 
+        node_specs['shot_label'] = {
+            'params': self,
+            'func': lambda is_radial, EPI_factor, turbo_factor:
+                    'shot' if not is_radial else 'spoke' if (EPI_factor * turbo_factor == 1) else 'blade',
+            'parents': ['is_radial', 'EPI_factor', 'turbo_factor']
+        }
+
         node_specs['num_measured_lines'] = {
             # measured lines per blade
             'func': lambda turbo_factor, EPI_factor, num_shots, is_radial:
@@ -636,12 +817,6 @@ class MRIsimulator(param.Parameterized):
             'func': lambda k_phase_axis, lines_to_measure:
                     len(k_phase_axis) - sum(lines_to_measure),
             'parents': ['k_phase_axis', 'lines_to_measure']
-        }
-
-        node_specs['set_homodyne_visibility'] = {
-            'action': True,
-            'func': self.set_homodyne_visibility,
-            'parents': ['num_blank_lines', 'is_radial']
         }
 
         node_specs['lines_to_measure'] = {
@@ -677,12 +852,6 @@ class MRIsimulator(param.Parameterized):
         node_specs['pe_table'] = {
             'func': self.pe_table_func,
             'parents': ['EPI_factor', 'turbo_factor', 'num_sym_segm', 'centermost_rf_echo', 'is_radial', 'num_shots', 'reverse_linear_order', 'lines_to_measure']
-        }
-        
-        node_specs['set_shot_bounds'] = {
-            'action': True,
-            'func': self.set_shot_bounds,
-            'parents': ['num_shots']
         }
 
         node_specs['signal_level'] = {
@@ -986,7 +1155,7 @@ class MRIsimulator(param.Parameterized):
 
         self.set_reference_SNR()
 
-        self.derived_params = ['FOV_bandwidth', 'FW_shift', 'SNR', 'name', 'num_shots', 'recon_voxel_F', 'recon_voxel_P', 'reference_SNR', 'relative_SNR', 'scantime', 'spoke_angle', 'voxel_F', 'voxel_P', 'num_shots_label']
+        self.derived_params = ['FOV_bandwidth', 'FW_shift', 'SNR', 'name', 'num_shots', 'recon_voxel_F', 'recon_voxel_P', 'reference_SNR', 'relative_SNR', 'scantime', 'spoke_angle', 'voxel_F', 'voxel_P', 'shot_label']
 
     def init_bounds(self):
         self.param.object.objects = phantom.get_phantom_names()
@@ -1304,40 +1473,6 @@ class MRIsimulator(param.Parameterized):
     def _watch_reference_tissue(self):
         pass
 
-    def get_TE_from_centermost_echoes(self, readtrain_spacing, centermost_gr_echoes, centermost_rf_echoes):
-        TE = readtrain_spacing * (1 + np.mean(centermost_rf_echoes))
-        readtrain_shift = self.gr_echo_spacing * (np.mean(centermost_gr_echoes) - (self.EPI_factor-1)/2)
-        TE += readtrain_shift
-        return TE
-
-    def update_min_TE(self):
-        min_readtrain_spacing = self.get_min_readtrain_spacing()
-        if self.EPI_factor == 1: # flexible segment order for (turbo) spin echo
-            min_centermost_gr_echoes = [0]
-            min_centermost_rf_echoes = [0]
-            if (self.split_center and self.turbo_factor > 1):
-                min_centermost_rf_echoes += [1]
-            self.min_TE = self.get_TE_from_centermost_echoes(min_readtrain_spacing, min_centermost_gr_echoes, min_centermost_rf_echoes)
-        else: # linear segment order for EPI and GRASE
-            # # pick forward or reverse order that minimizes TE (may be forward for GRASE)
-            TE_cands = [self.get_TE_from_centermost_echoes(min_readtrain_spacing, *self.get_centermost_echoes_linear_order(reverse)) for reverse in [True, False]]
-            self.min_TE = min(TE_cands)
-
-    def update_min_TR(self):
-        self.min_TR = self.boards['slice']['objects']['spoiler']['time'][-1]
-        self.min_TR -= self.get_sequence_start()
-        self.set_param_bounds(self.param.TR, minval=self.min_TR)
-
-    def update_max_TE(self):
-        max_TE = self.TR - self.min_TR + self.TE
-        self.set_param_bounds(self.param.TE, minval=self.min_TE, maxval=max_TE)
-
-    def update_max_TI(self):
-        if self.sequence != 'Inversion Recovery':
-            return
-        max_TI = self.TR - self.min_TR + self.TI
-        self.set_param_bounds(self.param.TI, maxval=max_TI)
-
     def resolve_conflicts(self, max_TR=False):
         if max_TR:
             self.outbound_params.add('TR')
@@ -1356,41 +1491,249 @@ class MRIsimulator(param.Parameterized):
                 self.resolve_conflicts(max_TR=True)
             else:
                 warnings.warn(f'Unresolved conflict: {self.outbound_params}')
+    
+    def set_min_TR(self, min_TR):
+        self.set_param_bounds(self.param.TR, minval=min_TR)
 
-    def get_max_prephaser_area(self, readAmp):
-        if self.is_gradient_echo.value:
-            max_prephaser_dur =  self.TE - self.boards['ADC']['objects']['samplings'][0][0]['dur_f']/2 - self.boards['RF']['objects']['excitation']['dur_f']/2 - readAmp/self.max_slew
+    def set_TE_bounds(self, TR, min_TR, TE, min_TE):
+        #TODO: shouldn't depend on TE!
+        max_TE = TR - min_TR + TE
+        self.set_param_bounds(self.param.TE, minval=min_TE, maxval=max_TE)
+
+    def set_max_TI(self, sequence_type, TR, min_TR, TI):
+        if sequence_type != 'Inversion Recovery':
+            return
+        max_TI = TR - min_TR + TI
+        self.set_param_bounds(self.param.TI, maxval=max_TI)
+
+    def set_labels_by_trajectory(self, shot_label):
+        self.param.shot.label = f'Displayed {shot_label}'
+        self.param.radial_factor.label = f'{shot_label.capitalize()} sampling factor'
+
+    def set_trajectory_objects(self, EPI_factor, turbo_factor):
+        # Label radial trajectory 'Radial' or 'PROPELLER' depending on nLines per shot
+        self.param.trajectory.objects = constants.TRAJECTORIES
+        invalid, updated = ('PROPELLER', 'Radial') if (EPI_factor * turbo_factor == 1) else ('Radial', 'PROPELLER')
+        if self.trajectory == invalid:
+            self.trajectory = updated
+        self.param.trajectory.objects = [t for t in constants.TRAJECTORIES if t != invalid]
+
+    def set_BW_bounds(self, matrix_F, FOV_F, is_gradient_echo, gre_max_read_duration, RF_refocusing, turbo_factor, EPI_factor, TE, RF_excitation, readtrain_spacing, phaser_duration, max_blip_dur, slice_select_refocusing, TR, sequence_start, spoiler):
+        # See paramBounds.tex for formulae relating to the readout board
+        s = self.max_slew
+        A = 1e3 * matrix_F / (FOV_F * constants.GYRO) # readout area
+        # min limit imposed by maximum gradient amplitude:
+        min_read_durations = [A / self.max_amp]
+        max_read_durations = []
+        if is_gradient_echo:
+            max_read_durations.append(gre_max_read_duration)
+        else: # spin echo
+            refocusing_dur = RF_refocusing[0]['dur_f']
+            if turbo_factor==1 and EPI_factor==1: # prephaser should only be limiting for pure spin echo
+                # min limit imposed by prephaser duration tp:
+                tp = TE/2 - refocusing_dur/2 - RF_excitation['dur_f']/2
+                h = s * tp / 2
+                h = min(h, self.max_amp)
+                denom = 2*h*s*tp - s*A - 2*h**2
+                min_read_durations.append(np.sqrt(A**2/denom) if denom > 0 else np.inf)
+            idle_space = readtrain_spacing - RF_refocusing[0]['dur_f']
+            # max limit imposed by phaser:
+            max_read_durations.append((idle_space - 2 * phaser_duration - max_blip_dur * (EPI_factor-1))/EPI_factor)
+            # tr is half the maximum readout gradient duration
+            tr = ((idle_space) / EPI_factor) / 2
+            # max limit imposed by readout rise time:
+            radicand = tr**2 - 2*A/s
+            if radicand >= 0:
+                max_read_durations.append(tr + np.sqrt(radicand))
+            else:
+                max_read_durations.append(0)
+            # max limit imposed by slice select refocusing down ramp time:
+            max_read_durations.append((tr - slice_select_refocusing[0]['risetime_f']) * 2)
+            # readtrain_spacing may be limited by TR:
+            read_end_by_TR = (TR - (-sequence_start) - spoiler['dur_f'])
+            read_end_by_else = readtrain_spacing * (turbo_factor + 1/2) - refocusing_dur/2
+            max_read_durations.append((tr - (read_end_by_else-read_end_by_TR)) * 2)
+        min_read_duration, max_read_duration = max(min_read_durations), min(max_read_durations)
+        small = 1e-2 # to avoid roundoff errors
+        min_pixel_BW = 1e3 / max_read_duration + small if max_read_duration > 0 else np.inf
+        max_pixel_BW = 1e3 / min_read_duration - small if min_read_duration > 0 else np.inf
+        self.set_param_bounds(self.param.pixel_bandwidth, minval=min_pixel_BW, maxval=max_pixel_BW)
+
+    def set_matrix_F_bounds(self, max_readout_area, FOV_F, parameter_style, FOV_bandwidth):
+        min_matrix_F = []
+        max_matrix_F = [max_readout_area * 1e-3 * FOV_F * constants.GYRO]
+        if parameter_style == 'Matrix and FOV BW':
+            # TODO: this could be solved better
+            min_matrix_F.append(FOV_bandwidth / list(self.param.pixel_bandwidth.objects.values())[-1])
+            max_matrix_F.append(FOV_bandwidth / list(self.param.pixel_bandwidth.objects.values())[0])
+        self.set_param_bounds(self.param.matrix_F, minval=min_matrix_F, maxval=max_matrix_F)
+
+    def set_matrix_P_bounds(self, max_phaser_area, FOV_P):
+        max_matrix_P = int(max_phaser_area * 2e-3 * FOV_P * constants.GYRO) + 1
+        self.set_param_bounds(self.param.matrix_P, maxval=max_matrix_P)
+
+    def set_FOV_F_bounds(self, matrix_F, max_readout_area, parameter_style, voxel_F, recon_voxel_F):
+        min_FOV = [1e3 * matrix_F / (max_readout_area * constants.GYRO) if max_readout_area > 0 else np.inf]
+        max_FOV = []
+        if parameter_style == 'voxel_size and Fat/water shift':
+            # TODO: this could be solved better
+            min_FOV.append(voxel_F * self.param.matrix_F.objects[0])
+            min_FOV.append(recon_voxel_F * self.param.recon_matrix_F.objects[0])
+            max_FOV.append(voxel_F * self.param.matrix_F.objects[-1])
+            max_FOV.append(recon_voxel_F * self.param.recon_matrix_F.objects[-1])
+        self.set_param_bounds(self.param.FOV_F, minval=min_FOV, maxval=max_FOV)
+
+    def set_FOV_P_bounds(self, matrix_P, max_phaser_area, parameter_style, voxel_P, recon_voxel_P):
+        min_FOV = [(matrix_P - 1) / (max_phaser_area * constants.GYRO * 2e-3)]
+        max_FOV = []
+        if parameter_style == 'voxel_size and Fat/water shift':
+            # TODO: this could be solved better
+            min_FOV.append(voxel_P * self.param.matrix_P.objects[0])
+            min_FOV.append(recon_voxel_P * self.param.recon_matrix_P.objects[0])
+            max_FOV.append(voxel_P * self.param.matrix_P.objects[-1])
+            max_FOV.append(recon_voxel_P * self.param.recon_matrix_P.objects[-1])
+        self.set_param_bounds(self.param.FOV_P, minval=min_FOV, maxval=max_FOV)
+
+    def set_FW_shift_objects(self, field_strength):
+        self.param.FW_shift.objects = {f'{format_float(shift, 2)} pixels': shift for shift in [pixel_BW_to_shift(pBW, field_strength) for pBW in list(self.param.pixel_bandwidth.objects.values())[::-1]]}
+
+    def set_FOV_bandwidth_objects(self, matrix_F):
+        self.param.FOV_bandwidth.objects = {f'±{format_float(bw, 3)} kHz': bw for bw in [pixel_BW_to_FOV_BW(pBW, matrix_F) for pBW in self.param.pixel_bandwidth.objects.values()]}
+
+    def set_voxel_F_objects(self, FOV_F):
+        self.param.voxel_F.objects = {f'{format_float(voxel, 3)} mm': voxel for voxel in [FOV_F / matrix for matrix in self.param.matrix_F.objects[::-1]]}
+
+    def set_voxel_P_objects(self, FOV_P):
+        self.param.voxel_P.objects = {f'{format_float(voxel, 3)} mm': voxel for voxel in [FOV_P / matrix for matrix in self.param.matrix_P.objects[::-1]]}
+
+    def set_recon_voxel_F_objects(self, FOV_F):
+        self.param.recon_voxel_F.objects = {f'{format_float(voxel, 3)} mm': voxel for voxel in [FOV_F / matrix for matrix in self.param.recon_matrix_F.objects[::-1]]}
+
+    def set_recon_voxel_P_objects(self, FOV_P):
+        self.param.recon_voxel_P.objects = {f'{format_float(voxel, 3)} mm': voxel for voxel in [FOV_P / matrix for matrix in self.param.recon_matrix_P.objects[::-1]]}
+
+    def set_slice_thickness_bounds(self, RF_excitation, is_gradient_echo, RF_refocusing, sequence_type, RF_inversion, TR, spoiler, sampling_windows):
+        min_thks = [RF_excitation['FWHM_f'] / (self.max_amp * constants.GYRO)]
+        if not is_gradient_echo:
+            min_thks.append(RF_refocusing[0]['FWHM_f'] / (self.max_amp * constants.GYRO))
+        if sequence_type == 'Inversion Recovery':
+            min_thks.append(RF_inversion['FWHM_f'] / (self.max_amp * constants.GYRO) * self.inversion_thk_factor)
+        
+        # Constraint due to TR: 
+        if sequence_type == 'Inversion Recovery':
+            max_risetime = TR - (spoiler['time'][-1] - RF_inversion['time'][0])
+            max_amp = self.max_slew * max_risetime
+            min_thks.append(RF_inversion['FWHM_f'] / (max_amp * constants.GYRO))
         else:
-            max_prephaser_dur =  self.TE/2 - self.boards['RF']['objects']['refocusing'][0]['dur_f']/2 - self.boards['RF']['objects']['excitation']['dur_f']/2
-        max_prephaser_flat_dur = max_prephaser_dur - (2 * self.max_amp/self.max_slew)
-        if max_prephaser_flat_dur < 0: # triangle
-            max_prephaser_area = max_prephaser_dur**2 * self.max_slew / 4
-        else: # trapezoid
-            slewArea = self.max_amp**2 / self.max_slew
-            flat_area = self.max_amp * max_prephaser_flat_dur
-            max_prephaser_area = slewArea + flat_area
-        return max_prephaser_area
+            max_risetime = TR - (spoiler['time'][-1] - RF_excitation['time'][0])
+            max_amp = self.max_slew * max_risetime
+            min_thks.append(RF_excitation['FWHM_f'] / (max_amp * constants.GYRO))
+        
+        # See paramBounds.tex for formulae
+        s = self.max_slew
+        d = RF_excitation['dur_f']
+        if is_gradient_echo: # Constraint due to slice rephaser
+            t = sampling_windows[0][0]['time'][0]
+            h = s * (t - np.sqrt(t**2/2 + d**2/8))
+            h = min(h, self.max_amp)
+            A = d * (np.sqrt((d*s+2*h)**2 - 8*h*(h-s*(t-d/2))) - d*s - 2*h) / 2
+        else: # Spin echo: Constraint due to slice rephaser and refocusing slice select rampup
+            t = RF_refocusing[0]['time'][0]
+            h = s * (np.sqrt(2*(d + 2*t)**2 - 4*d**2) - d - 2*t) / 4
+            h = min(h, self.max_amp)
+            A = (np.sqrt((d*(d*s + 4*h))**2 - 4*d**2*h*(d*s + 2*h - 2*s*t)) - d*(d*s + 4*h)) / 2
+        Be = RF_excitation['FWHM_f']
+        min_thks.append(Be * d / (constants.GYRO * A)) # mm
+        
+        self.set_param_bounds(self.param.slice_thickness, minval=min_thks)
 
-    def get_max_readout_area(self):
+    def set_turbo_factor_bounds(self, matrix, phase_dir, partial_Fourier, EPI_factor):
+        # turbo_factor must equal 1 when the EPI_factor is even
+        if not self.EPI_factor%2:
+            self.param.turbo_factor.bounds = (1, 1)
+            self.param.turbo_factor.constant = True
+            return
+        max_turbo_factor = int(np.floor(matrix[phase_dir] * partial_Fourier / EPI_factor * 2)) # let's limit phase oversampling to 2
+        max_turbo_factor = min(max_turbo_factor, 64)
+        self.param.turbo_factor.bounds = (1, max_turbo_factor)
+        self.param.turbo_factor.constant = False
+
+    def set_EPI_factor_objects(self, matrix, phase_dir, partial_Fourier, turbo_factor):
+        max_EPI_factor = int(np.floor(matrix[phase_dir] * partial_Fourier / turbo_factor * 2)) # let's limit phase oversampling to 2
+        self.set_param_bounds(self.param.EPI_factor, maxval=max_EPI_factor)
+        # EPI_factor must be odd for turbo spin echo (GRASE)
+        if self.turbo_factor > 1:
+            self.param.EPI_factor.objects = [v for v in self.param.EPI_factor.objects if v%2]
+    
+    def set_homodyne_visibility(self, num_blank_lines, is_radial):
+        self.param.homodyne.precedence = -1 if (num_blank_lines == 0 or is_radial) else 1
+
+    def set_reference_tissue_objects(self, tissues):
+        self.param.reference_tissue.objects = tissues
+        self.reference_tissue = tissues[0]
+    
+    def set_shot_bounds(self, num_shots):
+        self.param.shot.bounds = (1, num_shots)
+        self.shot = min(self.shot, num_shots)
+    
+    def min_TE_func(self, EPI_factor, centermost_rf_echo, centermost_gr_echo, min_readtrain_spacing, gr_echo_spacing):
+        if EPI_factor == 1: # flexible segment order for (turbo) spin echo
+            min_centermost_rf_echo = 0
+            min_centermost_gr_echo = 0
+        else: # linear segment order for EPI and GRASE
+            # TODO: evaluate forward/reverse linear order
+            min_centermost_rf_echo = centermost_rf_echo
+            min_centermost_gr_echo = centermost_gr_echo
+        return TE_from_centermost_echoes(min_readtrain_spacing, min_centermost_rf_echo, gr_echo_spacing, min_centermost_gr_echo, EPI_factor)
+
+    def min_TR_func(self, spoiler, sequence_start):
+        return spoiler['time'][-1] - sequence_start
+    
+    def gre_read_start_to_kcenter_func(self, is_gradient_echo, phasers, rephasers, TE, RF_excitation, read_prephaser, readout_risetime, slice_select_excitation, slice_select_rephaser):
+        if not is_gradient_echo:
+            return None
+        min_phaser_time = min([grads[0]['dur_f'] for grads in [phasers, rephasers]])
+        read_start_to_kcenter = TE - RF_excitation['dur_f']/2
+        read_start_to_kcenter -= max(
+            read_prephaser['dur_f'] + readout_risetime, # TODO: consider maximum dur+risetime, not only current (difficult!)
+            min_phaser_time,
+            slice_select_excitation['risetime_f'] + slice_select_rephaser['dur_f'])
+        return read_start_to_kcenter
+    
+    def gre_kcenter_to_read_end_func(self, is_gradient_echo, TR, sequence_start, spoiler, TE):
+        if not is_gradient_echo:
+            return None
+        return (TR - (-sequence_start) - spoiler['dur_f']) - TE
+    
+    def gre_max_read_duration_func(self, gre_read_start_to_kcenter, gre_kcenter_to_read_end, centermost_gr_echo, readout_risetime, EPI_factor):
+        if gre_read_start_to_kcenter is None:
+            return None
+        # simplification: use current risetime (self.readout_risetime)
+        num_early_readouts = centermost_gr_echo + 1/2
+        num_early_ramps = centermost_gr_echo * 2
+        # max limit imposed by TE:
+        max_read_dur_early = ((gre_read_start_to_kcenter - num_early_ramps * readout_risetime) / num_early_readouts)
+        num_late_readouts = EPI_factor - num_early_readouts
+        num_late_ramps = (EPI_factor - 1) * 2 - num_early_ramps
+        # max limit imposed by TR:
+        max_read_dur_late = ((gre_kcenter_to_read_end - num_late_ramps * readout_risetime) / num_late_readouts)
+        return min(max_read_dur_early, max_read_dur_late)
+    
+    def max_readout_area_func(self, pixel_bandwidth, is_gradient_echo, centermost_gr_echo, RF_excitation, phaser_duration, slice_select_excitation, slice_select_rephaser, max_blip_dur, readtrain_spacing, RF_refocusing, EPI_factor):
         max_readout_areas = []
         # See paramBounds.tex for formulae
-        d = 1e3 / self.pixel_bandwidth # readout duration
+        d = 1e3 / pixel_bandwidth # readout duration
         s = self.max_slew
-        if self.is_gradient_echo.value:
-            centermost_gr_echoes, centermost_rf_echoes = self.get_centermost_echoes_linear_order(reverse=True)
-            if len(centermost_gr_echoes)==1:
-                N = centermost_gr_echoes[0] + 1/2
-                M = centermost_gr_echoes[0] * 2 + 1
-            else:
-                N = max(centermost_gr_echoes)
-                M = N * 2
-            t = self.TE - self.boards['RF']['objects']['excitation']['dur_f']/2
+        if is_gradient_echo:
+            N = centermost_gr_echo + 1/2
+            M = centermost_gr_echo * 2 + 1
+            t = self.TE - RF_excitation['dur_f']/2
             v = 0 # gap between readouts
             for _ in range(2): # update readout gap after first pass
                 if (M > 1):
                     # max wrt G slice or G phase:
-                    q = t - max(self.phaser_duration,
-                                self.boards['slice']['objects']['slice select excitation']['risetime_f'] + self.boards['slice']['objects']['slice select rephaser']['dur_f'])
+                    q = t - max(phaser_duration,
+                                slice_select_excitation['risetime_f'] + slice_select_rephaser['dur_f'])
                     A = d*s*(q - N*(d+v) + v/2) / (M-1) # eq. 15
                     max_readout_areas.append(A)
                 # max wrt G read:
@@ -1402,229 +1745,33 @@ class MRIsimulator(param.Parameterized):
                 A = min([A for A in A_roots if A>0])
                 max_readout_areas.append(A)
                 read_risetime = min(max_readout_areas) / (d * s)
-                v = max(self.max_blip_dur - 2 * read_risetime, 0)
+                v = max(max_blip_dur - 2 * read_risetime, 0)
         else: # (turbo) spin echo / GRASE
             # limit by half readout duration tr:
-            tr = (self.readtrain_spacing - self.boards['RF']['objects']['refocusing'][0]['dur_f']) / self.EPI_factor / 2
+            tr = (readtrain_spacing - RF_refocusing[0]['dur_f']) / EPI_factor / 2
             Ar = d*s* tr - d**2*s/2
             max_readout_areas.append(Ar)
             # limit by prephaser duration tp:
-            tp = (self.readtrain_spacing - self.boards['RF']['objects']['refocusing'][0]['dur_f'] - self.boards['RF']['objects']['excitation']['dur_f'])/2
+            tp = (readtrain_spacing - RF_refocusing[0]['dur_f'] - RF_excitation['dur_f'])/2
             h = s * tp / 2
             h = min(h, self.max_amp)
             Ap = d * (np.sqrt((d*s)**2 - 8*h*(h-s*tp)) - d*s) / 2
             max_readout_areas.append(Ap)
-        max_readout_areas.append(self.max_amp * 1e3 / self.pixel_bandwidth) # max wrt max_amp
+        max_readout_areas.append(self.max_amp * 1e3 / pixel_bandwidth) # max wrt max_amp
         return min(max_readout_areas)
 
-    def get_max_phaser_area(self):
-        if self.is_gradient_echo.value:
-            max_phaser_duration = self.readtrain_spacing - self.boards['RF']['objects']['excitation']['dur_f']/2 - self.gre_echo_train_dur/2 + self.readout_risetime
+    def max_phaser_area_func(self, is_gradient_echo, readtrain_spacing, RF_excitation, gre_echo_train_dur, readout_risetime, RF_refocusing):
+        if is_gradient_echo:
+            max_phaser_duration = readtrain_spacing - RF_excitation['dur_f']/2 - gre_echo_train_dur/2 + readout_risetime
         else:
-            max_phaser_duration = (self.readtrain_spacing - self.boards['RF']['objects']['refocusing'][0]['dur_f'] - self.gre_echo_train_dur)/2 + self.readout_risetime
+            max_phaser_duration = (readtrain_spacing - RF_refocusing[0]['dur_f'] - gre_echo_train_dur)/2 + readout_risetime
         max_risetime = self.max_amp / self.max_slew
         if max_phaser_duration > 2 * max_risetime: # trapezoid maxPhaser
             max_phaserarea = (max_phaser_duration - max_risetime) * self.max_amp
         else: # triangular maxPhaser
             max_phaserarea = (max_phaser_duration/2)**2 * self.max_slew
         return max_phaserarea
-
-    def get_max_read_duration(self, read_start_to_kcenter, kcenter_to_read_end, reverse=False):
-        # simplification: use current risetime (self.readout_risetime)
-        centermost_gr_echoes, centermost_rf_echoes = self.get_centermost_echoes_linear_order(reverse=reverse)
-        if len(centermost_gr_echoes)==1:
-            num_early_readouts = centermost_gr_echoes[0] + 1/2
-            num_early_ramps = centermost_gr_echoes[0] * 2
-        else:
-            num_early_readouts = max(centermost_gr_echoes)
-            num_early_ramps = num_early_readouts * 2 - 1
-        # max limit imposed by TE:
-        max_read_dur_early = ((read_start_to_kcenter - num_early_ramps * self.readout_risetime) / num_early_readouts)
-        num_late_readouts = self.EPI_factor - num_early_readouts
-        num_late_ramps = (self.EPI_factor - 1) * 2 - num_early_ramps
-        # max limit imposed by TR:
-        max_read_dur_late = ((kcenter_to_read_end - num_late_ramps * self.readout_risetime) / num_late_readouts)
-        return min(max_read_dur_early, max_read_dur_late)
-
-    def update_labels_by_trajectory(self):
-        shot_label = 'shot' if not self.is_radial.value else 'spoke' if (self.EPI_factor * self.turbo_factor == 1) else 'blade'
-        self.num_shots_label = f'# {shot_label}s'
-        self.param.shot.label = f'Displayed {shot_label}'
-        self.param.radial_factor.label = f'{shot_label.capitalize()} sampling factor'
-        # Label radial trajectory 'Radial' or 'PROPELLER' depending on nLines per shot
-        traj_indices = [0, 1] if (self.EPI_factor * self.turbo_factor == 1) else [0, 2]
-        self.param.trajectory.objects = [constants.TRAJECTORIES[i] for i in traj_indices]
-        if self.trajectory not in self.param.trajectory.objects:
-            self.trajectory = constants.TRAJECTORIES[traj_indices[-1]]
-
-    def update_BW_bounds(self):
-        # See paramBounds.tex for formulae relating to the readout board
-        s = self.max_slew
-        A = 1e3 * self.matrix_F / (self.FOV_F * constants.GYRO) # readout area
-        # min limit imposed by maximum gradient amplitude:
-        min_read_durations = [A / self.max_amp]
-        max_read_durations = []
-        if self.is_gradient_echo.value:
-            min_phaser_time = min([self.boards['phase']['objects'][typ][0]['dur_f'] for typ in ['phasers', 'rephasers']])
-            read_start_to_TE = self.TE - self.boards['RF']['objects']['excitation']['dur_f']/2
-            read_start_to_TE -= max(
-                self.boards['frequency']['objects']['read prephaser']['dur_f'] + self.readout_risetime, # TODO: consider maximum dur+risetime, not only current (difficult!)
-                min_phaser_time,
-                self.boards['slice']['objects']['slice select excitation']['risetime_f'] + self.boards['slice']['objects']['slice select rephaser']['dur_f'])
-            TE_to_spoiler = (self.TR - (-self.get_sequence_start()) - self.boards['slice']['objects']['spoiler']['dur_f']) - self.TE
-            # pick forward or reverse order that maximizes read duration limit
-            max_read_durs = []
-            for reverse in [True, False]:
-                max_read_durs.append(self.get_max_read_duration(read_start_to_TE, TE_to_spoiler, reverse))
-            max_read_durations.append(max(max_read_durs))
-        else: # spin echo
-            refocusing_dur = self.boards['RF']['objects']['refocusing'][0]['dur_f']
-            if self.turbo_factor==1 and self.EPI_factor==1: # prephaser should only be limiting for pure spin echo
-                # min limit imposed by prephaser duration tp:
-                tp = self.TE/2 - refocusing_dur/2 - self.boards['RF']['objects']['excitation']['dur_f']/2
-                h = s * tp / 2
-                h = min(h, self.max_amp)
-                denom = 2*h*s*tp - s*A - 2*h**2
-                min_read_durations.append(np.sqrt(A**2/denom) if denom > 0 else np.inf)
-            if self.EPI_factor==1:
-                max_readtrain_spacing = self.TE / (1 + 1/2 * self.split_center)
-            else: # linear k-space order
-                # TODO: correct this
-                max_readtrain_spacing = max([self.get_readtrain_spacing_linear_order(reverse) for reverse in [True, False]])
-            idle_space = max_readtrain_spacing - self.boards['RF']['objects']['refocusing'][0]['dur_f']
-            # max limit imposed by phaser:
-            max_read_durations.append((idle_space - 2 * self.phaser_duration - self.max_blip_dur * (self.EPI_factor-1))/self.EPI_factor)
-            # tr is half the maximum readout gradient duration
-            tr = ((idle_space) / self.EPI_factor) / 2
-            # max limit imposed by readout rise time:
-            radicand = tr**2 - 2*A/s
-            if radicand >= 0:
-                max_read_durations.append(tr + np.sqrt(radicand))
-            else:
-                max_read_durations.append(0)
-            # max limit imposed by slice select refocusing down ramp time:
-            max_read_durations.append((tr - self.boards['slice']['objects']['slice select refocusing'][0]['risetime_f']) * 2)
-            # readtrain_spacing may be limited by TR:
-            read_end_by_TR = (self.TR - (-self.get_sequence_start()) - self.boards['slice']['objects']['spoiler']['dur_f'])
-            read_end_by_else = self.readtrain_spacing * (self.turbo_factor + 1/2) - refocusing_dur/2
-            max_read_durations.append((tr - (read_end_by_else-read_end_by_TR)) * 2)
-        min_read_duration, max_read_duration = max(min_read_durations), min(max_read_durations)
-        small = 1e-2 # to avoid roundoff errors
-        min_pixel_BW = 1e3 / max_read_duration + small if max_read_duration > 0 else np.inf
-        max_pixel_BW = 1e3 / min_read_duration - small if min_read_duration > 0 else np.inf
-        self.set_param_bounds(self.param.pixel_bandwidth, minval=min_pixel_BW, maxval=max_pixel_BW)
-        self.update_FW_shift_objects()
-        self.update_FOV_bandwidth_objects()
-
-    def update_matrix_F_bounds(self):
-        min_matrix_F = []
-        max_matrix_F = [self.get_max_readout_area() * 1e-3 * self.FOV_F * constants.GYRO]
-        if self.parameter_style == 'Matrix and FOV BW':
-            min_matrix_F.append(self.pixel_bandwidth * self.matrix_F / list(self.param.pixel_bandwidth.objects.values())[-1])
-            max_matrix_F.append(self.pixel_bandwidth * self.matrix_F / list(self.param.pixel_bandwidth.objects.values())[0])
-        self.set_param_bounds(self.param.matrix_F, minval=min_matrix_F, maxval=max_matrix_F)
-        self.update_voxel_F_objects()
-        self.update_recon_voxel_F_objects()
-
-    def update_matrix_P_bounds(self):
-        max_matrix_P = int(self.get_max_phaser_area() * 2e-3 * self.FOV_P * constants.GYRO) + 1
-        self.set_param_bounds(self.param.matrix_P, maxval=max_matrix_P)
-        self.update_voxel_P_objects()
-        self.update_recon_voxel_P_objects()
-
-    def update_FOV_F_bounds(self):
-        max_readout_area = self.get_max_readout_area()
-        min_FOV = [1e3 * self.matrix_F / (max_readout_area * constants.GYRO) if max_readout_area > 0 else np.inf]
-        max_FOV = []
-        if self.parameter_style == 'voxel_size and Fat/water shift':
-            min_FOV.append(self.FOV_F / self.matrix_F * self.param.matrix_F.objects[0])
-            min_FOV.append(self.FOV_F / self.recon_matrix_F * self.param.recon_matrix_F.objects[0])
-            max_FOV.append(self.FOV_F / self.matrix_F * self.param.matrix_F.objects[-1])
-            max_FOV.append(self.FOV_F / self.recon_matrix_F * self.param.recon_matrix_F.objects[-1])
-        self.set_param_bounds(self.param.FOV_F, minval=min_FOV, maxval=max_FOV)
-
-    def update_FOV_P_bounds(self):
-        min_FOV = [(self.matrix_P - 1) / (self.get_max_phaser_area() * constants.GYRO * 2e-3)]
-        max_FOV = []
-        if self.parameter_style == 'voxel_size and Fat/water shift':
-            min_FOV.append(self.FOV_P / self.matrix_P * self.param.matrix_P.objects[0])
-            min_FOV.append(self.FOV_P / self.recon_matrix_P * self.param.recon_matrix_P.objects[0])
-            max_FOV.append(self.FOV_P / self.matrix_P * self.param.matrix_P.objects[-1])
-            max_FOV.append(self.FOV_P / self.recon_matrix_P * self.param.recon_matrix_P.objects[-1])
-        self.set_param_bounds(self.param.FOV_P, minval=min_FOV, maxval=max_FOV)
-
-    def update_FW_shift_objects(self):
-        self.param.FW_shift.objects = {f'{format_float(shift, 2)} pixels': shift for shift in [pixel_BW_to_shift(pBW, self.field_strength) for pBW in list(self.param.pixel_bandwidth.objects.values())[::-1]]}
-
-    def update_FOV_bandwidth_objects(self):
-        self.param.FOV_bandwidth.objects = {f'±{format_float(bw, 3)} kHz': bw for bw in [pixel_BW_to_FOV_BW(pBW, self.matrix_F) for pBW in self.param.pixel_bandwidth.objects.values()]}
-
-    def update_voxel_F_objects(self):
-        self.param.voxel_F.objects = {f'{format_float(voxel, 3)} mm': voxel for voxel in [self.FOV_F / matrix for matrix in self.param.matrix_F.objects[::-1]]}
-
-    def update_voxel_P_objects(self):
-        self.param.voxel_P.objects = {f'{format_float(voxel, 3)} mm': voxel for voxel in [self.FOV_P / matrix for matrix in self.param.matrix_P.objects[::-1]]}
-
-    def update_recon_voxel_F_objects(self):
-        self.param.recon_voxel_F.objects = {f'{format_float(voxel, 3)} mm': voxel for voxel in [self.FOV_F / matrix for matrix in self.param.recon_matrix_F.objects[::-1]]}
-
-    def update_recon_voxel_P_objects(self):
-        self.param.recon_voxel_P.objects = {f'{format_float(voxel, 3)} mm': voxel for voxel in [self.FOV_P / matrix for matrix in self.param.recon_matrix_P.objects[::-1]]}
-
-    def update_slice_thickness_bounds(self):
-        min_thks = [self.boards['RF']['objects']['excitation']['FWHM_f'] / (self.max_amp * constants.GYRO)]
-        if not self.is_gradient_echo.value:
-            min_thks.append(self.boards['RF']['objects']['refocusing'][0]['FWHM_f'] / (self.max_amp * constants.GYRO))
-        if self.sequence=='Inversion Recovery':
-            min_thks.append(self.boards['RF']['objects']['inversion']['FWHM_f'] / (self.max_amp * constants.GYRO) * self.inversion_thk_factor)
-        
-        # Constraint due to TR: 
-        if self.sequence=='Inversion Recovery':
-            max_risetime = self.TR - (self.boards['slice']['objects']['spoiler']['time'][-1] - self.boards['RF']['objects']['inversion']['time'][0])
-            max_amp = self.max_slew * max_risetime
-            min_thks.append(self.boards['RF']['objects']['inversion']['FWHM_f'] / (max_amp * constants.GYRO))
-        else:
-            max_risetime = self.TR - (self.boards['slice']['objects']['spoiler']['time'][-1] - self.boards['RF']['objects']['excitation']['time'][0])
-            max_amp = self.max_slew * max_risetime
-            min_thks.append(self.boards['RF']['objects']['excitation']['FWHM_f'] / (max_amp * constants.GYRO))
-        
-        # See paramBounds.tex for formulae
-        s = self.max_slew
-        d = self.boards['RF']['objects']['excitation']['dur_f']
-        if self.is_gradient_echo.value: # Constraint due to slice rephaser
-            t = self.boards['ADC']['objects']['samplings'][0][0]['time'][0]
-            h = s * (t - np.sqrt(t**2/2 + d**2/8))
-            h = min(h, self.max_amp)
-            A = d * (np.sqrt((d*s+2*h)**2 - 8*h*(h-s*(t-d/2))) - d*s - 2*h) / 2
-        else: # Spin echo: Constraint due to slice rephaser and refocusing slice select rampup
-            t = self.boards['RF']['objects']['refocusing'][0]['time'][0]
-            h = s * (np.sqrt(2*(d + 2*t)**2 - 4*d**2) - d - 2*t) / 4
-            h = min(h, self.max_amp)
-            A = (np.sqrt((d*(d*s + 4*h))**2 - 4*d**2*h*(d*s + 2*h - 2*s*t)) - d*(d*s + 4*h)) / 2
-        Be = self.boards['RF']['objects']['excitation']['FWHM_f']
-        min_thks.append(Be * d / (constants.GYRO * A)) # mm
-        
-        self.set_param_bounds(self.param.slice_thickness, minval=min_thks)
-
-    def update_turbo_factor_bounds(self):
-        max_turbo_factor = int(np.floor(self.matrix.value[self.phase_dir.value] * self.partial_Fourier / self.EPI_factor * 2)) # let's limit phase oversampling to 2
-        max_turbo_factor = min(max_turbo_factor, 64)
-
-        # turbo_factor must equal 1 when the EPI_factor is even
-        if not self.EPI_factor%2:
-            self.param.turbo_factor.bounds = (1, 1)
-            self.param.turbo_factor.constant = True
-        else:
-            self.param.turbo_factor.bounds = (1, max_turbo_factor)
-            self.param.turbo_factor.constant = False
-
-    def update_EPI_factor_objects(self):
-        max_EPI_factor = int(np.floor(self.matrix.value[self.phase_dir.value] * self.partial_Fourier / self.turbo_factor * 2)) # let's limit phase oversampling to 2
-        self.set_param_bounds(self.param.EPI_factor, maxval=max_EPI_factor)
-        # EPI_factor must be odd for turbo spin echo (GRASE)
-        if self.turbo_factor > 1:
-            self.param.EPI_factor.objects = [v for v in self.param.EPI_factor.objects if v%2]
-
+    
     def min_readtrain_spacing_func(self, is_gradient_echo, RF_excitation, gre_echo_train_dur, readout_risetime, read_prephaser, phaser_duration, slice_select_excitation, slice_select_rephaser, RF_refocusing, slice_select_refocusing):
         # Get shortest spacing for (center of) gradient echo trains
         # Equals center position of gradient echo (train) for gradient echo sequences
@@ -1673,8 +1820,7 @@ class MRIsimulator(param.Parameterized):
         # Equals rf echo spacing for spin echo sequences
         spin_echo_time = TE
         if EPI_factor > 1:
-            readtrain_shift = gr_echo_spacing * (centermost_gr_echo - (EPI_factor-1)/2)
-            spin_echo_time -= readtrain_shift
+            spin_echo_time -= readtrain_shift(gr_echo_spacing, centermost_gr_echo, EPI_factor)
         return spin_echo_time / (centermost_rf_echo + 1)
         
     def k_read_axis_func(self, freq_dir, FOV, matrix, is_radial, fantom, radial_FOV_oversampling):
@@ -1698,9 +1844,6 @@ class MRIsimulator(param.Parameterized):
             num_lines = num_measured_lines # future: take undersampling into account
             voxel_size = max(FOV) / num_lines # corresponding to blade width
         return recon.get_k_axis(num_lines, voxel_size)
-
-    def set_homodyne_visibility(self, num_blank_lines, is_radial):
-        self.param.homodyne.precedence = -1 if (num_blank_lines == 0 or is_radial) else 1
 
     def lines_to_measure_func(self, k_phase_axis, num_measured_lines):
         lines_to_measure = np.ones(len(k_phase_axis), dtype=bool)
@@ -1743,10 +1886,6 @@ class MRIsimulator(param.Parameterized):
             else:
                 pe_table = [[list(range(rf_echo * num_shots + shot, sum(lines_to_measure), num_shots * turbo_factor))[::order] for rf_echo in range(turbo_factor)][::order] for shot in range(num_shots)]
         return np.array(pe_table)
-
-    def set_shot_bounds(self, num_shots):
-        self.param.shot.bounds = (1, num_shots)
-        self.shot = min(self.shot, num_shots)
 
     def k_axes_func(self, freq_dir, phase_dir, k_read_axis, k_phase_axis, lines_to_measure):
         k_axes = [None]*2
@@ -1863,9 +2002,6 @@ class MRIsimulator(param.Parameterized):
     def PD_and_T1w_func(self, sequence_type, TR, TE, TI, FA, field_strength, tissues):
         return {component: get_PD_and_T1w(component, sequence_type, TR, TE, TI, FA, field_strength) for component in set(tissues).union(set(constants.FAT_RESONANCES.keys()))}
 
-    def set_reference_SNR(self, event=None):
-        self.reference_SNR = self.graph['SNR'].value
-
     def measured_kspace_func(self, noise, kspace_comps, FatSat, PD_and_T1w):
         measured_kspace = noise.copy()
         for component in kspace_comps:
@@ -1931,10 +2067,6 @@ class MRIsimulator(param.Parameterized):
                     sample_shifts[dim] -= 1 # sample shift for odd number of zeroes added
         image_array = recon.IFFT(zerofilled_kspace, pixel_shifts, sample_shifts)
         return recon.crop(image_array, recon_matrix)
-
-    def set_reference_tissue_objects(self, tissues):
-        self.param.reference_tissue.objects = tissues
-        self.reference_tissue = tissues[0]
     
     def RF_excitation_func(self, FA, is_gradient_echo):
         flip_angle = FA if is_gradient_echo else 90.
@@ -2444,7 +2576,10 @@ class MRIsimulator(param.Parameterized):
         )
         img.x.attrs['units'] = img.y.attrs['units'] = 'mm'
         return hv.Overlay([hv.Image(img, vdims=['magnitude'])])
-
+    
+    def set_reference_SNR(self, event=None):
+        self.reference_SNR = self.graph['SNR'].value
+    
     @param.depends('sequence_type', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOV_F', 'FOV_P', 'phase_oversampling', 'num_shots', 'matrix_F', 'matrix_P', 'slice_thickness', 'trajectory', 'frequency_direction', 'pixel_bandwidth', 'partial_Fourier', 'turbo_factor', 'EPI_factor', 'shot')
     def display_sequence_plot(self):
         return self.graph['sequence_plot'].value

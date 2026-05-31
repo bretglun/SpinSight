@@ -69,8 +69,8 @@ def get_app(dark_mode=True, settings_filestem='', start_time=datetime.now(), laz
     shot_angle_info = info_number(name='Angle', format='{value:.0f}°', value=simulator.param.spoke_angle, text_color=text_color) 
     num_shots_info = info_number(name='# shots', format='{value:.0f}', value=simulator.param.num_shots, text_color=text_color)
     def update_num_shots_label(event): 
-        num_shots_info.name = event.new
-    simulator.param.watch(update_num_shots_label, 'num_shots_label')
+        num_shots_info.name = f'# {event.new}s'
+    simulator.param.watch(update_num_shots_label, 'shot_label')
     
     dmap_kspace = pn.Column(hv.DynamicMap(simulator.display_kspace) * simulator.k_line, 
                            # simulator.param.kspace_type, 
