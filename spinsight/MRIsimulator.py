@@ -221,7 +221,7 @@ class MRIsimulator(param.Parameterized):
     slice_thickness = param.Selector(default=3, precedence=6, label='Slice thickness')
     radial_FOV_oversampling = param.Number(default=2, step=0.01, precedence=9, label='Radial FOV oversampling factor')
     
-    sequence = param.ObjectSelector(default=constants.SEQUENCES[0], precedence=1, label='Pulse sequence')
+    sequence_type = param.ObjectSelector(default=constants.SEQUENCES[0], precedence=1, label='Pulse sequence')
     pixel_bandwidth = param.Selector(default=480, precedence=2, label='Pixel bandwidth')
     FOV_bandwidth = param.Selector(default=pixel_BW_to_FOV_BW(480, 180), precedence=-2, label='FOV bandwidth')
     FW_shift = param.Selector(default=pixel_BW_to_shift(480), precedence=-2, label='Fat/water shift')
@@ -312,9 +312,9 @@ class MRIsimulator(param.Parameterized):
         }
         
         node_specs['is_gradient_echo'] = {
-            'func': lambda sequence: 
-                    'Gradient Echo' in sequence, 
-            'parents': ['sequence']
+            'func': lambda sequence_type: 
+                    'Gradient Echo' in sequence_type, 
+            'parents': ['sequence_type']
         }
 
         node_specs['freq_dir'] = {
@@ -360,7 +360,7 @@ class MRIsimulator(param.Parameterized):
 
         node_specs['RF_inversion_floating'] = {
             'func': self.RF_inversion_floating_func,
-            'parents': ['sequence']
+            'parents': ['sequence_type']
         }
 
         node_specs['RF_FatSat_floating'] = {
@@ -390,12 +390,12 @@ class MRIsimulator(param.Parameterized):
 
         node_specs['slice_select_inversion_floating'] = {
             'func': self.slice_select_inversion_floating_func,
-            'parents': ['sequence', 'RF_inversion_floating', 'slice_thickness']
+            'parents': ['sequence_type', 'RF_inversion_floating', 'slice_thickness']
         }
 
         node_specs['inversion_spoiler_floating'] = {
             'func': self.inversion_spoiler_floating_func,
-            'parents': ['sequence']
+            'parents': ['sequence_type']
         }
 
         node_specs['readouts_floating'] = {
@@ -555,7 +555,7 @@ class MRIsimulator(param.Parameterized):
         
         node_specs['sequence_start'] = {
             'func': self.sequence_start_func,
-            'parents': ['sequence', 'slice_select_inversion', 'RF_FatSat', 'slice_select_excitation']
+            'parents': ['sequence_type', 'slice_select_inversion', 'RF_FatSat', 'slice_select_excitation']
         }
 
         node_specs['signal_curves'] = {
@@ -757,7 +757,7 @@ class MRIsimulator(param.Parameterized):
 
         node_specs['PD_and_T1w'] = {
             'func': self.PD_and_T1w_func,
-            'parents': ['sequence', 'TR', 'TE', 'TI', 'FA', 'field_strength', 'tissues']
+            'parents': ['sequence_type', 'TR', 'TE', 'TI', 'FA', 'field_strength', 'tissues']
         }
 
         node_specs['reference_signal'] = {
@@ -996,7 +996,7 @@ class MRIsimulator(param.Parameterized):
         self.param.trajectory.objects=constants.TRAJECTORIES[:2]
         self.param.radial_factor.bounds=(0.1, 4.)
         self.param.radial_FOV_oversampling.bounds=(1, 2)
-        self.param.sequence.objects=constants.SEQUENCES
+        self.param.sequence_type.objects=constants.SEQUENCES
         self.param.NSA.bounds=(1, 16)
         self.param.partial_Fourier.bounds=(.6, 1)
         self.param.turbo_factor.bounds=(1, 64)
@@ -1860,8 +1860,8 @@ class MRIsimulator(param.Parameterized):
         sampled_matrix = k_samples.shape[:-1]
         return np.random.normal(0, noise_std, sampled_matrix) + 1j * np.random.normal(0, noise_std, sampled_matrix)
 
-    def PD_and_T1w_func(self, sequence, TR, TE, TI, FA, field_strength, tissues):
-        return {component: get_PD_and_T1w(component, sequence, TR, TE, TI, FA, field_strength) for component in set(tissues).union(set(constants.FAT_RESONANCES.keys()))}
+    def PD_and_T1w_func(self, sequence_type, TR, TE, TI, FA, field_strength, tissues):
+        return {component: get_PD_and_T1w(component, sequence_type, TR, TE, TI, FA, field_strength) for component in set(tissues).union(set(constants.FAT_RESONANCES.keys()))}
 
     def set_reference_SNR(self, event=None):
         self.reference_SNR = self.graph['SNR'].value
@@ -1948,8 +1948,8 @@ class MRIsimulator(param.Parameterized):
             RF_refocusing.append(sequence.get_RF(flip_angle=180., dur=3., shape='hamming_sinc',  name=f'refocusing{" " + str(rf_echo + 1) if turbo_factor > 1 else ""}'))
         return RF_refocusing
 
-    def RF_inversion_floating_func(self, sequence):
-        if not sequence == 'Inversion Recovery':
+    def RF_inversion_floating_func(self, sequence_type):
+        if not sequence_type == 'Inversion Recovery':
             return None
         return sequence.get_RF(flip_angle=180., dur=3., shape='hamming_sinc',  name='inversion')
 
@@ -1987,15 +1987,15 @@ class MRIsimulator(param.Parameterized):
             slice_select_refocusing.append(sequence.get_gradient('slice', max_amp=amp, flat_dur=flat_dur, name='slice select refocusing', max_slew=self.max_slew))
         return slice_select_refocusing
 
-    def slice_select_inversion_floating_func(self, sequence, RF_inversion_floating, slice_thickness):
-        if sequence!='Inversion Recovery':
+    def slice_select_inversion_floating_func(self, sequence_type, RF_inversion_floating, slice_thickness):
+        if sequence_type!='Inversion Recovery':
             return None
         flat_dur = RF_inversion_floating['dur_f']
         amp = RF_inversion_floating['FWHM_f'] / (self.inversion_thk_factor * slice_thickness * constants.GYRO)
         return sequence.get_gradient('slice', max_amp=amp, flat_dur=flat_dur, name='slice select inversion', max_slew=self.max_slew)
     
-    def inversion_spoiler_floating_func(self, sequence):
-        if sequence!='Inversion Recovery':
+    def inversion_spoiler_floating_func(self, sequence_type):
+        if sequence_type!='Inversion Recovery':
             return None
         spoiler_area = 30. # uTs/m
         return sequence.get_gradient('slice', total_area=spoiler_area, name='inversion spoiler', max_amp=self.max_amp, max_slew=self.max_slew)
@@ -2221,8 +2221,8 @@ class MRIsimulator(param.Parameterized):
         sequence.move_waveform(spoiler, spoiler_time)
         return spoiler
 
-    def sequence_start_func(self, sequence, slice_select_inversion, RF_FatSat, slice_select_excitation):
-        if sequence == 'Inversion Recovery': 
+    def sequence_start_func(self, sequence_type, slice_select_inversion, RF_FatSat, slice_select_excitation):
+        if sequence_type == 'Inversion Recovery': 
             return slice_select_inversion['time'][0]
         elif self.FatSat:
             return RF_FatSat['time'][0]
@@ -2445,14 +2445,14 @@ class MRIsimulator(param.Parameterized):
         img.x.attrs['units'] = img.y.attrs['units'] = 'mm'
         return hv.Overlay([hv.Image(img, vdims=['magnitude'])])
 
-    @param.depends('sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOV_F', 'FOV_P', 'phase_oversampling', 'num_shots', 'matrix_F', 'matrix_P', 'slice_thickness', 'trajectory', 'frequency_direction', 'pixel_bandwidth', 'partial_Fourier', 'turbo_factor', 'EPI_factor', 'shot')
+    @param.depends('sequence_type', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOV_F', 'FOV_P', 'phase_oversampling', 'num_shots', 'matrix_F', 'matrix_P', 'slice_thickness', 'trajectory', 'frequency_direction', 'pixel_bandwidth', 'partial_Fourier', 'turbo_factor', 'EPI_factor', 'shot')
     def display_sequence_plot(self):
         return self.graph['sequence_plot'].value
     
-    @param.depends('object', 'field_strength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOV_F', 'FOV_P', 'phase_oversampling', 'num_shots', 'matrix_F', 'matrix_P', 'recon_matrix_F', 'recon_matrix_P', 'slice_thickness', 'trajectory', 'frequency_direction', 'pixel_bandwidth', 'NSA', 'partial_Fourier', 'turbo_factor', 'EPI_factor', 'kspace_type', 'show_processed_kspace', 'kspace_exponent', 'homodyne', 'do_apodize', 'apodization_alpha', 'do_zerofill', 'radial_FOV_oversampling')
+    @param.depends('object', 'field_strength', 'sequence_type', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOV_F', 'FOV_P', 'phase_oversampling', 'num_shots', 'matrix_F', 'matrix_P', 'recon_matrix_F', 'recon_matrix_P', 'slice_thickness', 'trajectory', 'frequency_direction', 'pixel_bandwidth', 'NSA', 'partial_Fourier', 'turbo_factor', 'EPI_factor', 'kspace_type', 'show_processed_kspace', 'kspace_exponent', 'homodyne', 'do_apodize', 'apodization_alpha', 'do_zerofill', 'radial_FOV_oversampling')
     def display_kspace(self):
         return self.graph['kspace'].value
 
-    @param.depends('object', 'field_strength', 'sequence', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOV_F', 'FOV_P', 'phase_oversampling', 'num_shots', 'matrix_F', 'matrix_P', 'recon_matrix_F', 'recon_matrix_P', 'slice_thickness', 'trajectory', 'frequency_direction', 'pixel_bandwidth', 'NSA', 'partial_Fourier', 'turbo_factor', 'EPI_factor', 'image_type', 'show_FOV', 'homodyne', 'do_apodize', 'apodization_alpha', 'do_zerofill', 'radial_FOV_oversampling')
+    @param.depends('object', 'field_strength', 'sequence_type', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOV_F', 'FOV_P', 'phase_oversampling', 'num_shots', 'matrix_F', 'matrix_P', 'recon_matrix_F', 'recon_matrix_P', 'slice_thickness', 'trajectory', 'frequency_direction', 'pixel_bandwidth', 'NSA', 'partial_Fourier', 'turbo_factor', 'EPI_factor', 'image_type', 'show_FOV', 'homodyne', 'do_apodize', 'apodization_alpha', 'do_zerofill', 'radial_FOV_oversampling')
     def display_image(self):
         return self.graph['image'].value * self.graph['FOV_box'].value

@@ -58,7 +58,7 @@ def get_app(dark_mode=True, settings_filestem='', start_time=datetime.now(), laz
         ('Settings', ['object', 'field_strength', 'parameter_style']),
         ('Contrast', ['FatSat', 'TR', 'TE', 'FA', 'TI']),
         ('Geometry', ['trajectory', 'frequency_direction', 'FOV_F', 'FOV_P', 'phase_oversampling', 'radial_factor', 'voxel_F', 'voxel_P', 'matrix_F', 'matrix_P', 'recon_voxel_F', 'recon_voxel_P', 'recon_matrix_F', 'recon_matrix_P', 'slice_thickness']),
-        ('Sequence', ['sequence', 'pixel_bandwidth', 'FOV_bandwidth', 'FW_shift', 'NSA', 'partial_Fourier', 'turbo_factor', 'EPI_factor']),
+        ('Sequence', ['sequence_type', 'pixel_bandwidth', 'FOV_bandwidth', 'FW_shift', 'NSA', 'partial_Fourier', 'turbo_factor', 'EPI_factor']),
         ('Post-processing', ['homodyne', 'do_apodize', 'apodization_alpha', 'do_zerofill']),
     ]}
 
