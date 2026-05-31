@@ -138,6 +138,8 @@ def hideframe_hook(plot, elem):
 
 
 def flatten_dicts(list_of_dicts_and_lists):
+    if list_of_dicts_and_lists is None:
+        return []
     res = []
     for v in list_of_dicts_and_lists:
         res += flatten_dicts(v) if isinstance(v, list) else [v]
@@ -2309,19 +2311,19 @@ class MRIsimulator(param.Parameterized):
     
     def frequency_objects_func(self, read_prephaser, readouts):
         objects = [read_prephaser, *flatten_dicts(readouts)]
-        return [obj for obj in objects if obj is not None]
+        return [obj for obj in objects if obj]
     
     def phase_objects_func(self, phasers, rephasers, blips):
         objects = [*flatten_dicts(phasers), *flatten_dicts(rephasers), *flatten_dicts(blips)]
-        return [obj for obj in objects if obj is not None]
+        return [obj for obj in objects if obj]
         
     def slice_objects_func(self, slice_select_inversion, inversion_spoiler, FatSat_spoiler, slice_select_excitation, slice_select_rephaser, slice_select_refocusing, spoiler):
         objects = [slice_select_inversion, inversion_spoiler, FatSat_spoiler, slice_select_excitation, slice_select_rephaser, *flatten_dicts(slice_select_refocusing), spoiler]
-        return [obj for obj in objects if obj is not None]
+        return [obj for obj in objects if obj]
     
     def RF_objects_func(self, RF_inversion, RF_FatSat, RF_excitation, RF_refocusing):
         objects = [RF_inversion, RF_FatSat, RF_excitation, *flatten_dicts(RF_refocusing)]
-        return [obj for obj in objects if obj is not None]
+        return [obj for obj in objects if obj]
     
     def signal_objects_func(self, signal_curves):
         return flatten_dicts(signal_curves)
