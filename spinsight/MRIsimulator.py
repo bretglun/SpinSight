@@ -2397,7 +2397,7 @@ class MRIsimulator(param.Parameterized):
         frequency_area = frequency_board[1] # TODO: avoid hard-coding
         phase_area = phase_board[1] # TODO: avoid hard-coding
         dt = .01
-        refocus_intervals = [list(rf['time'][[0, -1]]) for rf in RF_refocusing]
+        refocus_intervals = [list(rf['time'][[0, -1]]) for rf in RF_refocusing] if RF_refocusing else []
         t = np.concatenate((*(area['time'] for area in [frequency_area, phase_area]), [t for ref in refocus_intervals for t in ref])) # k event times
         t = np.unique(np.concatenate((t, np.arange(0., max(t), dt)))) # merge with time grid
         kx = get_k_coords(t, *(frequency_area[dim] for dim in ['G read', 'time']), refocus_intervals)
