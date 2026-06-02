@@ -24,8 +24,8 @@ def CLI():
                     help="GUI mode (\"dark\"/\"light\")")
     p.add_option('--settingsFile', '-s', default='',  type="string",
                     help="settings filename (stem only)")
-    p.add_option('--lazySliders', '-l',  action='store_true',
-                    help="sliders update the image only once released (instead of continuously while dragging)")
+    p.add_option('--liveSliders', '-l',  action='store_true',
+                    help="sliders update the image continuously while dragging (instead of only once released)")
     options, arguments = p.parse_args()
 
     hosts = []
@@ -51,7 +51,7 @@ def CLI():
     # serve application
     try:
         startTime = datetime.now()
-        def get_app(): return app.get_app(dark_mode, options.settingsFile, startTime, options.lazySliders) # closure function
+        def get_app(): return app.get_app(dark_mode, options.settingsFile, startTime, not options.liveSliders) # closure function
         pn.serve(get_app, show=False, title='SpinSight', port=options.port, websocket_origin=[f'{host}:{options.port}' for host in hosts])
     except OSError as e:
         print(e)

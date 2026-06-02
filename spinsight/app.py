@@ -38,7 +38,7 @@ def info_string(name, value, text_color):
     return pn.indicators.String(default_color=text_color, name=name, font_size='12pt', title_size='12pt', value=value)
 
 
-def get_app(dark_mode=True, settings_filestem='', start_time=datetime.now(), lazy_sliders=False):
+def get_app(dark_mode=True, settings_filestem='', start_time=datetime.now(), lazy_sliders=True):
     pn.config.theme = 'dark' if dark_mode else 'default'
     pn.config.throttled = lazy_sliders
     text_color = 'white' if dark_mode else 'black' # needed for pn.indicators.Number which doesn't respect pn.config.theme
