@@ -1537,7 +1537,7 @@ class MRIsimulator(param.Parameterized):
             else:
                 max_read_durations.append(0)
             # max limit imposed by slice select refocusing down ramp time:
-            max_read_durations.append((tr - slice_select_refocusing[0]['risetime_f']) * 2)
+            max_read_durations.append((idle_space - 2 * slice_select_refocusing[0]['risetime_f']) / EPI_factor)
             # readtrain_spacing may be limited by TR:
             read_end_by_TR = (TR - (-sequence_start) - spoiler['dur_f'])
             read_end_by_else = readtrain_spacing * turbo_factor + min(max_read_durations)/2
