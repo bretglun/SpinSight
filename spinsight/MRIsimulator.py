@@ -54,7 +54,7 @@ def get_T2w(component, time_after_excitation, time_relative_inphase, B0):
     return E2 * E2prim
 
 
-def get_PD_and_T1w(component, sequence_type, TR, TE, TI, FA, B0):
+def get_PD_and_T1w(component, sequence_type, TR, TI, FA, B0):
     PD = constants.TISSUES[component]['PD'] if 'Fat' not in component else constants.FAT_RESONANCES[component]['PD']
     T1 = constants.TISSUES[component]['T1'][B0] if 'Fat' not in component else constants.FAT_RESONANCES[component]['T1'][B0]
 
@@ -926,7 +926,7 @@ class MRIsimulator(param.Parameterized):
 
         node_specs['PD_and_T1w'] = {
             'func': self.PD_and_T1w_func,
-            'parents': ['sequence_type', 'TR', 'TE', 'TI', 'FA', 'field_strength', 'tissues']
+            'parents': ['sequence_type', 'TR', 'TI', 'FA', 'field_strength', 'tissues']
         }
 
         node_specs['reference_signal'] = {
@@ -1999,8 +1999,8 @@ class MRIsimulator(param.Parameterized):
         sampled_matrix = k_samples.shape[:-1]
         return np.random.normal(0, noise_std, sampled_matrix) + 1j * np.random.normal(0, noise_std, sampled_matrix)
 
-    def PD_and_T1w_func(self, sequence_type, TR, TE, TI, FA, field_strength, tissues):
-        return {component: get_PD_and_T1w(component, sequence_type, TR, TE, TI, FA, field_strength) for component in set(tissues).union(set(constants.FAT_RESONANCES.keys()))}
+    def PD_and_T1w_func(self, sequence_type, TR, TI, FA, field_strength, tissues):
+        return {component: get_PD_and_T1w(component, sequence_type, TR, TI, FA, field_strength) for component in set(tissues).union(set(constants.FAT_RESONANCES.keys()))}
 
     def measured_kspace_func(self, noise, kspace_comps, FatSat, PD_and_T1w):
         measured_kspace = noise.copy()
