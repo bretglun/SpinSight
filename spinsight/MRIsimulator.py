@@ -280,8 +280,6 @@ class MRIsimulator(param.Parameterized):
         self.hover_index = ColumnDataSource({'index': [], 'board': []})
         self.hover_index.on_change('data', self.update_k_line_coords)
         
-        self.outbound_params = set()
-
         hv.opts.defaults(hv.opts.Image(width=500, height=500, invert_yaxis=False, toolbar='below', cmap='gray', aspect='equal'))
         hv.opts.defaults(hv.opts.HLine(line_width=1.5, line_color='gray'))
         hv.opts.defaults(hv.opts.VSpan(color='orange', fill_alpha=.1, hover_fill_alpha=.8, default_tools=[]))
@@ -300,9 +298,9 @@ class MRIsimulator(param.Parameterized):
 
         node_specs = {par: {'params': self} for par in self.param if par != 'name'}
 
-        node_specs['set_min_TR'] = {
+        node_specs['set_TR_bounds'] = {
             'action': True,
-            'func': self.set_min_TR,
+            'func': self.set_TR_bounds,
             'parents': ['min_TR']
         }
         
@@ -312,9 +310,9 @@ class MRIsimulator(param.Parameterized):
             'parents': ['TR', 'min_TR', 'TE', 'min_TE']
         }
         
-        node_specs['set_max_TI'] = {
+        node_specs['set_TI_bounds'] = {
             'action': True,
-            'func': self.set_max_TI,
+            'func': self.set_TI_bounds,
             'parents': ['sequence_type', 'TR', 'min_TR', 'TI']
         }
         
@@ -330,9 +328,9 @@ class MRIsimulator(param.Parameterized):
             'parents': ['EPI_factor', 'turbo_factor']
         }
 
-        node_specs['set_BW_bounds'] = {
+        node_specs['set_pixel_bandwidth_bounds'] = {
             'action': True,
-            'func': self.set_BW_bounds,
+            'func': self.set_pixel_bandwidth_bounds,
             'parents': ['matrix_F', 'FOV_F', 'is_gradient_echo', 'gre_max_read_duration', 'RF_refocusing', 'turbo_factor', 'EPI_factor', 'TE', 'RF_excitation', 'readtrain_spacing', 'phaser_duration', 'max_blip_dur', 'slice_select_refocusing', 'TR', 'sequence_start', 'spoiler']
         }
         
@@ -1184,6 +1182,29 @@ class MRIsimulator(param.Parameterized):
         self.init_bounds()
         self.param.update(settings)
 
+    def set_param_discrete_bounds(self, par, curval, minval=None, maxval=None):
+        values = param_values[par.name]
+        vals = values.values() if isinstance(values, dict) else values
+        if minval is None:
+            minval = -np.inf
+        if maxval is None:
+            maxval = np.inf
+        minval = min([v for v in vals if v >= minval], default=minval)
+        maxval = max([v for v in vals if v <= maxval], default=maxval)
+
+        outbound = False
+        if curval < minval:
+            warnings.warn(f'trying to set {par.name} min bound above current value ({minval} > {curval})')
+            outbound = True
+        if curval > maxval:
+            warnings.warn(f'trying to set {par.name} max bound below current value ({maxval} < {curval})')
+            outbound = True
+        if outbound:
+            return self.handle_outbound(par.name)
+        
+        objects = {k: v for k, v in values.items() if minval <= v <= maxval} if isinstance(values, dict) else [v for v in values if minval <= v <= maxval]
+        par.objects = objects
+
     def set_param_bounds(self, par, minval=None, maxval=None):
         if isinstance(minval, list):
             minval = max(minval) if minval else None
@@ -1192,56 +1213,17 @@ class MRIsimulator(param.Parameterized):
         curval = getattr(self, par.name)
         if type(par) is param.parameters.Selector:
             return self.set_param_discrete_bounds(par, curval, minval, maxval)
-        if curval < minval:
-            warnings.warn(f'trying to set {par.name} bounds above current value ({minval} > {curval})')
-            minval = curval
-            self.outbound_params.add(par.name)
-        if curval > maxval:
-            warnings.warn(f'trying to set {par.name} bounds below current value ({maxval} < {curval})')
-            maxval = curval
-            self.outbound_params.add(par.name)
-        par.bounds = (minval, maxval)
-
-    def conflict_solved(self, par):
-        self.outbound_params.remove(par.name)
-        if callable(getattr(par.objects, 'keys', None)) and 'outbound' in par.objects.keys():
-            par.objects = dict(i for i in par.objects.items() if 'outbound' not in i)
-        print(f'Param {par.name} no longer conflicting')
-
-    def set_param_discrete_bounds(self, par, curval, minval=None, maxval=None):
-        values = param_values[par.name]
-        if minval is None:
-            minval = min(values.values() if isinstance(values, dict) else values)
-        if maxval is None:
-            maxval = max(values.values() if isinstance(values, dict) else values)
-        values = {k: v for k, v in values.items() if minval <= v <= maxval} if isinstance(values, dict) else [v for v in values if minval <= v <= maxval]
         
-        outbound = (isinstance(values, list) and curval not in values) or (isinstance(values, dict) and curval not in values.values())
+        outbound = False
+        if curval < minval:
+            warnings.warn(f'trying to set {par.name} min bound above current value ({minval} > {curval})')
+            outbound = True
+        if curval > maxval:
+            warnings.warn(f'trying to set {par.name} max bound below current value ({maxval} < {curval})')
+            outbound = True
         if outbound:
-            if (minval > maxval):
-                warnings.warn(f'{par.name} has illegal bounds, minval > maxval ({minval} > {maxval})')
-            else:
-                warnings.warn(f'{par.name} current value {curval} is outside its new bounds [{minval}, {maxval}]')
-            if isinstance(values, dict):
-                values['outbound'] = curval
-            elif isinstance(values, list) and not values:
-                values = [curval]
-            self.outbound_params.add(par.name)
-        par.objects = values
-        if not outbound and par.name in self.outbound_params:
-            self.conflict_solved(par)
-
-    def set_closest(self, par, value=None):
-        # par.objects could be dict or param.ListProxy
-        values = [v for k, v in par.objects.items() if k != 'outbound'] if callable(getattr(par.objects, 'items', None)) else par.objects
-        if not values:
-            warnings.warn(f'Could not set {par.name} since no allowed values')
-            return
-        if par.name in self.outbound_params:
-            self.conflict_solved(par)
-        if value is None:
-            value = getattr(self, par.name)
-        setattr(self, par.name, min(values, key=lambda x: abs(x-value)))
+            return self.handle_outbound(par.name)
+        par.bounds = (minval, maxval)
 
     def _watch_object(self):
         if hasattr(self, 'phantom') and self.phantom['name']==self.object:
@@ -1472,35 +1454,42 @@ class MRIsimulator(param.Parameterized):
 
     def _watch_reference_tissue(self):
         pass
-
-    def resolve_conflicts(self, max_TR=False):
-        if max_TR:
-            self.outbound_params.add('TR')
-        if self.outbound_params:
-            for par in ['TR', 'TI', 'TE', 'pixel_bandwidth']:
-                if par in self.outbound_params:
-                    value = getattr(self, par)
-                    if par=='TR' and max_TR:
-                        warnings.warn('Resolving conflict by maximizing TR')
-                        self.TR = list(param_values['TR'].values())[-1]
-                    else:
-                        warnings.warn(f'Resolving conflict: {par}')
-                    self.set_closest(self.param[par], value) # Set back param within bounds
-        if self.outbound_params:
-            if not max_TR:
-                self.resolve_conflicts(max_TR=True)
-            else:
-                warnings.warn(f'Unresolved conflict: {self.outbound_params}')
     
-    def set_min_TR(self, min_TR):
+    def set_closest(self, par, value=None):
+        # par.objects could be dict or param.ListProxy
+        values = par.objects.values() if callable(getattr(par.objects, 'values', None)) else par.objects
+        if not values:
+            warnings.warn(f'Could not set {par.name} since no allowed values')
+            return
+        if value is None:
+            value = getattr(self, par.name)
+        setattr(self, par.name, min(values, key=lambda x: abs(x-value)))
+
+    def handle_outbound(self, par_name):
+        bounds_func = f'set_{par_name}_bounds'
+        self.graph[bounds_func]._queued = False
+        self.graph[bounds_func].invalidate()
+        min_TE = self.graph['min_TE'].value
+        if self.TE < min_TE:
+            print(f'Increasing TE from {self.TE} to {min_TE} to resolve conflict')
+            self.TE = min_TE
+            return
+        min_TR =  self.graph['min_TR'].value
+        if self.TR < min_TR:
+            print(f'Increasing TR from {self.TR} to {min_TR} to resolve conflict')
+            self.TR = min_TR
+            return
+        raise NotImplementedError(f'Could not resolve conflict for outbound parameter {par_name}')
+    
+    def set_TR_bounds(self, min_TR):
         self.set_param_bounds(self.param.TR, minval=min_TR)
 
     def set_TE_bounds(self, TR, min_TR, TE, min_TE):
         #TODO: shouldn't depend on TE!
         max_TE = TR - min_TR + TE
         self.set_param_bounds(self.param.TE, minval=min_TE, maxval=max_TE)
-
-    def set_max_TI(self, sequence_type, TR, min_TR, TI):
+    
+    def set_TI_bounds(self, sequence_type, TR, min_TR, TI):
         if sequence_type != 'Inversion Recovery':
             return
         max_TI = TR - min_TR + TI
@@ -1518,7 +1507,7 @@ class MRIsimulator(param.Parameterized):
             self.trajectory = updated
         self.param.trajectory.objects = [t for t in constants.TRAJECTORIES if t != invalid]
 
-    def set_BW_bounds(self, matrix_F, FOV_F, is_gradient_echo, gre_max_read_duration, RF_refocusing, turbo_factor, EPI_factor, TE, RF_excitation, readtrain_spacing, phaser_duration, max_blip_dur, slice_select_refocusing, TR, sequence_start, spoiler):
+    def set_pixel_bandwidth_bounds(self, matrix_F, FOV_F, is_gradient_echo, gre_max_read_duration, RF_refocusing, turbo_factor, EPI_factor, TE, RF_excitation, readtrain_spacing, phaser_duration, max_blip_dur, slice_select_refocusing, TR, sequence_start, spoiler):
         # See paramBounds.tex for formulae relating to the readout board
         s = self.max_slew
         A = 1e3 * matrix_F / (FOV_F * constants.GYRO) # readout area
@@ -1684,10 +1673,12 @@ class MRIsimulator(param.Parameterized):
             # TODO: evaluate forward/reverse linear order
             min_centermost_rf_echo = centermost_rf_echo
             min_centermost_gr_echo = centermost_gr_echo
-        return TE_from_centermost_echoes(min_readtrain_spacing, min_centermost_rf_echo, gr_echo_spacing, min_centermost_gr_echo, EPI_factor)
+        min_TE = TE_from_centermost_echoes(min_readtrain_spacing, min_centermost_rf_echo, gr_echo_spacing, min_centermost_gr_echo, EPI_factor)
+        return min([v for v in param_values['TE'].values() if v >= min_TE])
 
     def min_TR_func(self, spoiler, sequence_start):
-        return spoiler['time'][-1] - sequence_start
+        min_TR = spoiler['time'][-1] - sequence_start
+        return min([v for v in param_values['TR'].values() if v >= min_TR])
     
     def gre_read_start_to_kcenter_func(self, is_gradient_echo, phasers, rephasers, TE, RF_excitation, read_prephaser, readout_risetime, slice_select_excitation, slice_select_rephaser):
         if not is_gradient_echo:
