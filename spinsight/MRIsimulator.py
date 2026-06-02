@@ -1536,7 +1536,7 @@ class MRIsimulator(param.Parameterized):
                 h = min(h, self.max_amp)
                 denom = 2*h*s*tp - s*A - 2*h**2
                 min_read_durations.append(np.sqrt(A**2/denom) if denom > 0 else np.inf)
-            idle_space = readtrain_spacing - RF_refocusing[0]['dur_f']
+            idle_space = readtrain_spacing - refocusing_dur
             # max limit imposed by phaser:
             max_read_durations.append((idle_space - 2 * phaser_duration - max_blip_dur * (EPI_factor-1))/EPI_factor)
             # tr is half the maximum readout gradient duration
@@ -1551,7 +1551,7 @@ class MRIsimulator(param.Parameterized):
             max_read_durations.append((tr - slice_select_refocusing[0]['risetime_f']) * 2)
             # readtrain_spacing may be limited by TR:
             read_end_by_TR = (TR - (-sequence_start) - spoiler['dur_f'])
-            read_end_by_else = readtrain_spacing * (turbo_factor + 1/2) - refocusing_dur/2
+            read_end_by_else = readtrain_spacing * turbo_factor + min(max_read_durations)/2
             max_read_durations.append((tr - (read_end_by_else-read_end_by_TR)) * 2)
         min_read_duration, max_read_duration = max(min_read_durations), min(max_read_durations)
         small = 1e-2 # to avoid roundoff errors
