@@ -358,6 +358,18 @@ class MRIsimulator(param.Parameterized):
             'parents': ['max_phaser_area', 'FOV_P']
         }
         
+        node_specs['set_recon_matrix_F_bounds'] = {
+            'action': True,
+            'func': self.set_recon_matrix_F_bounds,
+            'parents': ['matrix_F']
+        }
+        
+        node_specs['set_recon_matrix_P_bounds'] = {
+            'action': True,
+            'func': self.set_recon_matrix_P_bounds,
+            'parents': ['matrix_P']
+        }
+        
         node_specs['set_FOV_F_bounds'] = {
             'action': True,
             'func': self.set_FOV_F_bounds,
@@ -1336,7 +1348,6 @@ class MRIsimulator(param.Parameterized):
                 self.param.trigger('FOV_bandwidth')
             self.update_voxel_F_objects()
             self.set_closest(self.param.voxel_F, self.FOV_F / self.matrix_F)
-            self.set_param_bounds(self.param['recon_matrix_F'], minval=self.matrix_F)
             self.update_recon_voxel_F_objects()
             self.set_closest(self.param.recon_matrix_F, self.matrix_F * self.rec_acq_ratio_F)
             self.param.trigger('voxel_F', 'recon_voxel_F')
@@ -1347,7 +1358,6 @@ class MRIsimulator(param.Parameterized):
         with param.parameterized.batch_call_watchers(self):
             self.update_voxel_P_objects()
             self.set_closest(self.param.voxel_P, self.FOV_P / self.matrix_P)
-            self.set_param_bounds(self.param['recon_matrix_P'], minval=self.matrix_P)
             self.update_recon_voxel_P_objects()
             self.set_closest(self.param.recon_matrix_P, self.matrix_P * self.rec_acq_ratio_P)
             self.param.trigger('voxel_P', 'recon_voxel_P')
@@ -1540,6 +1550,12 @@ class MRIsimulator(param.Parameterized):
     def set_matrix_P_bounds(self, max_phaser_area, FOV_P):
         max_matrix_P = int(max_phaser_area * 2e-3 * FOV_P * constants.GYRO) + 1
         self.set_param_bounds(self.param.matrix_P, maxval=max_matrix_P)
+
+    def set_recon_matrix_F_bounds(self, matrix_F):
+        self.set_param_bounds(self.param['recon_matrix_F'], minval=matrix_F)
+
+    def set_recon_matrix_P_bounds(self, matrix_P):
+        self.set_param_bounds(self.param['recon_matrix_P'], minval=matrix_P)
 
     def set_FOV_F_bounds(self, matrix_F, max_readout_area, parameter_style, voxel_F, recon_voxel_F):
         min_FOV = [1e3 * matrix_F / (max_readout_area * constants.GYRO) if max_readout_area > 0 else np.inf]
