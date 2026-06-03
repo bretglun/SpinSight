@@ -148,3 +148,16 @@ def build_graph(node_specs):
         graph[name] = make_node(name, node_specs[name], graph)
     initialize_graph(graph)
     return graph
+
+
+def print_dependency_chains(source, sink, chain=''):
+    if not hasattr(sink, 'parents'):
+        if sink.name == source.name:
+            print(sink.name, chain)
+        return
+    name = sink.func.__name__
+    if name.endswith('_func'):
+        name = name[:-5]
+    chain = f'-> {name} {chain}'
+    for parent in sink.parents:
+        print_dependency_chains(source, parent, chain)
