@@ -81,17 +81,17 @@ def get_segment_order(N, Nsym, c):
         Segment indices as a temporally ordered list
     '''
 
-    split_center = not(Nsym % 2) # k-space center is between two segments
+    split_k0 = not(Nsym % 2) # k-space center is between two segments
 
-    if c >= N - split_center:
+    if c >= N - split_k0:
         raise ValueError('The spin echo index of (the first) centermost k-space segment is too high')
-    elif c > N//2 - split_center:
-        return get_segment_order(N, Nsym, N-1-c-split_center)[::-1]
+    elif c > N//2 - split_k0:
+        return get_segment_order(N, Nsym, N-1-c-split_k0)[::-1]
     
-    Ncon = min(2 * c + 1 + split_center, Nsym) # number of symmetric segments to be read consecutively
+    Ncon = min(2 * c + 1 + split_k0, Nsym) # number of symmetric segments to be read consecutively
     Npivot = Nsym - Ncon # number of symmetric segments to be read in a pivoting fashion
     Nasym = N - Nsym # number of asymmetric segments
-    linear_start = Nasym + Nsym//2 - split_center - c # start of consecutively read segments
+    linear_start = Nasym + Nsym//2 - split_k0 - c # start of consecutively read segments
     linear_end = N - Npivot//2 # end of consecutively read segments (+1)
     linear = list(range(linear_start, linear_end)) # consecutively read segments
     if linear_start==Nasym:
@@ -108,13 +108,13 @@ def get_readtrain_pos(readtrain_spacing, rf_echo_num):
     return readtrain_spacing * (rf_echo_num + 1)
 
 
-def readtrain_shift(gr_echo_spacing, centermost_gr_echo, num_gr_echoes):
-    return gr_echo_spacing * (centermost_gr_echo - (num_gr_echoes-1)/2)
+def readtrain_shift(gr_echo_spacing, k0_gr_echo_index, num_gr_echoes):
+    return gr_echo_spacing * (k0_gr_echo_index - (num_gr_echoes-1)/2)
 
 
-def TE_from_centermost_echoes(readtrain_spacing, centermost_rf_echo, gr_echo_spacing, centermost_gr_echo, EPI_factor):
-    TE = readtrain_spacing * (1 + centermost_rf_echo)
-    TE += readtrain_shift(gr_echo_spacing, centermost_gr_echo, EPI_factor)
+def TE_from_k0_echo_indices(readtrain_spacing, k0_rf_echo_index, gr_echo_spacing, k0_gr_echo_index, EPI_factor):
+    TE = readtrain_spacing * (1 + k0_rf_echo_index)
+    TE += readtrain_shift(gr_echo_spacing, k0_gr_echo_index, EPI_factor)
     return TE
 
 
@@ -803,7 +803,7 @@ class MRIsimulator(param.Parameterized):
 
         node_specs['min_TE'] = {
             'func': self.min_TE_func,
-            'parents': ['EPI_factor', 'centermost_rf_echo', 'centermost_gr_echo', 'min_readtrain_spacing', 'gr_echo_spacing']
+            'parents': ['EPI_factor', 'k0_rf_echo_index', 'k0_gr_echo_index', 'min_readtrain_spacing', 'gr_echo_spacing']
         }
         
         node_specs['min_TR'] = {
@@ -823,12 +823,12 @@ class MRIsimulator(param.Parameterized):
 
         node_specs['gre_max_read_duration'] = {
             'func': self.gre_max_read_duration_func,
-            'parents': ['gre_read_start_to_kcenter', 'gre_kcenter_to_read_end', 'centermost_gr_echo', 'readout_risetime', 'EPI_factor']
+            'parents': ['gre_read_start_to_kcenter', 'gre_kcenter_to_read_end', 'k0_gr_echo_index', 'readout_risetime', 'EPI_factor']
         }
 
         node_specs['max_readout_area'] = {
             'func': self.max_readout_area_func,
-            'parents': ['pixel_bandwidth', 'is_gradient_echo', 'centermost_gr_echo', 'RF_excitation', 'phaser_duration', 'slice_select_excitation', 'slice_select_rephaser', 'max_blip_dur', 'readtrain_spacing', 'RF_refocusing_floating', 'EPI_factor']
+            'parents': ['pixel_bandwidth', 'is_gradient_echo', 'k0_gr_echo_index', 'RF_excitation', 'phaser_duration', 'slice_select_excitation', 'slice_select_rephaser', 'max_blip_dur', 'readtrain_spacing', 'RF_refocusing_floating', 'EPI_factor']
         }
 
         node_specs['max_phaser_area'] = {
@@ -841,19 +841,19 @@ class MRIsimulator(param.Parameterized):
             'parents': ['is_gradient_echo', 'RF_excitation', 'gre_echo_train_dur', 'readout_risetime', 'read_prephaser_floating', 'phaser_duration', 'slice_select_excitation', 'slice_select_rephaser', 'RF_refocusing_floating', 'slice_select_refocusing_floating']
         }
 
-        node_specs['centermost_gr_echo'] = {
-            'func': self.centermost_gr_echo_func,
-            'parents': ['central_segment', 'reverse_linear_order', 'num_segm', 'turbo_factor']
+        node_specs['k0_gr_echo_index'] = {
+            'func': self.k0_gr_echo_index_func,
+            'parents': ['k0_segment', 'reverse_linear_order', 'num_segm', 'turbo_factor']
         }
         
-        node_specs['centermost_rf_echo'] = {
-            'func': self.centermost_rf_echo_func,
-            'parents': ['is_gradient_echo', 'EPI_factor', 'central_segment', 'turbo_factor', 'TE', 'min_readtrain_spacing']
+        node_specs['k0_rf_echo_index'] = {
+            'func': self.k0_rf_echo_index_func,
+            'parents': ['is_gradient_echo', 'EPI_factor', 'k0_segment', 'turbo_factor', 'TE', 'min_readtrain_spacing']
         }
 
         node_specs['readtrain_spacing'] = {
             'func': self.readtrain_spacing_func,
-            'parents': ['EPI_factor', 'gr_echo_spacing', 'TE', 'centermost_gr_echo', 'centermost_rf_echo']
+            'parents': ['EPI_factor', 'gr_echo_spacing', 'TE', 'k0_gr_echo_index', 'k0_rf_echo_index']
         }
 
         node_specs['num_blades'] = {
@@ -922,24 +922,24 @@ class MRIsimulator(param.Parameterized):
             'parents': ['num_measured_lines', 'k_phase_axis']
         }
 
-        node_specs['split_center'] = {
-            'func': self.split_center_func,
+        node_specs['split_k0'] = {
+            'func': self.split_k0_func,
             'parents': ['num_sym_lines', 'num_shots']
         }
 
         node_specs['num_sym_segm'] = {
             'func': self.num_sym_segm_func,
-            'parents': ['split_center', 'num_sym_lines', 'num_blades', 'num_shots']
+            'parents': ['split_k0', 'num_sym_lines', 'num_blades', 'num_shots']
         }
 
-        node_specs['central_segment'] = {
-            'func': self.central_segment_func,
+        node_specs['k0_segment'] = {
+            'func': self.k0_segment_func,
             'parents': ['num_segm', 'num_sym_segm']
         }
 
         node_specs['pe_table'] = {
             'func': self.pe_table_func,
-            'parents': ['EPI_factor', 'turbo_factor', 'num_sym_segm', 'centermost_rf_echo', 'is_radial', 'num_shots', 'reverse_linear_order', 'lines_to_measure']
+            'parents': ['EPI_factor', 'turbo_factor', 'num_sym_segm', 'k0_rf_echo_index', 'is_radial', 'num_shots', 'reverse_linear_order', 'lines_to_measure']
         }
 
         node_specs['signal_level'] = {
@@ -1703,15 +1703,15 @@ class MRIsimulator(param.Parameterized):
     def set_apodization_alpha_visibility(self, do_apodize):
         self.set_visibility('apodization_alpha', do_apodize)
 
-    def min_TE_func(self, EPI_factor, centermost_rf_echo, centermost_gr_echo, min_readtrain_spacing, gr_echo_spacing):
+    def min_TE_func(self, EPI_factor, k0_rf_echo_index, k0_gr_echo_index, min_readtrain_spacing, gr_echo_spacing):
         if EPI_factor == 1: # flexible segment order for (turbo) spin echo
-            min_centermost_rf_echo = 0
-            min_centermost_gr_echo = 0
+            min_k0_rf_echo_index = 0
+            min_k0_gr_echo_index = 0
         else: # linear segment order for EPI and GRASE
             # TODO: evaluate forward/reverse linear order
-            min_centermost_rf_echo = centermost_rf_echo
-            min_centermost_gr_echo = centermost_gr_echo
-        min_TE = TE_from_centermost_echoes(min_readtrain_spacing, min_centermost_rf_echo, gr_echo_spacing, min_centermost_gr_echo, EPI_factor)
+            min_k0_rf_echo_index = k0_rf_echo_index
+            min_k0_gr_echo_index = k0_gr_echo_index
+        min_TE = TE_from_k0_echo_indices(min_readtrain_spacing, min_k0_rf_echo_index, gr_echo_spacing, min_k0_gr_echo_index, EPI_factor)
         return min([v for v in param_values['TE'].values() if v >= min_TE])
 
     def min_TR_func(self, spoiler, sequence_start):
@@ -1734,12 +1734,12 @@ class MRIsimulator(param.Parameterized):
             return None
         return (TR - (-sequence_start) - spoiler['dur_f']) - TE
     
-    def gre_max_read_duration_func(self, gre_read_start_to_kcenter, gre_kcenter_to_read_end, centermost_gr_echo, readout_risetime, EPI_factor):
+    def gre_max_read_duration_func(self, gre_read_start_to_kcenter, gre_kcenter_to_read_end, k0_gr_echo_index, readout_risetime, EPI_factor):
         if gre_read_start_to_kcenter is None:
             return None
         # simplification: use current risetime (self.readout_risetime)
-        num_early_readouts = centermost_gr_echo + 1/2
-        num_early_ramps = centermost_gr_echo * 2
+        num_early_readouts = k0_gr_echo_index + 1/2
+        num_early_ramps = k0_gr_echo_index * 2
         # max limit imposed by TE:
         max_read_dur_early = ((gre_read_start_to_kcenter - num_early_ramps * readout_risetime) / num_early_readouts)
         num_late_readouts = EPI_factor - num_early_readouts
@@ -1748,14 +1748,14 @@ class MRIsimulator(param.Parameterized):
         max_read_dur_late = ((gre_kcenter_to_read_end - num_late_ramps * readout_risetime) / num_late_readouts)
         return min(max_read_dur_early, max_read_dur_late)
     
-    def max_readout_area_func(self, pixel_bandwidth, is_gradient_echo, centermost_gr_echo, RF_excitation, phaser_duration, slice_select_excitation, slice_select_rephaser, max_blip_dur, readtrain_spacing, RF_refocusing, EPI_factor):
+    def max_readout_area_func(self, pixel_bandwidth, is_gradient_echo, k0_gr_echo_index, RF_excitation, phaser_duration, slice_select_excitation, slice_select_rephaser, max_blip_dur, readtrain_spacing, RF_refocusing, EPI_factor):
         max_readout_areas = []
         # See paramBounds.tex for formulae
         d = 1e3 / pixel_bandwidth # readout duration
         s = self.max_slew
         if is_gradient_echo:
-            N = centermost_gr_echo + 1/2
-            M = centermost_gr_echo * 2 + 1
+            N = k0_gr_echo_index + 1/2
+            M = k0_gr_echo_index * 2 + 1
             t = self.TE - RF_excitation['dur_f']/2
             v = 0 # gap between readouts
             for _ in range(2): # update readout gap after first pass
@@ -1829,28 +1829,28 @@ class MRIsimulator(param.Parameterized):
             spacing = max(left_side, right_side) * 2
         return spacing
     
-    def centermost_gr_echo_func(self, central_segment, reverse_linear_order, num_segm, turbo_factor):
+    def k0_gr_echo_index_func(self, k0_segment, reverse_linear_order, num_segm, turbo_factor):
         # get index of gradient echo closest to k-space center
         #TODO: opposite gre order or different rounding (ceil/floor) may minimize TE
-        centermost_gr_echo = central_segment // turbo_factor
-        return centermost_gr_echo
+        k0_gr_echo_index = k0_segment // turbo_factor
+        return k0_gr_echo_index
 
-    def centermost_rf_echo_func(self, is_gradient_echo, EPI_factor, central_segment, turbo_factor, TE, min_readtrain_spacing):
+    def k0_rf_echo_index_func(self, is_gradient_echo, EPI_factor, k0_segment, turbo_factor, TE, min_readtrain_spacing):
         # get index if RF echo closest to k-space center
         if is_gradient_echo:
             return 0
         if EPI_factor > 1: # linear segment order for EPI and GRASE
             #TODO: opposite rfe order or different rounding (ceil/floor) may minimize TE
-            return central_segment % turbo_factor
+            return k0_segment % turbo_factor
         return min(int(np.floor(TE / min_readtrain_spacing)) - 1, turbo_factor - 1)
     
-    def readtrain_spacing_func(self, EPI_factor, gr_echo_spacing, TE, centermost_gr_echo, centermost_rf_echo):
+    def readtrain_spacing_func(self, EPI_factor, gr_echo_spacing, TE, k0_gr_echo_index, k0_rf_echo_index):
         # Equals center position of gradient echo (train) for gradient echo sequences
         # Equals rf echo spacing for spin echo sequences
         spin_echo_time = TE
         if EPI_factor > 1:
-            spin_echo_time -= readtrain_shift(gr_echo_spacing, centermost_gr_echo, EPI_factor)
-        return spin_echo_time / (centermost_rf_echo + 1)
+            spin_echo_time -= readtrain_shift(gr_echo_spacing, k0_gr_echo_index, EPI_factor)
+        return spin_echo_time / (k0_rf_echo_index + 1)
         
     def k_read_axis_func(self, freq_dir, FOV, matrix, is_radial, fantom, radial_FOV_oversampling):
         voxel_size = FOV[freq_dir] / matrix[freq_dir]
@@ -1888,22 +1888,22 @@ class MRIsimulator(param.Parameterized):
     def num_sym_lines_func(self, num_measured_lines, k_phase_axis):
         return 2 * num_measured_lines - len(k_phase_axis)
 
-    def split_center_func(self, num_sym_lines, num_shots):
+    def split_k0_func(self, num_sym_lines, num_shots):
         # does center of k-space lie between two segments?
         return (num_sym_lines % num_shots == 0) and ((num_sym_lines / num_shots) % 2 == 0)
 
-    def num_sym_segm_func(self, split_center, num_sym_lines, num_blades, num_shots):
-        # number of k-space segments symmetric about center:
-        if split_center:
+    def num_sym_segm_func(self, split_k0, num_sym_lines, num_blades, num_shots):
+        # number of k-space segments symmetric about k0:
+        if split_k0:
             return int(num_sym_lines * num_blades / num_shots)
         return int(np.round((num_sym_lines * num_blades / num_shots - 1) / 2)) * 2 + 1
 
-    def central_segment_func(self, num_segm, num_sym_segm):
+    def k0_segment_func(self, num_segm, num_sym_segm):
         return num_segm - np.ceil(num_sym_segm / 2)
         
-    def pe_table_func(self, EPI_factor, turbo_factor, num_sym_segm, centermost_rf_echo, is_radial, num_shots, reverse_linear_order, lines_to_measure):
+    def pe_table_func(self, EPI_factor, turbo_factor, num_sym_segm, k0_rf_echo_index, is_radial, num_shots, reverse_linear_order, lines_to_measure):
         if EPI_factor == 1: # (turbo) spin echo
-            segment_order = get_segment_order(turbo_factor, num_sym_segm, centermost_rf_echo)
+            segment_order = get_segment_order(turbo_factor, num_sym_segm, k0_rf_echo_index)
             if is_radial:
                 pe_table = [[[segment] for segment in segment_order] for shot in range(num_shots)]
             else:
