@@ -1305,7 +1305,7 @@ class MRIsimulator(param.Parameterized):
 
     def _watch_FOV_F(self):
         with param.parameterized.batch_call_watchers(self):
-            if self.parameter_style=='Voxel_size and Fat/water shift' or self.is_radial.value:
+            if self.parameter_style=='Voxel_size and Fat/water shift' or self.is_radial:
                 self.set_closest(self.param.matrix_F, self.FOV_F/self.voxel_F)
                 self.set_closest(self.param.recon_matrix_F, self.FOV_F/self.recon_voxel_F)
             self.update_FOV_bandwidth_objects()
@@ -1317,7 +1317,7 @@ class MRIsimulator(param.Parameterized):
 
     def _watch_FOV_P(self):
         with param.parameterized.batch_call_watchers(self):
-            if self.parameter_style=='Voxel_size and Fat/water shift' or self.is_radial.value:
+            if self.parameter_style=='Voxel_size and Fat/water shift' or self.is_radial:
                 self.set_closest(self.param.matrix_P, self.FOV_P/self.voxel_P)
                 self.set_closest(self.param.recon_matrix_P, self.FOV_P/self.recon_voxel_P)
             self.update_voxel_P_objects()
@@ -1340,7 +1340,7 @@ class MRIsimulator(param.Parameterized):
             self.update_recon_voxel_F_objects()
             self.set_closest(self.param.recon_matrix_F, self.matrix_F * self.rec_acq_ratio_F)
             self.param.trigger('voxel_F', 'recon_voxel_F')
-            if self.is_radial.value:
+            if self.is_radial:
                 self.set_closest(self.param.matrix_P, self.matrix_F * self.FOV_P / self.FOV_F)
 
     def _watch_matrix_P(self):
@@ -1351,7 +1351,7 @@ class MRIsimulator(param.Parameterized):
             self.update_recon_voxel_P_objects()
             self.set_closest(self.param.recon_matrix_P, self.matrix_P * self.rec_acq_ratio_P)
             self.param.trigger('voxel_P', 'recon_voxel_P')
-            if self.is_radial.value:
+            if self.is_radial:
                 self.set_closest(self.param.matrix_F, self.matrix_P * self.FOV_F / self.FOV_P)
 
     def _watch_voxel_F(self):
@@ -1401,15 +1401,33 @@ class MRIsimulator(param.Parameterized):
             precedence *= -1
         self.param[par_name].precedence = precedence
     
-    def set_closest(self, par, value=None):
+    def set_param(self, par, value=None, values=None, mode='round'):
         # par.objects could be dict or param.ListProxy
-        values = par.objects.values() if callable(getattr(par.objects, 'values', None)) else par.objects
         if not values:
-            warnings.warn(f'Could not set {par.name} since no allowed values')
-            return
+            if hasattr(par, 'objects'):
+                values = par.objects
+                if not values:
+                    warnings.warn(f'Could not set {par.name} since no allowed values')
+                    return
+        if callable(getattr(values, 'values', False)):
+            values = values.values()
+        current = getattr(self, par.name)
         if value is None:
-            value = getattr(self, par.name)
-        setattr(self, par.name, min(values, key=lambda x: abs(x-value)))
+            value = current
+        if values:
+            match mode:
+                case 'round':
+                    new = min(values, key=lambda x: abs(x-value))
+                case 'ceil':
+                    new = min([v for v in values if v >= value])
+                case 'floor':
+                    new = max([v for v in values if v <= value])
+                case _:
+                    raise ValueError(f'Invalid mode {mode}')
+        else:
+            new = value
+        if new != current:
+            setattr(self, par.name, new)
 
     def handle_outbound(self, par_name):
         bounds_func = f'set_{par_name}_bounds'
@@ -1418,21 +1436,21 @@ class MRIsimulator(param.Parameterized):
         min_TE = self.graph['min_TE'].value
         if self.TE < min_TE:
             print(f'Increasing TE from {self.TE} to {min_TE} to resolve conflict')
-            self.TE = min_TE
+            self.set_param(self.param.TE, min_TE, values=param_values['TE'], mode='ceil')
             return
         min_TR =  self.graph['min_TR'].value
         if self.TR < min_TR:
             print(f'Increasing TR from {self.TR} to {min_TR} to resolve conflict')
-            self.TR = min_TR
+            self.set_param(self.param.TR, min_TR, mode='ceil')
             return
         raise NotImplementedError(f'Could not resolve conflict for outbound parameter {par_name}')
 
     def set_isotropic_voxel_size(self, is_radial, FOV_F, matrix_F, FOV_P, matrix_P):
         if is_radial:
             if (FOV_F / matrix_F < FOV_P / matrix_P):
-                self.set_closest(self.param.matrix_P, matrix_F * FOV_P / FOV_F)
+                self.set_param(self.param.matrix_P, matrix_F * FOV_P / FOV_F, mode='round')
             else:
-                self.set_closest(self.param.matrix_F, matrix_P * FOV_F / FOV_P)
+                self.set_param(self.param.matrix_F, matrix_P * FOV_F / FOV_P, mode='round')
     
     def set_TR_bounds(self, min_TR):
         self.set_param_bounds(self.param.TR, minval=min_TR)
@@ -1637,7 +1655,7 @@ class MRIsimulator(param.Parameterized):
         visible = not is_radial
         self.set_visibility('partial_Fourier', visible)
         if not visible:
-            self.partial_Fourier = 1.
+            self.set_param(self.param.partial_Fourier, 1)
 
     def set_frequency_direction_visibility(self, is_radial):
         self.set_visibility('frequency_direction', not is_radial)
@@ -1646,7 +1664,7 @@ class MRIsimulator(param.Parameterized):
         visible = not is_radial
         self.set_visibility('phase_oversampling', visible)
         if not visible:
-            self.phase_oversampling = 0.
+            self.set_param(self.param.phase_oversampling, 0)
     
     def set_radial_factor_visibility(self, is_radial):
         self.set_visibility('radial_factor', is_radial)
@@ -1661,7 +1679,7 @@ class MRIsimulator(param.Parameterized):
         visible = sequence_type != 'Spoiled Gradient Echo'
         self.set_visibility('turbo_factor', visible)
         if not visible:
-            self.turbo_factor = 1
+            self.set_param(self.param.turbo_factor, 1)
     
     def set_homodyne_visibility(self, num_blank_lines, is_radial):
         self.set_visibility('homodyne', (num_blank_lines > 0 and not is_radial))
