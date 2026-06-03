@@ -298,6 +298,12 @@ class MRIsimulator(param.Parameterized):
 
         node_specs = {par: {'params': self} for par in self.param if par != 'name'}
 
+        node_specs['set_isotropic_voxel_size'] = {
+            'action': True,
+            'func': self.set_isotropic_voxel_size,
+            'parents': ['is_radial', 'FOV_F', 'matrix_F', 'FOV_P', 'matrix_P']
+        }
+        
         node_specs['set_TR_bounds'] = {
             'action': True,
             'func': self.set_TR_bounds,
@@ -314,6 +320,12 @@ class MRIsimulator(param.Parameterized):
             'action': True,
             'func': self.set_TI_bounds,
             'parents': ['sequence_type', 'TR', 'min_TR', 'TI']
+        }
+        
+        node_specs['set_x_y_labels'] = {
+            'action': True,
+            'func': self.set_x_y_labels,
+            'parents': ['frequency_direction']
         }
         
         node_specs['set_labels_by_trajectory'] = {
@@ -411,12 +423,6 @@ class MRIsimulator(param.Parameterized):
             'func': self.set_EPI_factor_objects,
             'parents': ['matrix', 'phase_dir', 'partial_Fourier', 'turbo_factor']
         }
-        
-        node_specs['set_homodyne_visibility'] = {
-            'action': True,
-            'func': self.set_homodyne_visibility,
-            'parents': ['num_blank_lines', 'is_radial']
-        }
 
         node_specs['set_reference_tissue_objects'] = {
             'action': True,
@@ -430,6 +436,66 @@ class MRIsimulator(param.Parameterized):
             'parents': ['num_shots']
         }
         
+        node_specs['set_parameter_style_visibility'] = {
+            'action': True,
+            'func': self.set_parameter_style_visibility,
+            'parents': ['parameter_style']
+        }
+        
+        node_specs['set_partial_Fourier_visibility'] = {
+            'action': True,
+            'func': self.set_partial_Fourier_visibility,
+            'parents': ['is_radial']
+        }
+        
+        node_specs['set_frequency_direction_visibility'] = {
+            'action': True,
+            'func': self.set_frequency_direction_visibility,
+            'parents': ['is_radial']
+        }
+        
+        node_specs['set_phase_oversampling_visibility'] = {
+            'action': True,
+            'func': self.set_phase_oversampling_visibility,
+            'parents': ['is_radial']
+        }
+        
+        node_specs['set_radial_factor_visibility'] = {
+            'action': True,
+            'func': self.set_radial_factor_visibility,
+            'parents': ['is_radial']
+        }
+        
+        node_specs['set_TI_visibility'] = {
+            'action': True,
+            'func': self.set_TI_visibility,
+            'parents': ['sequence_type']
+        }
+        
+        node_specs['set_FA_visibility'] = {
+            'action': True,
+            'func': self.set_FA_visibility,
+            'parents': ['sequence_type']
+        }
+        
+        node_specs['set_turbo_factor_visibility'] = {
+            'action': True,
+            'func': self.set_turbo_factor_visibility,
+            'parents': ['sequence_type']
+        }
+        
+        node_specs['set_homodyne_visibility'] = {
+            'action': True,
+            'func': self.set_homodyne_visibility,
+            'parents': ['num_blank_lines', 'is_radial']
+        }
+        
+        node_specs['set_apodization_alpha_visibility'] = {
+            'action': True,
+            'func': self.set_apodization_alpha_visibility,
+            'parents': ['do_apodize']
+        }
+
         node_specs['phantom'] = {
             'func': lambda object, min_voxel_size:
                     phantom.load(object, min_voxel_size),
@@ -483,6 +549,18 @@ class MRIsimulator(param.Parameterized):
             'func': lambda recon_matrix_P, recon_matrix_F, freq_dir, do_zerofill, matrix:
                     ([recon_matrix_P, recon_matrix_F] if freq_dir else [recon_matrix_F, recon_matrix_P]) if do_zerofill else matrix,
             'parents': ['recon_matrix_P', 'recon_matrix_F', 'freq_dir', 'do_zerofill', 'matrix']
+        }
+
+        node_specs['rec_acq_ratio_F'] = {
+            'func': lambda recon_matrix_F, matrix_F:
+                    recon_matrix_F / matrix_F,
+            'parents': ['recon_matrix_F', 'matrix_F']
+        }
+
+        node_specs['rec_acq_ratio_P'] = {
+            'func': lambda recon_matrix_P, matrix_P:
+                    recon_matrix_P / matrix_P,
+            'parents': ['recon_matrix_P', 'matrix_P']
         }
 
         node_specs['RF_excitation'] = {
@@ -1158,7 +1236,7 @@ class MRIsimulator(param.Parameterized):
     def init_bounds(self):
         self.param.object.objects = phantom.get_phantom_names()
         self.param.field_strength.objects=[1.5, 3.0]
-        self.param.parameter_style.objects=['Matrix and Pixel BW', 'voxel_size and Fat/water shift', 'Matrix and FOV BW']
+        self.param.parameter_style.objects=['Matrix and Pixel BW', 'Voxel_size and Fat/water shift', 'Matrix and FOV BW']
         self.param.frequency_direction.objects=constants.DIRECTIONS.keys()
         self.param.trajectory.objects=constants.TRAJECTORIES[:2]
         self.param.radial_factor.bounds=(0.1, 4.)
@@ -1225,43 +1303,9 @@ class MRIsimulator(param.Parameterized):
             return self.handle_outbound(par.name)
         par.bounds = (minval, maxval)
 
-    def _watch_object(self):
-        if hasattr(self, 'phantom') and self.phantom['name']==self.object:
-            return
-        self.phantom = phantom.load(self.object, self.min_voxel_size)
-        min_FOV = self.phantom['support']
-        if self.frequency_direction=='left-right':
-            min_FOV = min_FOV.reverse()
-        with param.parameterized.batch_call_watchers(self):
-            self.FOV_F = max(self.FOV_F, min_FOV[0])
-            self.FOV_P = max(self.FOV_P, min_FOV[1])
-
-    def _watch_parameter_style(self):
-        for par in [self.param.voxel_F, self.param.voxel_P, self.param.matrix_F, self.param.matrix_P, self.param.recon_voxel_F, self.param.recon_voxel_P, self.param.recon_matrix_F, self.param.recon_matrix_P, self.param.pixel_bandwidth, self.param.FOV_bandwidth, self.param.FW_shift]:
-            par.precedence = -1
-        if self.parameter_style == 'voxel_size and Fat/water shift':
-            self.param.voxel_F.precedence = 4
-            self.param.voxel_P.precedence = 4
-            self.param.recon_voxel_F.precedence = 5
-            self.param.recon_voxel_P.precedence = 5
-            self.param.FW_shift.precedence = 2
-            self._watch_recon_matrix_F()
-            self._watch_recon_matrix_P()
-            self._watch_pixel_bandwidth()
-        else:
-            self.param.matrix_F.precedence = 4
-            self.param.matrix_P.precedence = 4
-            self.param.recon_matrix_F.precedence = 5
-            self.param.recon_matrix_P.precedence = 5
-            if self.parameter_style == 'Matrix and Pixel BW':
-                self.param.pixel_bandwidth.precedence = 2
-            elif self.parameter_style == 'Matrix and FOV BW':
-                self.param.FOV_bandwidth.precedence = 2
-                self.update_matrix_F_bounds()
-
     def _watch_FOV_F(self):
         with param.parameterized.batch_call_watchers(self):
-            if self.parameter_style=='voxel_size and Fat/water shift' or self.is_radial.value:
+            if self.parameter_style=='Voxel_size and Fat/water shift' or self.is_radial.value:
                 self.set_closest(self.param.matrix_F, self.FOV_F/self.voxel_F)
                 self.set_closest(self.param.recon_matrix_F, self.FOV_F/self.recon_voxel_F)
             self.update_FOV_bandwidth_objects()
@@ -1273,7 +1317,7 @@ class MRIsimulator(param.Parameterized):
 
     def _watch_FOV_P(self):
         with param.parameterized.batch_call_watchers(self):
-            if self.parameter_style=='voxel_size and Fat/water shift' or self.is_radial.value:
+            if self.parameter_style=='Voxel_size and Fat/water shift' or self.is_radial.value:
                 self.set_closest(self.param.matrix_P, self.FOV_P/self.voxel_P)
                 self.set_closest(self.param.recon_matrix_P, self.FOV_P/self.recon_voxel_P)
             self.update_voxel_P_objects()
@@ -1281,15 +1325,6 @@ class MRIsimulator(param.Parameterized):
             self.set_closest(self.param.voxel_P, self.FOV_P/self.matrix_P)
             self.set_closest(self.param.recon_voxel_P, self.FOV_P/self.recon_matrix_P)
             self.param.trigger('voxel_P', 'recon_voxel_P')
-
-    def _watch_phase_oversampling(self):
-        self._watch_FOV_P()
-
-    def _watch_radial_factor(self):
-        pass
-
-    def _watch_num_shots(self):
-        pass
 
     def _watch_matrix_F(self):
         with param.parameterized.batch_call_watchers(self):
@@ -1335,45 +1370,11 @@ class MRIsimulator(param.Parameterized):
         if self.param.recon_voxel_P.precedence > 0:
             self.set_closest(self.param.recon_matrix_P, self.FOV_P / self.recon_voxel_P)
 
-    def _watch_slice_thickness(self):
-        pass
-
-    def _watch_radial_FOV_oversampling(self):
-        pass
-
-    def _watch_frequency_direction(self):
-        for p in [self.param.FOV_F, self.param.FOV_P, self.param.matrix_F, self.param.matrix_P, self.param.recon_matrix_F, self.param.recon_matrix_P]:
-            if ' x' in p.label:
-                p.label = p.label.replace(' x', ' y')
-            elif ' y' in p.label:
-                p.label = p.label.replace(' y', ' x')
-
-    def _watch_trajectory(self):
-        if self.is_radial.value:
-            self.partial_Fourier = 1.
-            self.param.partial_Fourier.precedence = -5
-            self.param.frequency_direction.precedence = -1
-            self.phase_oversampling = 0.
-            self.param.phase_oversampling.precedence = -3
-            self.param.radial_factor.precedence = 3
-            # set isotropic voxel_size:
-            if (self.FOV_F / self.matrix_F < self.FOV_P / self.matrix_P):
-                self.set_closest(self.param.matrix_P, self.matrix_F * self.FOV_P / self.FOV_F)
-            else:
-                self.set_closest(self.param.matrix_F, self.matrix_P * self.FOV_F / self.FOV_P)
-        else:
-            self.param.partial_Fourier.precedence = 5
-            self.param.frequency_direction.precedence = 1
-            self.param.phase_oversampling.precedence = 3
-            self.param.radial_factor.precedence = -3
-        self.update_labels_by_trajectory()
-
     def _watch_field_strength(self):
         with param.parameterized.batch_call_watchers(self):
             self.update_FW_shift_objects()
             self.set_closest(self.param.FW_shift, pixel_BW_to_shift(self.pixel_bandwidth, self.field_strength))
             self.param.trigger('FW_shift')
-            self._watch_FatSat() # since fatsat pulse duration depends on field_strength
 
     def _watch_pixel_bandwidth(self):
         with param.parameterized.batch_call_watchers(self):
@@ -1388,72 +1389,17 @@ class MRIsimulator(param.Parameterized):
         if self.param.FOV_bandwidth.precedence > 0:
             self.set_closest(self.param.pixel_bandwidth, FOV_BW_to_pixel_BW(self.FOV_bandwidth, self.matrix_F))
 
-    def _watch_NSA(self):
-        pass
-
-    def _watch_partial_Fourier(self):
-        pass
-
-    def _watch_turbo_factor(self):
-        self.update_labels_by_trajectory()
-        self.update_EPI_factor_objects()
-
-    def _watch_EPI_factor(self):
-        self.update_labels_by_trajectory()
-        self.update_turbo_factor_bounds()
-
-    def _watch_shot(self):
-        pass
-
-    def _watch_sequence(self):
-        self.param.FA.precedence = 1 if self.sequence=='Spoiled Gradient Echo' else -1
-        self.param.TI.precedence = 1 if self.sequence=='Inversion Recovery' else -1
-        if self.sequence=='Spoiled Gradient Echo':
-            self.turbo_factor = 1
-            self.param.turbo_factor.precedence = -6
-        else:
-            self.param.turbo_factor.precedence = 6
-
-    def _watch_TE(self):
-        pass
-
-    def _watch_TR(self):
-        pass
-
-    def _watch_TI(self):
-        pass
-
-    def _watch_FA(self):
-        pass
-
-    def _watch_FatSat(self):
-        pass
-
-    def _watch_homodyne(self):
-        pass
-
-    def _watch_do_apodize(self):
-        if self.do_apodize:
-            self.param.apodization_alpha.precedence = abs(self.param.apodization_alpha.precedence)
-        else:
-            self.param.apodization_alpha.precedence = -abs(self.param.apodization_alpha.precedence)
-
-    def _watch_apodization_alpha(self):
-        pass
-
-    def _watch_do_zerofill(self):
-        pass
-
     def _watch_recon_matrix_F(self):
-        self.rec_acq_ratio_F = self.recon_matrix_F / self.matrix_F
         self.set_closest(self.param.recon_voxel_F, self.FOV_F / self.recon_matrix_F)
 
     def _watch_recon_matrix_P(self):
-        self.rec_acq_ratio_P = self.recon_matrix_P / self.matrix_P
         self.set_closest(self.param.recon_voxel_P, self.FOV_P / self.recon_matrix_P)
-
-    def _watch_reference_tissue(self):
-        pass
+    
+    def set_visibility(self, par_name, visible):
+        precedence = abs(self.param[par_name].precedence)
+        if not visible:
+            precedence *= -1
+        self.param[par_name].precedence = precedence
     
     def set_closest(self, par, value=None):
         # par.objects could be dict or param.ListProxy
@@ -1480,6 +1426,13 @@ class MRIsimulator(param.Parameterized):
             self.TR = min_TR
             return
         raise NotImplementedError(f'Could not resolve conflict for outbound parameter {par_name}')
+
+    def set_isotropic_voxel_size(self, is_radial, FOV_F, matrix_F, FOV_P, matrix_P):
+        if is_radial:
+            if (FOV_F / matrix_F < FOV_P / matrix_P):
+                self.set_closest(self.param.matrix_P, matrix_F * FOV_P / FOV_F)
+            else:
+                self.set_closest(self.param.matrix_F, matrix_P * FOV_F / FOV_P)
     
     def set_TR_bounds(self, min_TR):
         self.set_param_bounds(self.param.TR, minval=min_TR)
@@ -1494,6 +1447,15 @@ class MRIsimulator(param.Parameterized):
             return
         max_TI = TR - min_TR + TI
         self.set_param_bounds(self.param.TI, maxval=max_TI)
+    
+    def set_x_y_labels(self, frequency_direction):
+        for p in [self.param.FOV_F, self.param.FOV_P, self.param.matrix_F, self.param.matrix_P, self.param.recon_matrix_F, self.param.recon_matrix_P]:
+            if (' y' in p.label) and (('_F' in p.name and frequency_direction=='left-right') or
+                                      ('_P' in p.name and frequency_direction=='anterior-posterior')):
+                p.label = p.label.replace(' y', ' x')
+            elif (' x' in p.label) and (('_P' in p.name and frequency_direction=='left-right') or
+                                        ('_F' in p.name and frequency_direction=='anterior-posterior')):
+                p.label = p.label.replace(' x', ' y')
 
     def set_labels_by_trajectory(self, shot_label):
         self.param.shot.label = f'Displayed {shot_label}'
@@ -1564,7 +1526,7 @@ class MRIsimulator(param.Parameterized):
     def set_FOV_F_bounds(self, matrix_F, max_readout_area, parameter_style, voxel_F, recon_voxel_F):
         min_FOV = [1e3 * matrix_F / (max_readout_area * constants.GYRO) if max_readout_area > 0 else np.inf]
         max_FOV = []
-        if parameter_style == 'voxel_size and Fat/water shift':
+        if parameter_style == 'Voxel_size and Fat/water shift':
             # TODO: this could be solved better
             min_FOV.append(voxel_F * self.param.matrix_F.objects[0])
             min_FOV.append(recon_voxel_F * self.param.recon_matrix_F.objects[0])
@@ -1575,7 +1537,7 @@ class MRIsimulator(param.Parameterized):
     def set_FOV_P_bounds(self, matrix_P, max_phaser_area, parameter_style, voxel_P, recon_voxel_P):
         min_FOV = [(matrix_P - 1) / (max_phaser_area * constants.GYRO * 2e-3)]
         max_FOV = []
-        if parameter_style == 'voxel_size and Fat/water shift':
+        if parameter_style == 'Voxel_size and Fat/water shift':
             # TODO: this could be solved better
             min_FOV.append(voxel_P * self.param.matrix_P.objects[0])
             min_FOV.append(recon_voxel_P * self.param.recon_matrix_P.objects[0])
@@ -1654,9 +1616,6 @@ class MRIsimulator(param.Parameterized):
         if self.turbo_factor > 1:
             self.param.EPI_factor.objects = [v for v in self.param.EPI_factor.objects if v%2]
     
-    def set_homodyne_visibility(self, num_blank_lines, is_radial):
-        self.param.homodyne.precedence = -1 if (num_blank_lines == 0 or is_radial) else 1
-
     def set_reference_tissue_objects(self, tissues):
         self.param.reference_tissue.objects = tissues
         self.reference_tissue = tissues[0]
@@ -1665,6 +1624,51 @@ class MRIsimulator(param.Parameterized):
         self.param.shot.bounds = (1, num_shots)
         self.shot = min(self.shot, num_shots)
     
+    def set_parameter_style_visibility(self, parameter_style):
+        self.set_visibility('pixel_bandwidth', parameter_style == 'Matrix and Pixel BW')
+        self.set_visibility('FOV_bandwidth', parameter_style == 'Matrix and FOV BW')
+        self.set_visibility('FW_shift', parameter_style == 'Voxel_size and Fat/water shift')
+        for voxel_size_param in ['voxel_F', 'voxel_P', 'recon_voxel_F', 'recon_voxel_P']:
+            self.set_visibility(voxel_size_param, parameter_style == 'Voxel_size and Fat/water shift')
+        for matrix_param in ['matrix_F', 'matrix_P']:
+            self.set_visibility(matrix_param, parameter_style != 'Voxel_size and Fat/water shift')
+    
+    def set_partial_Fourier_visibility(self, is_radial):
+        visible = not is_radial
+        self.set_visibility('partial_Fourier', visible)
+        if not visible:
+            self.partial_Fourier = 1.
+
+    def set_frequency_direction_visibility(self, is_radial):
+        self.set_visibility('frequency_direction', not is_radial)
+
+    def set_phase_oversampling_visibility(self, is_radial):
+        visible = not is_radial
+        self.set_visibility('phase_oversampling', visible)
+        if not visible:
+            self.phase_oversampling = 0.
+    
+    def set_radial_factor_visibility(self, is_radial):
+        self.set_visibility('radial_factor', is_radial)
+
+    def set_TI_visibility(self, sequence_type):
+        self.set_visibility('TI', sequence_type == 'Inversion Recovery')
+    
+    def set_FA_visibility(self, sequence_type):
+        self.set_visibility('FA', sequence_type == 'Spoiled Gradient Echo')
+    
+    def set_turbo_factor_visibility(self, sequence_type):
+        visible = sequence_type != 'Spoiled Gradient Echo'
+        self.set_visibility('turbo_factor', visible)
+        if not visible:
+            self.turbo_factor = 1
+    
+    def set_homodyne_visibility(self, num_blank_lines, is_radial):
+        self.set_visibility('homodyne', (num_blank_lines > 0 and not is_radial))
+    
+    def set_apodization_alpha_visibility(self, do_apodize):
+        self.set_visibility('apodization_alpha', do_apodize)
+
     def min_TE_func(self, EPI_factor, centermost_rf_echo, centermost_gr_echo, min_readtrain_spacing, gr_echo_spacing):
         if EPI_factor == 1: # flexible segment order for (turbo) spin echo
             min_centermost_rf_echo = 0
