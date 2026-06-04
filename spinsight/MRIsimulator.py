@@ -807,7 +807,7 @@ class MRIsimulator(param.Parameterized):
         
         node_specs['gre_read_start_to_k0'] = {
             'func': self.gre_read_start_to_k0_func,
-            'parents': ['is_gradient_echo', 'phasers', 'rephasers', 'TE', 'RF_excitation', 'read_prephaser', 'readout_risetime', 'slice_select_excitation', 'slice_select_rephaser']
+            'parents': ['is_gradient_echo', 'phaser_duration', 'TE', 'RF_excitation', 'read_prephaser', 'readout_risetime', 'slice_select_excitation', 'slice_select_rephaser']
         }
 
         node_specs['gre_k0_to_read_end'] = {
@@ -1737,14 +1737,13 @@ class MRIsimulator(param.Parameterized):
         min_TR = spoiler['time'][-1] - sequence_start
         return min([v for v in param_values['TR'].values() if v >= min_TR])
     
-    def gre_read_start_to_k0_func(self, is_gradient_echo, phasers, rephasers, TE, RF_excitation, read_prephaser, readout_risetime, slice_select_excitation, slice_select_rephaser):
+    def gre_read_start_to_k0_func(self, is_gradient_echo, phaser_duration, TE, RF_excitation, read_prephaser, readout_risetime, slice_select_excitation, slice_select_rephaser):
         if not is_gradient_echo:
             return None
-        min_phaser_time = min([grads[0]['dur_f'] for grads in [phasers, rephasers]])
         read_start_to_k0 = TE - RF_excitation['dur_f']/2
         read_start_to_k0 -= max(
             read_prephaser['dur_f'] + readout_risetime, # TODO: consider maximum dur+risetime, not only current (difficult!)
-            min_phaser_time,
+            phaser_duration,
             slice_select_excitation['risetime_f'] + slice_select_rephaser['dur_f'])
         return read_start_to_k0
     
