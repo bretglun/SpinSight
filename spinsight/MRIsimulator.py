@@ -938,7 +938,7 @@ class MRIsimulator(param.Parameterized):
 
         node_specs['num_segm'] = {
             'func': self.num_segm_func,
-            'parents': ['num_measured_lines', 'num_blades', 'num_shots']
+            'parents': ['turbo_factor', 'EPI_factor']
         }
 
         node_specs['num_sym_lines'] = {
@@ -1915,9 +1915,9 @@ class MRIsimulator(param.Parameterized):
         assert(sum(lines_to_measure) == num_measured_lines)
         return lines_to_measure
 
-    def num_segm_func(self, num_measured_lines, num_blades, num_shots):
+    def num_segm_func(self, turbo_factor, EPI_factor):
         # number of k-space segments
-        return int(num_measured_lines * num_blades / num_shots)
+        return turbo_factor * EPI_factor
 
     def num_sym_lines_func(self, num_measured_lines, k_phase_axis):
         return 2 * num_measured_lines - len(k_phase_axis)
