@@ -794,16 +794,10 @@ class MRIsimulator(param.Parameterized):
             'func': self.k_read_axis_func,
             'parents': ['freq_dir', 'FOV', 'matrix', 'is_radial', 'phantom', 'radial_FOV_oversampling']
         }
-
-        node_specs['reverse_linear_order'] = {
-             # TODO: implement logic (pick forward or reverse order that minimizes readtrin_spacing while respecting minimum spacing and TR)
-            'func': lambda: False,
-            'parents': []
-        }
-
+        
         node_specs['min_TE'] = {
             'func': self.min_TE_func,
-            'parents': ['EPI_factor', 'k0_rf_echo_index', 'k0_gr_echo_index', 'min_readtrain_spacing', 'gr_echo_spacing']
+            'parents': ['min_k0_rf_echo_index', 'k0_rf_echo_index_linear_order', 'k0_gr_echo_index_reverse_linear_order', 'k0_gr_echo_index_linear_order', 'min_readtrain_spacing', 'gr_echo_spacing', 'EPI_factor']
         }
         
         node_specs['min_TR'] = {
@@ -811,19 +805,19 @@ class MRIsimulator(param.Parameterized):
             'parents': ['spoiler', 'sequence_start']
         }
         
-        node_specs['gre_read_start_to_kcenter'] = {
-            'func': self.gre_read_start_to_kcenter_func,
+        node_specs['gre_read_start_to_k0'] = {
+            'func': self.gre_read_start_to_k0_func,
             'parents': ['is_gradient_echo', 'phasers', 'rephasers', 'TE', 'RF_excitation', 'read_prephaser', 'readout_risetime', 'slice_select_excitation', 'slice_select_rephaser']
         }
 
-        node_specs['gre_kcenter_to_read_end'] = {
-            'func': self.gre_kcenter_to_read_end_func,
+        node_specs['gre_k0_to_read_end'] = {
+            'func': self.gre_k0_to_read_end_func,
             'parents': ['is_gradient_echo', 'TR', 'sequence_start', 'spoiler', 'TE']
         }
 
         node_specs['gre_max_read_duration'] = {
             'func': self.gre_max_read_duration_func,
-            'parents': ['gre_read_start_to_kcenter', 'gre_kcenter_to_read_end', 'k0_gr_echo_index', 'readout_risetime', 'EPI_factor']
+            'parents': ['gre_read_start_to_k0', 'gre_k0_to_read_end', 'k0_gr_echo_index', 'readout_risetime', 'EPI_factor']
         }
 
         node_specs['max_readout_area'] = {
@@ -841,16 +835,46 @@ class MRIsimulator(param.Parameterized):
             'parents': ['is_gradient_echo', 'RF_excitation', 'gre_echo_train_dur', 'readout_risetime', 'read_prephaser_floating', 'phaser_duration', 'slice_select_excitation', 'slice_select_rephaser', 'RF_refocusing_floating', 'slice_select_refocusing_floating']
         }
 
-        node_specs['k0_gr_echo_index'] = {
-            'func': self.k0_gr_echo_index_func,
-            'parents': ['k0_segment', 'reverse_linear_order', 'num_segm', 'turbo_factor']
+        node_specs['k0_rf_echo_index_linear_order'] = {
+            'func': self.k0_rf_echo_index_linear_order_func,
+            'parents': ['k0_segment', 'turbo_factor']
+        }
+        
+        node_specs['k0_rf_echo_index_reverse_linear_order'] = {
+            'func': self.k0_rf_echo_index_reverse_linear_order_func,
+            'parents': ['k0_segment', 'turbo_factor', 'num_segm']
+        }
+        
+        node_specs['min_k0_rf_echo_index'] = {
+            'func': self.min_k0_rf_echo_index_func,
+            'parents': ['EPI_factor', 'k0_rf_echo_index_linear_order', 'k0_rf_echo_index_reverse_linear_order']
         }
         
         node_specs['k0_rf_echo_index'] = {
             'func': self.k0_rf_echo_index_func,
-            'parents': ['is_gradient_echo', 'EPI_factor', 'k0_segment', 'turbo_factor', 'TE', 'min_readtrain_spacing']
+            'parents': ['is_gradient_echo', 'TE', 'min_readtrain_spacing', 'min_k0_rf_echo_index', 'turbo_factor']
         }
 
+        node_specs['reverse_linear_order'] = {
+            'func': self.reverse_linear_order_func,
+            'parents': ['k0_rf_echo_index', 'k0_rf_echo_index_reverse_linear_order', 'k0_rf_echo_index_linear_order']
+        }
+
+        node_specs['k0_gr_echo_index_linear_order'] = {
+            'func': self.k0_gr_echo_index_linear_order_func,
+            'parents': ['k0_segment', 'turbo_factor']
+        }
+        
+        node_specs['k0_gr_echo_index_reverse_linear_order'] = {
+            'func': self.k0_gr_echo_index_reverse_linear_order_func,
+            'parents': ['num_segm', 'k0_segment', 'turbo_factor']
+        }
+        
+        node_specs['k0_gr_echo_index'] = {
+            'func': self.k0_gr_echo_index_func,
+            'parents': ['k0_gr_echo_index_linear_order', 'reverse_linear_order', 'k0_gr_echo_index_reverse_linear_order']
+        }
+        
         node_specs['readtrain_spacing'] = {
             'func': self.readtrain_spacing_func,
             'parents': ['EPI_factor', 'gr_echo_spacing', 'TE', 'k0_gr_echo_index', 'k0_rf_echo_index']
@@ -939,7 +963,7 @@ class MRIsimulator(param.Parameterized):
 
         node_specs['pe_table'] = {
             'func': self.pe_table_func,
-            'parents': ['EPI_factor', 'turbo_factor', 'num_sym_segm', 'k0_rf_echo_index', 'is_radial', 'num_shots', 'reverse_linear_order', 'lines_to_measure']
+            'parents': ['k0_rf_echo_index', 'k0_rf_echo_index_linear_order', 'EPI_factor', 'turbo_factor', 'num_sym_segm', 'is_radial', 'num_shots', 'reverse_linear_order', 'lines_to_measure']
         }
 
         node_specs['signal_level'] = {
@@ -1702,50 +1726,45 @@ class MRIsimulator(param.Parameterized):
     
     def set_apodization_alpha_visibility(self, do_apodize):
         self.set_visibility('apodization_alpha', do_apodize)
-
-    def min_TE_func(self, EPI_factor, k0_rf_echo_index, k0_gr_echo_index, min_readtrain_spacing, gr_echo_spacing):
-        if EPI_factor == 1: # flexible segment order for (turbo) spin echo
-            min_k0_rf_echo_index = 0
-            min_k0_gr_echo_index = 0
-        else: # linear segment order for EPI and GRASE
-            # TODO: evaluate forward/reverse linear order
-            min_k0_rf_echo_index = k0_rf_echo_index
-            min_k0_gr_echo_index = k0_gr_echo_index
-        min_TE = TE_from_k0_echo_indices(min_readtrain_spacing, min_k0_rf_echo_index, gr_echo_spacing, min_k0_gr_echo_index, EPI_factor)
+    
+    def min_TE_func(self, min_k0_rf_echo_index, k0_rf_echo_index_linear_order, k0_gr_echo_index_reverse_linear_order, k0_gr_echo_index_linear_order, min_readtrain_spacing, gr_echo_spacing, EPI_factor):
+        reverse_linear_order = min_k0_rf_echo_index != k0_rf_echo_index_linear_order
+        k0_gr_echo_index = k0_gr_echo_index_reverse_linear_order if reverse_linear_order else k0_gr_echo_index_linear_order
+        min_TE = TE_from_k0_echo_indices(min_readtrain_spacing, min_k0_rf_echo_index, gr_echo_spacing, k0_gr_echo_index, EPI_factor)
         return min([v for v in param_values['TE'].values() if v >= min_TE])
 
     def min_TR_func(self, spoiler, sequence_start):
         min_TR = spoiler['time'][-1] - sequence_start
         return min([v for v in param_values['TR'].values() if v >= min_TR])
     
-    def gre_read_start_to_kcenter_func(self, is_gradient_echo, phasers, rephasers, TE, RF_excitation, read_prephaser, readout_risetime, slice_select_excitation, slice_select_rephaser):
+    def gre_read_start_to_k0_func(self, is_gradient_echo, phasers, rephasers, TE, RF_excitation, read_prephaser, readout_risetime, slice_select_excitation, slice_select_rephaser):
         if not is_gradient_echo:
             return None
         min_phaser_time = min([grads[0]['dur_f'] for grads in [phasers, rephasers]])
-        read_start_to_kcenter = TE - RF_excitation['dur_f']/2
-        read_start_to_kcenter -= max(
+        read_start_to_k0 = TE - RF_excitation['dur_f']/2
+        read_start_to_k0 -= max(
             read_prephaser['dur_f'] + readout_risetime, # TODO: consider maximum dur+risetime, not only current (difficult!)
             min_phaser_time,
             slice_select_excitation['risetime_f'] + slice_select_rephaser['dur_f'])
-        return read_start_to_kcenter
+        return read_start_to_k0
     
-    def gre_kcenter_to_read_end_func(self, is_gradient_echo, TR, sequence_start, spoiler, TE):
+    def gre_k0_to_read_end_func(self, is_gradient_echo, TR, sequence_start, spoiler, TE):
         if not is_gradient_echo:
             return None
         return (TR - (-sequence_start) - spoiler['dur_f']) - TE
     
-    def gre_max_read_duration_func(self, gre_read_start_to_kcenter, gre_kcenter_to_read_end, k0_gr_echo_index, readout_risetime, EPI_factor):
-        if gre_read_start_to_kcenter is None:
+    def gre_max_read_duration_func(self, gre_read_start_to_k0, gre_k0_to_read_end, k0_gr_echo_index, readout_risetime, EPI_factor):
+        if gre_read_start_to_k0 is None:
             return None
         # simplification: use current risetime (self.readout_risetime)
         num_early_readouts = k0_gr_echo_index + 1/2
         num_early_ramps = k0_gr_echo_index * 2
         # max limit imposed by TE:
-        max_read_dur_early = ((gre_read_start_to_kcenter - num_early_ramps * readout_risetime) / num_early_readouts)
+        max_read_dur_early = ((gre_read_start_to_k0 - num_early_ramps * readout_risetime) / num_early_readouts)
         num_late_readouts = EPI_factor - num_early_readouts
         num_late_ramps = (EPI_factor - 1) * 2 - num_early_ramps
         # max limit imposed by TR:
-        max_read_dur_late = ((gre_kcenter_to_read_end - num_late_ramps * readout_risetime) / num_late_readouts)
+        max_read_dur_late = ((gre_k0_to_read_end - num_late_ramps * readout_risetime) / num_late_readouts)
         return min(max_read_dur_early, max_read_dur_late)
     
     def max_readout_area_func(self, pixel_bandwidth, is_gradient_echo, k0_gr_echo_index, RF_excitation, phaser_duration, slice_select_excitation, slice_select_rephaser, max_blip_dur, readtrain_spacing, RF_refocusing, EPI_factor):
@@ -1829,21 +1848,37 @@ class MRIsimulator(param.Parameterized):
             spacing = max(left_side, right_side) * 2
         return spacing
     
-    def k0_gr_echo_index_func(self, k0_segment, reverse_linear_order, num_segm, turbo_factor):
-        # get index of gradient echo closest to k-space center
-        #TODO: opposite gre order or different rounding (ceil/floor) may minimize TE
-        k0_gr_echo_index = k0_segment // turbo_factor
-        return k0_gr_echo_index
+    def k0_rf_echo_index_linear_order_func(self, k0_segment, turbo_factor):
+        return k0_segment % turbo_factor
 
-    def k0_rf_echo_index_func(self, is_gradient_echo, EPI_factor, k0_segment, turbo_factor, TE, min_readtrain_spacing):
-        # get index if RF echo closest to k-space center
+    def k0_rf_echo_index_reverse_linear_order_func(self, k0_segment, turbo_factor, num_segm):
+        return (num_segm - 1 - k0_segment) % turbo_factor
+
+    def min_k0_rf_echo_index_func(self, EPI_factor, k0_rf_echo_index_linear_order, k0_rf_echo_index_reverse_linear_order):
+        if EPI_factor == 1:
+            return 0 # flexible segment order
+        # linear (forward or reverse) order for EPI and GRASE:
+        return min(k0_rf_echo_index_linear_order, k0_rf_echo_index_reverse_linear_order)
+
+    def k0_rf_echo_index_func(self, is_gradient_echo, TE, min_readtrain_spacing, min_k0_rf_echo_index, turbo_factor):
         if is_gradient_echo:
             return 0
-        if EPI_factor > 1: # linear segment order for EPI and GRASE
-            #TODO: opposite rfe order or different rounding (ceil/floor) may minimize TE
-            return k0_segment % turbo_factor
-        return min(int(np.floor(TE / min_readtrain_spacing)) - 1, turbo_factor - 1)
+        k0_rf_echo_index = int(np.floor(TE / min_readtrain_spacing)) - 1
+        k0_rf_echo_index = max(k0_rf_echo_index, min_k0_rf_echo_index)
+        return min(k0_rf_echo_index, turbo_factor - 1)
     
+    def reverse_linear_order_func(self, k0_rf_echo_index, k0_rf_echo_index_reverse_linear_order, k0_rf_echo_index_linear_order):
+        return (k0_rf_echo_index == k0_rf_echo_index_reverse_linear_order) and (k0_rf_echo_index_reverse_linear_order != k0_rf_echo_index_linear_order)
+    
+    def k0_gr_echo_index_linear_order_func(self, k0_segment, turbo_factor):
+        return k0_segment // turbo_factor
+    
+    def k0_gr_echo_index_reverse_linear_order_func(self, num_segm, k0_segment, turbo_factor):
+        return (num_segm - 1 - k0_segment) // turbo_factor
+    
+    def k0_gr_echo_index_func(self, k0_gr_echo_index_linear_order, reverse_linear_order, k0_gr_echo_index_reverse_linear_order):
+        return k0_gr_echo_index_reverse_linear_order if reverse_linear_order else k0_gr_echo_index_linear_order
+
     def readtrain_spacing_func(self, EPI_factor, gr_echo_spacing, TE, k0_gr_echo_index, k0_rf_echo_index):
         # Equals center position of gradient echo (train) for gradient echo sequences
         # Equals rf echo spacing for spin echo sequences
@@ -1901,7 +1936,7 @@ class MRIsimulator(param.Parameterized):
     def k0_segment_func(self, num_segm, num_sym_segm):
         return num_segm - np.ceil(num_sym_segm / 2)
         
-    def pe_table_func(self, EPI_factor, turbo_factor, num_sym_segm, k0_rf_echo_index, is_radial, num_shots, reverse_linear_order, lines_to_measure):
+    def pe_table_func(self, k0_rf_echo_index, k0_rf_echo_index_linear_order, EPI_factor, turbo_factor, num_sym_segm, is_radial, num_shots, reverse_linear_order, lines_to_measure):
         if EPI_factor == 1: # (turbo) spin echo
             segment_order = get_segment_order(turbo_factor, num_sym_segm, k0_rf_echo_index)
             if is_radial:
