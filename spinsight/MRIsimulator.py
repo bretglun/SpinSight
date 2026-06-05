@@ -115,7 +115,7 @@ def readtrain_shift(gr_echo_spacing, k0_gr_echo_index, num_gr_echoes):
     return gr_echo_spacing * (k0_gr_echo_index - (num_gr_echoes-1)/2)
 
 
-def readtrain_spacing(TE, num_gr_echoes, num_rf_echoes, gr_echo_spacing, k0_gr_echo_index, k0_rf_echo_index):
+def get_readtrain_spacing(TE, num_gr_echoes, num_rf_echoes, gr_echo_spacing, k0_gr_echo_index, k0_rf_echo_index):
     spin_echo_time = TE
     if num_gr_echoes > 1 and num_rf_echoes > 1:
         spin_echo_time -= readtrain_shift(gr_echo_spacing, k0_gr_echo_index, num_gr_echoes)
@@ -716,14 +716,19 @@ class MRIsimulator(param.Parameterized):
             'parents': []
         }
         
+        node_specs['refocusing_time'] = {
+            'func': self.refocusing_time_func,
+            'parents': ['turbo_factor', 'TE', 'readtrain_spacing', 'gr_echo_spacing', 'k0_gr_echo_index', 'EPI_factor']
+        }
+        
         node_specs['slice_select_refocusing'] = {
             'func': self.slice_select_refocusing_func,
-            'parents': ['slice_select_refocusing_floating', 'readtrain_spacing', 'turbo_factor', 'gr_echo_spacing', 'k0_gr_echo_index', 'EPI_factor']
+            'parents': ['slice_select_refocusing_floating', 'refocusing_time']
         }
         
         node_specs['RF_refocusing'] = {
             'func': self.RF_refocusing_func,
-            'parents': ['RF_refocusing_floating', 'readtrain_spacing', 'turbo_factor', 'gr_echo_spacing', 'k0_gr_echo_index', 'EPI_factor']
+            'parents': ['RF_refocusing_floating', 'refocusing_time']
         }
         
         node_specs['slice_select_inversion'] = {
@@ -1885,7 +1890,7 @@ class MRIsimulator(param.Parameterized):
             spacings = []
             for rf_index in rf_indices:
                 for gr_index in gr_indices:
-                    spacings.append(readtrain_spacing(TE, EPI_factor, turbo_factor, gr_echo_spacing, gr_index, rf_index))
+                    spacings.append(get_readtrain_spacing(TE, EPI_factor, turbo_factor, gr_echo_spacing, gr_index, rf_index))
             spacings = [spacing for spacing in spacings if spacing >= min_readtrain_spacing]
             smallest_spacing[order] = min(spacings, default=np.inf)
         return smallest_spacing['reverse'] < smallest_spacing['forward']
@@ -1903,7 +1908,7 @@ class MRIsimulator(param.Parameterized):
         for rf_index in rf_indices:
             spacings = []
             for gr_index in gr_indices:
-                spacings.append(readtrain_spacing(TE, EPI_factor, turbo_factor, gr_echo_spacing, gr_index, rf_index))
+                spacings.append(get_readtrain_spacing(TE, EPI_factor, turbo_factor, gr_echo_spacing, gr_index, rf_index))
             spacings = [spacing for spacing in spacings if spacing >= min_readtrain_spacing]
             smallest_spacing[rf_index] = min(spacings, default=np.inf)
         return min(smallest_spacing, key=smallest_spacing.get)
@@ -1914,7 +1919,7 @@ class MRIsimulator(param.Parameterized):
         if len(gr_indices)==1:
             return gr_indices[0]
         
-        spacings = {gr_index: readtrain_spacing(TE, EPI_factor, turbo_factor, gr_echo_spacing, gr_index, k0_rf_echo_index) for gr_index in gr_indices}
+        spacings = {gr_index: get_readtrain_spacing(TE, EPI_factor, turbo_factor, gr_echo_spacing, gr_index, k0_rf_echo_index) for gr_index in gr_indices}
         spacings = {gr_index: spacing for gr_index, spacing in spacings.items() if spacing >= min_readtrain_spacing}
         if not spacings:
             warnings.warn('No allowed k0 gre index was found that respects min_readtrain_spacing.')
@@ -1924,7 +1929,7 @@ class MRIsimulator(param.Parameterized):
     def readtrain_spacing_func(self, EPI_factor, turbo_factor, gr_echo_spacing, TE, k0_gr_echo_index, k0_rf_echo_index):
         # Equals center position of gradient echo (train) for gradient echo sequences
         # Equals rf echo spacing for spin echo sequences
-        return readtrain_spacing(TE, EPI_factor, turbo_factor, gr_echo_spacing, k0_gr_echo_index, k0_rf_echo_index)
+        return get_readtrain_spacing(TE, EPI_factor, turbo_factor, gr_echo_spacing, k0_gr_echo_index, k0_rf_echo_index)
         
     def k_read_axis_func(self, freq_dir, FOV, matrix, is_radial, fantom, radial_FOV_oversampling):
         voxel_size = FOV[freq_dir] / matrix[freq_dir]
@@ -2314,24 +2319,30 @@ class MRIsimulator(param.Parameterized):
         spoiler_area = 30. # uTs/m
         return sequence.get_gradient('slice', total_area=spoiler_area, name='spoiler', max_amp=self.max_amp, max_slew=self.max_slew)
 
-    def slice_select_refocusing_func(self, slice_select_refocusing_floating, readtrain_spacing, turbo_factor, gr_echo_spacing, k0_gr_echo_index, EPI_factor):
+    def refocusing_time_func(self, turbo_factor, TE, readtrain_spacing, gr_echo_spacing, k0_gr_echo_index, EPI_factor):
+        if turbo_factor == 1:
+            return [TE / 2]
+        refocusing_time = []
+        for rf_echo in range(turbo_factor):
+            refocusing_time.append(get_readtrain_pos(readtrain_spacing, rf_echo, turbo_factor, gr_echo_spacing, k0_gr_echo_index, EPI_factor) - readtrain_spacing/2)
+        return refocusing_time
+    
+    def slice_select_refocusing_func(self, slice_select_refocusing_floating, refocusing_time):
         if slice_select_refocusing_floating is None:
             return None
         slice_select_refocusing = []
         for rf_echo, grad in enumerate(slice_select_refocusing_floating):
             slice_select_refocusing.append(grad)
-            time = get_readtrain_pos(readtrain_spacing, rf_echo, turbo_factor, gr_echo_spacing, k0_gr_echo_index, EPI_factor) - readtrain_spacing/2
-            sequence.move_waveform(slice_select_refocusing[rf_echo], time)
+            sequence.move_waveform(slice_select_refocusing[rf_echo], refocusing_time[rf_echo])
         return slice_select_refocusing
 
-    def RF_refocusing_func(self, RF_refocusing_floating, readtrain_spacing, turbo_factor, gr_echo_spacing, k0_gr_echo_index, EPI_factor):
+    def RF_refocusing_func(self, RF_refocusing_floating, refocusing_time):
         if RF_refocusing_floating is None:
             return None
         RF_refocusing = []
         for rf_echo, RF in enumerate(RF_refocusing_floating):
             RF_refocusing.append(RF)
-            time = get_readtrain_pos(readtrain_spacing, rf_echo, turbo_factor, gr_echo_spacing, k0_gr_echo_index, EPI_factor) - readtrain_spacing/2
-            sequence.move_waveform(RF_refocusing[rf_echo], time)
+            sequence.move_waveform(RF_refocusing[rf_echo], refocusing_time[rf_echo])
         return RF_refocusing
 
     def slice_select_inversion_func(self, slice_select_inversion_floating, TI):
