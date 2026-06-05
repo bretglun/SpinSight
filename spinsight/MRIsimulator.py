@@ -801,7 +801,7 @@ class MRIsimulator(param.Parameterized):
         
         node_specs['min_TE'] = {
             'func': self.min_TE_func,
-            'parents': ['min_k0_rf_echo_index', 'k0_rf_echo_index_linear_order', 'k0_gr_echo_index_linear_order', 'k0_rf_echo_index_reverse_linear_order', 'k0_gr_echo_index_reverse_linear_order', 'min_readtrain_spacing', 'gr_echo_spacing', 'EPI_factor']
+            'parents': ['k0_rf_echo_index_linear_order', 'k0_gr_echo_index_linear_order', 'k0_rf_echo_index_reverse_linear_order', 'k0_gr_echo_index_reverse_linear_order', 'min_readtrain_spacing', 'gr_echo_spacing', 'EPI_factor']
         }
         
         node_specs['min_TR'] = {
@@ -848,21 +848,6 @@ class MRIsimulator(param.Parameterized):
             'func': self.k0_rf_echo_index_reverse_linear_order_func,
             'parents': ['turbo_factor', 'k0_rf_echo_index_linear_order']
         }
-        
-        node_specs['min_k0_rf_echo_index'] = {
-            'func': self.min_k0_rf_echo_index_func,
-            'parents': ['EPI_factor', 'k0_rf_echo_index_linear_order', 'k0_rf_echo_index_reverse_linear_order']
-        }
-        
-        node_specs['k0_rf_echo_index'] = {
-            'func': self.k0_rf_echo_index_func,
-            'parents': ['is_gradient_echo', 'TE', 'min_readtrain_spacing', 'min_k0_rf_echo_index', 'turbo_factor']
-        }
-
-        node_specs['reverse_linear_order'] = {
-            'func': self.reverse_linear_order_func,
-            'parents': ['k0_rf_echo_index', 'k0_rf_echo_index_reverse_linear_order', 'k0_rf_echo_index_linear_order', 'k0_gr_echo_index_linear_order', 'k0_gr_echo_index_reverse_linear_order', 'TE', 'gr_echo_spacing', 'EPI_factor', 'min_readtrain_spacing']
-        }
 
         node_specs['k0_gr_echo_index_linear_order'] = {
             'func': self.k0_gr_echo_index_linear_order_func,
@@ -872,6 +857,16 @@ class MRIsimulator(param.Parameterized):
         node_specs['k0_gr_echo_index_reverse_linear_order'] = {
             'func': self.k0_gr_echo_index_reverse_linear_order_func,
             'parents': ['EPI_factor', 'k0_gr_echo_index_linear_order']
+        }
+
+        node_specs['reverse_linear_order'] = {
+            'func': self.reverse_linear_order_func,
+            'parents': ['k0_rf_echo_index_reverse_linear_order', 'k0_rf_echo_index_linear_order', 'k0_gr_echo_index_linear_order', 'k0_gr_echo_index_reverse_linear_order', 'TE', 'gr_echo_spacing', 'EPI_factor', 'min_readtrain_spacing']
+        }
+        
+        node_specs['k0_rf_echo_index'] = {
+            'func': self.k0_rf_echo_index_func,
+            'parents': ['is_gradient_echo', 'turbo_factor', 'EPI_factor', 'TE', 'min_readtrain_spacing', 'k0_rf_echo_index_reverse_linear_order', 'reverse_linear_order', 'k0_rf_echo_index_linear_order', 'k0_gr_echo_index_reverse_linear_order', 'k0_gr_echo_index_linear_order', 'gr_echo_spacing']
         }
         
         node_specs['k0_gr_echo_index'] = {
@@ -1726,14 +1721,13 @@ class MRIsimulator(param.Parameterized):
     def set_apodization_alpha_visibility(self, do_apodize):
         self.set_visibility('apodization_alpha', do_apodize)
     
-    def min_TE_func(self, min_k0_rf_echo_index, k0_rf_echo_index_linear_order, k0_gr_echo_index_linear_order, k0_rf_echo_index_reverse_linear_order, k0_gr_echo_index_reverse_linear_order, min_readtrain_spacing, gr_echo_spacing, EPI_factor):
-        min_TE_cands, gr_echo_indices = [], []
-        if (min_k0_rf_echo_index in k0_rf_echo_index_linear_order):
-            gr_echo_indices.append(min(k0_gr_echo_index_linear_order))
-        if (min_k0_rf_echo_index in k0_rf_echo_index_reverse_linear_order):
-            gr_echo_indices.append(min(k0_gr_echo_index_reverse_linear_order))
-        for k0_gr_echo_index in gr_echo_indices:
-            min_TE_cands.append(TE_from_k0_echo_indices(min_readtrain_spacing, min_k0_rf_echo_index, gr_echo_spacing, k0_gr_echo_index, EPI_factor))
+    def min_TE_func(self, k0_rf_echo_index_linear_order, k0_gr_echo_index_linear_order, k0_rf_echo_index_reverse_linear_order, k0_gr_echo_index_reverse_linear_order, min_readtrain_spacing, gr_echo_spacing, EPI_factor):
+        min_TE_cands = []
+        for gr_indices, rf_indices in [
+            (k0_gr_echo_index_linear_order, k0_rf_echo_index_linear_order), (k0_gr_echo_index_reverse_linear_order, k0_rf_echo_index_reverse_linear_order)]:
+            for rf_index in rf_indices:
+                for gr_index in gr_indices:
+                    min_TE_cands.append(TE_from_k0_echo_indices(min_readtrain_spacing, rf_index, gr_echo_spacing, gr_index, EPI_factor))
         min_TE = min(min_TE_cands)
         return min([v for v in param_values['TE'].values() if v >= min_TE])
 
@@ -1856,34 +1850,6 @@ class MRIsimulator(param.Parameterized):
 
     def k0_rf_echo_index_reverse_linear_order_func(self, turbo_factor, k0_rf_echo_index_linear_order):
         return [turbo_factor - 1 - index for index in k0_rf_echo_index_linear_order]
-
-    def min_k0_rf_echo_index_func(self, EPI_factor, k0_rf_echo_index_linear_order, k0_rf_echo_index_reverse_linear_order):
-        if EPI_factor == 1:
-            return 0 # flexible segment order
-        # linear (forward or reverse) order for EPI and GRASE:
-        return min(*k0_rf_echo_index_linear_order, *k0_rf_echo_index_reverse_linear_order)
-
-    def k0_rf_echo_index_func(self, is_gradient_echo, TE, min_readtrain_spacing, min_k0_rf_echo_index, turbo_factor):
-        if is_gradient_echo:
-            return 0
-        k0_rf_echo_index = int(np.floor(TE / min_readtrain_spacing)) - 1
-        k0_rf_echo_index = max(k0_rf_echo_index, min_k0_rf_echo_index)
-        return min(k0_rf_echo_index, turbo_factor - 1)
-    
-    def reverse_linear_order_func(self, k0_rf_echo_index, k0_rf_echo_index_reverse_linear_order, k0_rf_echo_index_linear_order, k0_gr_echo_index_linear_order, k0_gr_echo_index_reverse_linear_order, TE, gr_echo_spacing, EPI_factor, min_readtrain_spacing):
-        if k0_rf_echo_index not in k0_rf_echo_index_reverse_linear_order:
-            return False
-        if k0_rf_echo_index not in k0_rf_echo_index_linear_order:
-            return True
-        if set(k0_gr_echo_index_linear_order) == set(k0_gr_echo_index_reverse_linear_order):
-            return False
-        # Pick order that minimizes readtrain spacing
-        smallest_readtrain_spacing = {}
-        for order, indices in [('forward', k0_gr_echo_index_linear_order), ('reverse', k0_gr_echo_index_reverse_linear_order)]:
-            spacings = {ind: readtrain_spacing(TE, gr_echo_spacing, ind, EPI_factor, k0_rf_echo_index) for ind in k0_rf_echo_index_linear_order}
-            spacings = {ind: spacing for ind, spacing in spacings.items() if spacing >= min_readtrain_spacing}
-            smallest_readtrain_spacing[order] = min(spacings, key=spacings.get, default=np.inf)
-        return smallest_readtrain_spacing['reverse'] < smallest_readtrain_spacing['forward']
     
     def k0_gr_echo_index_linear_order_func(self, k0_segment, turbo_factor):
         return [segment // turbo_factor for segment in k0_segment]
@@ -1891,18 +1857,52 @@ class MRIsimulator(param.Parameterized):
     def k0_gr_echo_index_reverse_linear_order_func(self, EPI_factor, k0_gr_echo_index_linear_order):
         return [EPI_factor - 1 - index for index in k0_gr_echo_index_linear_order]
     
+    def reverse_linear_order_func(self, k0_rf_echo_index_reverse_linear_order, k0_rf_echo_index_linear_order, k0_gr_echo_index_linear_order, k0_gr_echo_index_reverse_linear_order, TE, gr_echo_spacing, EPI_factor, min_readtrain_spacing):
+        if EPI_factor == 1:
+            return False
+        # Pick order that minimizes readtrain spacing
+        smallest_spacing = {}
+        for order, gr_indices, rf_indices in [
+            ('forward', k0_gr_echo_index_linear_order, k0_rf_echo_index_linear_order), 
+            ('reverse', k0_gr_echo_index_reverse_linear_order, k0_rf_echo_index_reverse_linear_order)]:
+            spacings = []
+            for rf_index in rf_indices:
+                for gr_index in gr_indices:
+                    spacings.append(readtrain_spacing(TE, gr_echo_spacing, gr_index, EPI_factor, rf_index))
+            spacings = [spacing for spacing in spacings if spacing >= min_readtrain_spacing]
+            smallest_spacing[order] = min(spacings, default=np.inf)
+        return smallest_spacing['reverse'] < smallest_spacing['forward']
+    
+    def k0_rf_echo_index_func(self, is_gradient_echo, turbo_factor, EPI_factor, TE, min_readtrain_spacing, k0_rf_echo_index_reverse_linear_order, reverse_linear_order, k0_rf_echo_index_linear_order, k0_gr_echo_index_reverse_linear_order, k0_gr_echo_index_linear_order, gr_echo_spacing):
+        if is_gradient_echo or turbo_factor == 1:
+            return 0
+        if EPI_factor == 1: # flexible segment order
+            k0_rf_echo_index = int(np.floor(TE / min_readtrain_spacing)) - 1
+            return min(k0_rf_echo_index, turbo_factor - 1)
+        rf_indices = k0_rf_echo_index_reverse_linear_order if reverse_linear_order else k0_rf_echo_index_linear_order
+        gr_indices = k0_gr_echo_index_reverse_linear_order if reverse_linear_order else k0_gr_echo_index_linear_order
+        # Pick k0 rf echo that minimizes readtrain spacing
+        smallest_spacing = {}
+        for rf_index in rf_indices:
+            spacings = []
+            for gr_index in gr_indices:
+                spacings.append(readtrain_spacing(TE, gr_echo_spacing, gr_index, EPI_factor, rf_index))
+            spacings = [spacing for spacing in spacings if spacing >= min_readtrain_spacing]
+            smallest_spacing[rf_index] = min(spacings, default=np.inf)
+        return min(smallest_spacing, key=smallest_spacing.get)
+    
     def k0_gr_echo_index_func(self, k0_gr_echo_index_linear_order, reverse_linear_order, k0_gr_echo_index_reverse_linear_order, TE, gr_echo_spacing, EPI_factor, k0_rf_echo_index, min_readtrain_spacing):
-        k0_gr_echo_index = k0_gr_echo_index_reverse_linear_order if reverse_linear_order else k0_gr_echo_index_linear_order
+        gr_indices = k0_gr_echo_index_reverse_linear_order if reverse_linear_order else k0_gr_echo_index_linear_order
 
-        if len(k0_gr_echo_index)==1:
-            return k0_gr_echo_index[0]
+        if len(gr_indices)==1:
+            return gr_indices[0]
         
-        readtrain_spacings = {ind: readtrain_spacing(TE, gr_echo_spacing, ind, EPI_factor, k0_rf_echo_index) for ind in k0_gr_echo_index}
-        readtrain_spacings = {ind: spacing for ind, spacing in readtrain_spacings.items() if spacing >= min_readtrain_spacing}
-        if not readtrain_spacings:
-            warnings.warn('No allowed k0_gr_echo_index was found that respects min_readtrain_spacing.')
-            return k0_gr_echo_index[0]
-        return min(readtrain_spacings, key=readtrain_spacings.get)
+        spacings = {gr_index: readtrain_spacing(TE, gr_echo_spacing, gr_index, EPI_factor, k0_rf_echo_index) for gr_index in gr_indices}
+        spacings = {gr_index: spacing for gr_index, spacing in spacings.items() if spacing >= min_readtrain_spacing}
+        if not spacings:
+            warnings.warn('No allowed k0 gre index was found that respects min_readtrain_spacing.')
+            return gr_indices[0]
+        return min(spacings, key=spacings.get)
 
     def readtrain_spacing_func(self, EPI_factor, gr_echo_spacing, TE, k0_gr_echo_index, k0_rf_echo_index):
         # Equals center position of gradient echo (train) for gradient echo sequences
