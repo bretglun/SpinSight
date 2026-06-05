@@ -118,13 +118,14 @@ def readtrain_shift(gr_echo_spacing, k0_gr_echo_index, num_gr_echoes):
 def readtrain_spacing(TE, num_gr_echoes, num_rf_echoes, gr_echo_spacing, k0_gr_echo_index, k0_rf_echo_index):
     spin_echo_time = TE
     if num_gr_echoes > 1 and num_rf_echoes > 1:
-        spin_echo_time += readtrain_shift(gr_echo_spacing, k0_gr_echo_index, num_gr_echoes)
+        spin_echo_time -= readtrain_shift(gr_echo_spacing, k0_gr_echo_index, num_gr_echoes)
     return spin_echo_time / (1 + k0_rf_echo_index)
 
 
-def TE_from_k0_echo_indices(readtrain_spacing, k0_rf_echo_index, gr_echo_spacing, k0_gr_echo_index, EPI_factor):
+def TE_from_k0_echo_indices(readtrain_spacing, k0_rf_echo_index, gr_echo_spacing, k0_gr_echo_index, num_gr_echoes, num_rf_echoes):
     TE = readtrain_spacing * (1 + k0_rf_echo_index)
-    TE += readtrain_shift(gr_echo_spacing, k0_gr_echo_index, EPI_factor)
+    if num_gr_echoes > 1 and num_rf_echoes > 1:
+        TE += readtrain_shift(gr_echo_spacing, k0_gr_echo_index, num_gr_echoes)
     return TE
 
 
@@ -807,7 +808,7 @@ class MRIsimulator(param.Parameterized):
         
         node_specs['min_TE'] = {
             'func': self.min_TE_func,
-            'parents': ['k0_rf_echo_index_linear_order', 'k0_gr_echo_index_linear_order', 'k0_rf_echo_index_reverse_linear_order', 'k0_gr_echo_index_reverse_linear_order', 'min_readtrain_spacing', 'gr_echo_spacing', 'EPI_factor']
+            'parents': ['k0_rf_echo_index_linear_order', 'k0_gr_echo_index_linear_order', 'k0_rf_echo_index_reverse_linear_order', 'k0_gr_echo_index_reverse_linear_order', 'min_readtrain_spacing', 'gr_echo_spacing', 'EPI_factor', 'turbo_factor']
         }
         
         node_specs['min_TR'] = {
@@ -842,7 +843,7 @@ class MRIsimulator(param.Parameterized):
 
         node_specs['min_readtrain_spacing'] = {
             'func': self.min_readtrain_spacing_func,
-            'parents': ['is_gradient_echo', 'RF_excitation', 'gre_echo_train_dur', 'readout_risetime', 'read_prephaser_floating', 'phaser_duration', 'slice_select_excitation', 'slice_select_rephaser', 'RF_refocusing_floating', 'slice_select_refocusing_floating']
+            'parents': ['is_gradient_echo', 'RF_excitation', 'gre_echo_train_dur', 'readout_risetime', 'read_prephaser_floating', 'phaser_duration', 'slice_select_excitation', 'slice_select_rephaser', 'RF_refocusing_floating', 'slice_select_refocusing_floating', 'turbo_factor', 'k0_gr_echo_index_linear_order', 'k0_gr_echo_index_reverse_linear_order', 'gr_echo_spacing', 'readout_gap']
         }
 
         node_specs['k0_rf_echo_index_linear_order'] = {
@@ -1727,13 +1728,13 @@ class MRIsimulator(param.Parameterized):
     def set_apodization_alpha_visibility(self, do_apodize):
         self.set_visibility('apodization_alpha', do_apodize)
     
-    def min_TE_func(self, k0_rf_echo_index_linear_order, k0_gr_echo_index_linear_order, k0_rf_echo_index_reverse_linear_order, k0_gr_echo_index_reverse_linear_order, min_readtrain_spacing, gr_echo_spacing, EPI_factor):
+    def min_TE_func(self, k0_rf_echo_index_linear_order, k0_gr_echo_index_linear_order, k0_rf_echo_index_reverse_linear_order, k0_gr_echo_index_reverse_linear_order, min_readtrain_spacing, gr_echo_spacing, EPI_factor, turbo_factor):
         min_TE_cands = []
         for gr_indices, rf_indices in [
             (k0_gr_echo_index_linear_order, k0_rf_echo_index_linear_order), (k0_gr_echo_index_reverse_linear_order, k0_rf_echo_index_reverse_linear_order)]:
             for rf_index in rf_indices:
                 for gr_index in gr_indices:
-                    min_TE_cands.append(TE_from_k0_echo_indices(min_readtrain_spacing, rf_index, gr_echo_spacing, gr_index, EPI_factor))
+                    min_TE_cands.append(TE_from_k0_echo_indices(min_readtrain_spacing, rf_index, gr_echo_spacing, gr_index, EPI_factor, turbo_factor))
         min_TE = min(min_TE_cands)
         return min([v for v in param_values['TE'].values() if v >= min_TE])
 
@@ -1823,10 +1824,11 @@ class MRIsimulator(param.Parameterized):
             max_phaserarea = (max_phaser_duration/2)**2 * self.max_slew
         return max_phaserarea
     
-    def min_readtrain_spacing_func(self, is_gradient_echo, RF_excitation, gre_echo_train_dur, readout_risetime, read_prephaser, phaser_duration, slice_select_excitation, slice_select_rephaser, RF_refocusing, slice_select_refocusing):
-        # Get shortest spacing for (center of) gradient echo trains
+    def min_readtrain_spacing_func(self, is_gradient_echo, RF_excitation, gre_echo_train_dur, readout_risetime, read_prephaser, phaser_duration, slice_select_excitation, slice_select_rephaser, RF_refocusing, slice_select_refocusing, turbo_factor, k0_gr_echo_index_linear_order, k0_gr_echo_index_reverse_linear_order, gr_echo_spacing, readout_gap):
+        # Get shortest spacing for bewteen readout (trains)
         # Equals center position of gradient echo (train) for gradient echo sequences
         # Equals rf echo spacing for spin echo sequences
+        # Equals TE for spin echo EPI
         if is_gradient_echo:
             spacing = (RF_excitation['dur_f'] + gre_echo_train_dur) / 2 - readout_risetime
             spacing += max(
@@ -1834,21 +1836,28 @@ class MRIsimulator(param.Parameterized):
                 phaser_duration,
                 slice_select_excitation['risetime_f'] + slice_select_rephaser['dur_f']
             )
-        else: # spin echo
-            # before refocusing pulse:
-            left_side = (RF_excitation['dur_f'] + RF_refocusing[0]['dur_f']) / 2
-            left_side += max(
-                read_prephaser['dur_f'], 
-                slice_select_excitation['risetime_f'] + slice_select_rephaser['dur_f'] + (slice_select_refocusing[0]['risetime_f'])
-            )
-            # after refocusing pulse:
-            right_side = (RF_refocusing[0]['dur_f'] + gre_echo_train_dur) / 2 - readout_risetime
-            right_side += max(
-                readout_risetime,
-                phaser_duration,
-                slice_select_refocusing[0]['risetime_f']
-            )
-            spacing = max(left_side, right_side) * 2
+            return spacing
+        # spin echo
+        # before refocusing pulse:
+        left_side = (RF_excitation['dur_f'] + RF_refocusing[0]['dur_f']) / 2
+        left_side += max(
+            read_prephaser['dur_f'], 
+            slice_select_excitation['risetime_f'] + slice_select_rephaser['dur_f'] + (slice_select_refocusing[0]['risetime_f'])
+        )
+        # after refocusing pulse:
+        if turbo_factor > 1:
+            read_start_to_k0 = gre_echo_train_dur / 2 - readout_risetime
+        else:
+            k0_gr_echo_index = min(k0_gr_echo_index_linear_order + k0_gr_echo_index_reverse_linear_order)
+            read_start_to_k0 = (k0_gr_echo_index + .5) * gr_echo_spacing - readout_gap / 2
+
+        right_side = RF_refocusing[0]['dur_f'] / 2 + read_start_to_k0
+        right_side += max(
+            readout_risetime,
+            phaser_duration,
+            slice_select_refocusing[0]['risetime_f']
+        )
+        spacing = max(left_side, right_side) * 2
         return spacing
     
     def k0_rf_echo_index_linear_order_func(self, k0_segment, turbo_factor):
@@ -1866,7 +1875,9 @@ class MRIsimulator(param.Parameterized):
     def reverse_linear_order_func(self, EPI_factor, k0_rf_echo_index_reverse_linear_order, k0_rf_echo_index_linear_order, k0_gr_echo_index_linear_order, k0_gr_echo_index_reverse_linear_order, TE, turbo_factor, gr_echo_spacing, min_readtrain_spacing):
         if EPI_factor == 1:
             return False
-        # Pick order that minimizes readtrain spacing
+        if turbo_factor == 1:
+            return min(k0_gr_echo_index_reverse_linear_order) < min(k0_gr_echo_index_linear_order)
+        # GRASE: Pick order that minimizes readtrain spacing
         smallest_spacing = {}
         for order, gr_indices, rf_indices in [
             ('forward', k0_gr_echo_index_linear_order, k0_rf_echo_index_linear_order), 
