@@ -103,17 +103,23 @@ def get_segment_order(N, Nsym, c):
     return segment_order
 
 
-def get_readtrain_pos(readtrain_spacing, rf_echo_num):
+def get_readtrain_pos(readtrain_spacing, rf_echo_num, num_rf_echoes, gr_echo_spacing, k0_gr_echo_index, num_gr_echoes):
     # center position of gradient echo readout (train)
-    return readtrain_spacing * (rf_echo_num + 1)
+    readtrain_pos = readtrain_spacing * (rf_echo_num + 1)
+    if num_rf_echoes <= 1:
+        readtrain_pos -= readtrain_shift(gr_echo_spacing, k0_gr_echo_index, num_gr_echoes)
+    return readtrain_pos
 
 
 def readtrain_shift(gr_echo_spacing, k0_gr_echo_index, num_gr_echoes):
     return gr_echo_spacing * (k0_gr_echo_index - (num_gr_echoes-1)/2)
 
 
-def readtrain_spacing(TE, gr_echo_spacing, k0_gr_echo_index, num_gr_echoes, k0_rf_echo_index):
-    return (TE - readtrain_shift(gr_echo_spacing, k0_gr_echo_index, num_gr_echoes)) / (k0_rf_echo_index + 1)
+def readtrain_spacing(TE, num_gr_echoes, num_rf_echoes, gr_echo_spacing, k0_gr_echo_index, k0_rf_echo_index):
+    spin_echo_time = TE
+    if num_gr_echoes > 1 and num_rf_echoes > 1:
+        spin_echo_time += readtrain_shift(gr_echo_spacing, k0_gr_echo_index, num_gr_echoes)
+    return spin_echo_time / (1 + k0_rf_echo_index)
 
 
 def TE_from_k0_echo_indices(readtrain_spacing, k0_rf_echo_index, gr_echo_spacing, k0_gr_echo_index, EPI_factor):
@@ -711,12 +717,12 @@ class MRIsimulator(param.Parameterized):
         
         node_specs['slice_select_refocusing'] = {
             'func': self.slice_select_refocusing_func,
-            'parents': ['slice_select_refocusing_floating', 'readtrain_spacing']
+            'parents': ['slice_select_refocusing_floating', 'readtrain_spacing', 'turbo_factor', 'gr_echo_spacing', 'k0_gr_echo_index', 'EPI_factor']
         }
         
         node_specs['RF_refocusing'] = {
             'func': self.RF_refocusing_func,
-            'parents': ['RF_refocusing_floating', 'readtrain_spacing']
+            'parents': ['RF_refocusing_floating', 'readtrain_spacing', 'turbo_factor', 'gr_echo_spacing', 'k0_gr_echo_index', 'EPI_factor']
         }
         
         node_specs['slice_select_inversion'] = {
@@ -746,12 +752,12 @@ class MRIsimulator(param.Parameterized):
         
         node_specs['readouts'] = {
             'func': self.readouts_func,
-            'parents': ['turbo_factor', 'readtrain_spacing', 'EPI_factor', 'gr_echo_spacing', 'readouts_floating']
+            'parents': ['turbo_factor', 'readtrain_spacing', 'EPI_factor', 'gr_echo_spacing', 'k0_gr_echo_index', 'readouts_floating']
         }
 
         node_specs['sampling_windows'] = {
             'func': self.sampling_windows_func,
-            'parents': ['turbo_factor', 'readtrain_spacing', 'EPI_factor', 'gr_echo_spacing', 'sampling_windows_floating']
+            'parents': ['turbo_factor', 'readtrain_spacing', 'EPI_factor', 'gr_echo_spacing', 'k0_gr_echo_index', 'sampling_windows_floating']
         }
 
         node_specs['read_prephaser'] = {
@@ -761,22 +767,22 @@ class MRIsimulator(param.Parameterized):
 
         node_specs['phasers'] = {
             'func': self.phasers_func,
-            'parents': ['turbo_factor', 'readtrain_spacing', 'phasers_floating', 'gre_echo_train_dur', 'readout_risetime']
+            'parents': ['turbo_factor', 'readtrain_spacing', 'gr_echo_spacing', 'k0_gr_echo_index', 'EPI_factor', 'phasers_floating', 'gre_echo_train_dur', 'readout_risetime']
         }
 
         node_specs['rephasers'] = {
             'func': self.rephasers_func,
-            'parents': ['turbo_factor', 'readtrain_spacing', 'gre_echo_train_dur', 'readout_risetime', 'rephasers_floating']
+            'parents': ['turbo_factor', 'readtrain_spacing', 'gr_echo_spacing', 'k0_gr_echo_index', 'EPI_factor', 'gre_echo_train_dur', 'readout_risetime', 'rephasers_floating']
         }
 
         node_specs['rephasers'] = {
             'func': self.rephasers_func,
-            'parents': ['turbo_factor', 'readtrain_spacing', 'gre_echo_train_dur', 'readout_risetime', 'rephasers_floating']
+            'parents': ['turbo_factor', 'readtrain_spacing', 'gr_echo_spacing', 'k0_gr_echo_index', 'EPI_factor', 'gre_echo_train_dur', 'readout_risetime', 'rephasers_floating']
         }
         
         node_specs['blips'] = {
             'func': self.blips_func,
-            'parents': ['turbo_factor', 'readtrain_spacing', 'EPI_factor', 'gr_echo_spacing', 'blips_floating']
+            'parents': ['turbo_factor', 'readtrain_spacing', 'EPI_factor', 'gr_echo_spacing', 'k0_gr_echo_index', 'blips_floating']
         }
         
         node_specs['spoiler'] = {
@@ -861,7 +867,7 @@ class MRIsimulator(param.Parameterized):
 
         node_specs['reverse_linear_order'] = {
             'func': self.reverse_linear_order_func,
-            'parents': ['k0_rf_echo_index_reverse_linear_order', 'k0_rf_echo_index_linear_order', 'k0_gr_echo_index_linear_order', 'k0_gr_echo_index_reverse_linear_order', 'TE', 'gr_echo_spacing', 'EPI_factor', 'min_readtrain_spacing']
+            'parents': ['EPI_factor', 'k0_rf_echo_index_reverse_linear_order', 'k0_rf_echo_index_linear_order', 'k0_gr_echo_index_linear_order', 'k0_gr_echo_index_reverse_linear_order', 'TE', 'turbo_factor', 'gr_echo_spacing', 'min_readtrain_spacing']
         }
         
         node_specs['k0_rf_echo_index'] = {
@@ -871,12 +877,12 @@ class MRIsimulator(param.Parameterized):
         
         node_specs['k0_gr_echo_index'] = {
             'func': self.k0_gr_echo_index_func,
-            'parents': ['k0_gr_echo_index_linear_order', 'reverse_linear_order', 'k0_gr_echo_index_reverse_linear_order', 'TE', 'gr_echo_spacing', 'EPI_factor', 'k0_rf_echo_index', 'min_readtrain_spacing']
+            'parents': ['k0_gr_echo_index_linear_order', 'reverse_linear_order', 'k0_gr_echo_index_reverse_linear_order', 'TE', 'gr_echo_spacing', 'EPI_factor', 'turbo_factor', 'k0_rf_echo_index', 'min_readtrain_spacing']
         }
         
         node_specs['readtrain_spacing'] = {
             'func': self.readtrain_spacing_func,
-            'parents': ['EPI_factor', 'gr_echo_spacing', 'TE', 'k0_gr_echo_index', 'k0_rf_echo_index']
+            'parents': ['EPI_factor', 'turbo_factor', 'gr_echo_spacing', 'TE', 'k0_gr_echo_index', 'k0_rf_echo_index']
         }
 
         node_specs['num_blades'] = {
@@ -1857,7 +1863,7 @@ class MRIsimulator(param.Parameterized):
     def k0_gr_echo_index_reverse_linear_order_func(self, EPI_factor, k0_gr_echo_index_linear_order):
         return [EPI_factor - 1 - index for index in k0_gr_echo_index_linear_order]
     
-    def reverse_linear_order_func(self, k0_rf_echo_index_reverse_linear_order, k0_rf_echo_index_linear_order, k0_gr_echo_index_linear_order, k0_gr_echo_index_reverse_linear_order, TE, gr_echo_spacing, EPI_factor, min_readtrain_spacing):
+    def reverse_linear_order_func(self, EPI_factor, k0_rf_echo_index_reverse_linear_order, k0_rf_echo_index_linear_order, k0_gr_echo_index_linear_order, k0_gr_echo_index_reverse_linear_order, TE, turbo_factor, gr_echo_spacing, min_readtrain_spacing):
         if EPI_factor == 1:
             return False
         # Pick order that minimizes readtrain spacing
@@ -1868,7 +1874,7 @@ class MRIsimulator(param.Parameterized):
             spacings = []
             for rf_index in rf_indices:
                 for gr_index in gr_indices:
-                    spacings.append(readtrain_spacing(TE, gr_echo_spacing, gr_index, EPI_factor, rf_index))
+                    spacings.append(readtrain_spacing(TE, EPI_factor, turbo_factor, gr_echo_spacing, gr_index, rf_index))
             spacings = [spacing for spacing in spacings if spacing >= min_readtrain_spacing]
             smallest_spacing[order] = min(spacings, default=np.inf)
         return smallest_spacing['reverse'] < smallest_spacing['forward']
@@ -1886,31 +1892,28 @@ class MRIsimulator(param.Parameterized):
         for rf_index in rf_indices:
             spacings = []
             for gr_index in gr_indices:
-                spacings.append(readtrain_spacing(TE, gr_echo_spacing, gr_index, EPI_factor, rf_index))
+                spacings.append(readtrain_spacing(TE, EPI_factor, turbo_factor, gr_echo_spacing, gr_index, rf_index))
             spacings = [spacing for spacing in spacings if spacing >= min_readtrain_spacing]
             smallest_spacing[rf_index] = min(spacings, default=np.inf)
         return min(smallest_spacing, key=smallest_spacing.get)
     
-    def k0_gr_echo_index_func(self, k0_gr_echo_index_linear_order, reverse_linear_order, k0_gr_echo_index_reverse_linear_order, TE, gr_echo_spacing, EPI_factor, k0_rf_echo_index, min_readtrain_spacing):
+    def k0_gr_echo_index_func(self, k0_gr_echo_index_linear_order, reverse_linear_order, k0_gr_echo_index_reverse_linear_order, TE, gr_echo_spacing, EPI_factor, turbo_factor, k0_rf_echo_index, min_readtrain_spacing):
         gr_indices = k0_gr_echo_index_reverse_linear_order if reverse_linear_order else k0_gr_echo_index_linear_order
 
         if len(gr_indices)==1:
             return gr_indices[0]
         
-        spacings = {gr_index: readtrain_spacing(TE, gr_echo_spacing, gr_index, EPI_factor, k0_rf_echo_index) for gr_index in gr_indices}
+        spacings = {gr_index: readtrain_spacing(TE, EPI_factor, turbo_factor, gr_echo_spacing, gr_index, k0_rf_echo_index) for gr_index in gr_indices}
         spacings = {gr_index: spacing for gr_index, spacing in spacings.items() if spacing >= min_readtrain_spacing}
         if not spacings:
             warnings.warn('No allowed k0 gre index was found that respects min_readtrain_spacing.')
             return gr_indices[0]
         return min(spacings, key=spacings.get)
 
-    def readtrain_spacing_func(self, EPI_factor, gr_echo_spacing, TE, k0_gr_echo_index, k0_rf_echo_index):
+    def readtrain_spacing_func(self, EPI_factor, turbo_factor, gr_echo_spacing, TE, k0_gr_echo_index, k0_rf_echo_index):
         # Equals center position of gradient echo (train) for gradient echo sequences
         # Equals rf echo spacing for spin echo sequences
-        spin_echo_time = TE
-        if EPI_factor > 1:
-            spin_echo_time -= readtrain_shift(gr_echo_spacing, k0_gr_echo_index, EPI_factor)
-        return spin_echo_time / (k0_rf_echo_index + 1)
+        return readtrain_spacing(TE, EPI_factor, turbo_factor, gr_echo_spacing, k0_gr_echo_index, k0_rf_echo_index)
         
     def k_read_axis_func(self, freq_dir, FOV, matrix, is_radial, fantom, radial_FOV_oversampling):
         voxel_size = FOV[freq_dir] / matrix[freq_dir]
@@ -2300,23 +2303,23 @@ class MRIsimulator(param.Parameterized):
         spoiler_area = 30. # uTs/m
         return sequence.get_gradient('slice', total_area=spoiler_area, name='spoiler', max_amp=self.max_amp, max_slew=self.max_slew)
 
-    def slice_select_refocusing_func(self, slice_select_refocusing_floating, readtrain_spacing):
+    def slice_select_refocusing_func(self, slice_select_refocusing_floating, readtrain_spacing, turbo_factor, gr_echo_spacing, k0_gr_echo_index, EPI_factor):
         if slice_select_refocusing_floating is None:
             return None
         slice_select_refocusing = []
         for rf_echo, grad in enumerate(slice_select_refocusing_floating):
             slice_select_refocusing.append(grad)
-            time = get_readtrain_pos(readtrain_spacing, rf_echo) - readtrain_spacing/2
+            time = get_readtrain_pos(readtrain_spacing, rf_echo, turbo_factor, gr_echo_spacing, k0_gr_echo_index, EPI_factor) - readtrain_spacing/2
             sequence.move_waveform(slice_select_refocusing[rf_echo], time)
         return slice_select_refocusing
 
-    def RF_refocusing_func(self, RF_refocusing_floating, readtrain_spacing):
+    def RF_refocusing_func(self, RF_refocusing_floating, readtrain_spacing, turbo_factor, gr_echo_spacing, k0_gr_echo_index, EPI_factor):
         if RF_refocusing_floating is None:
             return None
         RF_refocusing = []
         for rf_echo, RF in enumerate(RF_refocusing_floating):
             RF_refocusing.append(RF)
-            time = get_readtrain_pos(readtrain_spacing, rf_echo) - readtrain_spacing/2
+            time = get_readtrain_pos(readtrain_spacing, rf_echo, turbo_factor, gr_echo_spacing, k0_gr_echo_index, EPI_factor) - readtrain_spacing/2
             sequence.move_waveform(RF_refocusing[rf_echo], time)
         return RF_refocusing
 
@@ -2358,11 +2361,11 @@ class MRIsimulator(param.Parameterized):
         sequence.move_waveform(RF_FatSat, t)
         return RF_FatSat
 
-    def readouts_func(self, turbo_factor, readtrain_spacing, EPI_factor, gr_echo_spacing, readouts_floating):
+    def readouts_func(self, turbo_factor, readtrain_spacing, EPI_factor, gr_echo_spacing, k0_gr_echo_index, readouts_floating):
         readouts = []
         for rf_echo in range(turbo_factor):
             readouts.append([])
-            readtrain_pos = get_readtrain_pos(readtrain_spacing, rf_echo)
+            readtrain_pos = get_readtrain_pos(readtrain_spacing, rf_echo, turbo_factor, gr_echo_spacing, k0_gr_echo_index, EPI_factor)
             for gr_echo in range(EPI_factor):
                 readout = readouts_floating[rf_echo][gr_echo]
                 pos = readtrain_pos + (gr_echo - (EPI_factor-1) / 2) * gr_echo_spacing
@@ -2372,10 +2375,10 @@ class MRIsimulator(param.Parameterized):
                 readouts[-1].append(readout)
         return readouts
                     
-    def sampling_windows_func(self, turbo_factor, readtrain_spacing, EPI_factor, gr_echo_spacing, sampling_windows_floating):
+    def sampling_windows_func(self, turbo_factor, readtrain_spacing, EPI_factor, gr_echo_spacing, k0_gr_echo_index, sampling_windows_floating):
         sampling_windows = []
         for rf_echo in range(turbo_factor):
-            readtrain_pos = get_readtrain_pos(readtrain_spacing, rf_echo)
+            readtrain_pos = get_readtrain_pos(readtrain_spacing, rf_echo, turbo_factor, gr_echo_spacing, k0_gr_echo_index, EPI_factor)
             sampling_windows.append([])
             for gr_echo in range(EPI_factor):
                 sampling_window = sampling_windows_floating[rf_echo][gr_echo]
@@ -2399,30 +2402,30 @@ class MRIsimulator(param.Parameterized):
         sequence.move_waveform(read_prephaser, prephase_time)
         return read_prephaser
     
-    def phasers_func(self, turbo_factor, readtrain_spacing, phasers_floating, gre_echo_train_dur, readout_risetime):
+    def phasers_func(self, turbo_factor, readtrain_spacing, gr_echo_spacing, k0_gr_echo_index, EPI_factor, phasers_floating, gre_echo_train_dur, readout_risetime):
         phasers = []
         for rf_echo in range(turbo_factor):
             phaser = phasers_floating[rf_echo]
-            readtrain_pos = get_readtrain_pos(readtrain_spacing, rf_echo)
+            readtrain_pos = get_readtrain_pos(readtrain_spacing, rf_echo, turbo_factor, gr_echo_spacing, k0_gr_echo_index, EPI_factor)
             phaser_time = readtrain_pos - (gre_echo_train_dur + phaser['dur_f'])/2 + readout_risetime
             sequence.move_waveform(phaser, phaser_time)
             phasers.append(phaser)
         return phasers
     
-    def rephasers_func(self, turbo_factor, readtrain_spacing, gre_echo_train_dur, readout_risetime, rephasers_floating):
+    def rephasers_func(self, turbo_factor, readtrain_spacing, gr_echo_spacing, k0_gr_echo_index, EPI_factor, gre_echo_train_dur, readout_risetime, rephasers_floating):
         rephasers = []
         for rf_echo in range(turbo_factor):
-            readtrain_pos = get_readtrain_pos(readtrain_spacing, rf_echo)
+            readtrain_pos = get_readtrain_pos(readtrain_spacing, rf_echo, turbo_factor, gr_echo_spacing, k0_gr_echo_index, EPI_factor)
             rephaser = rephasers_floating[rf_echo]
             rephaser_time = readtrain_pos + (gre_echo_train_dur + rephaser['dur_f'])/2 - readout_risetime
             sequence.move_waveform(rephaser, rephaser_time)
             rephasers.append(rephaser)
         return rephasers
         
-    def blips_func(self, turbo_factor, readtrain_spacing, EPI_factor, gr_echo_spacing, blips_floating):
+    def blips_func(self, turbo_factor, readtrain_spacing, EPI_factor, gr_echo_spacing, k0_gr_echo_index, blips_floating):
         blips = []
         for rf_echo in range(turbo_factor):
-            readtrain_pos = get_readtrain_pos(readtrain_spacing, rf_echo)
+            readtrain_pos = get_readtrain_pos(readtrain_spacing, rf_echo, turbo_factor, gr_echo_spacing, k0_gr_echo_index, EPI_factor)
             blips.append([])
             for gr_echo in range(EPI_factor-1):
                 blip = blips_floating[rf_echo][gr_echo]
