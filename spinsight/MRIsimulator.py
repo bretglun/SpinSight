@@ -962,7 +962,7 @@ class MRIsimulator(param.Parameterized):
 
         node_specs['pe_table'] = {
             'func': self.pe_table_func,
-            'parents': ['k0_rf_echo_index', 'k0_rf_echo_index_linear_order', 'EPI_factor', 'turbo_factor', 'num_sym_segm', 'is_radial', 'num_shots', 'reverse_linear_order', 'lines_to_measure']
+            'parents': ['num_measured_lines', 'num_segm', 'num_shots', 'EPI_factor', 'turbo_factor', 'num_sym_segm', 'k0_rf_echo_index', 'reverse_linear_order']
         }
 
         node_specs['signal_level'] = {
@@ -1961,20 +1961,15 @@ class MRIsimulator(param.Parameterized):
             return [k0_segment, k0_segment + 1] # k0 lies between two segments
         return [k0_segment]
         
-    def pe_table_func(self, k0_rf_echo_index, k0_rf_echo_index_linear_order, EPI_factor, turbo_factor, num_sym_segm, is_radial, num_shots, reverse_linear_order, lines_to_measure):
+    def pe_table_func(self, num_measured_lines, num_segm, num_shots, EPI_factor, turbo_factor, num_sym_segm, k0_rf_echo_index, reverse_linear_order):
+        num_lines_per_segment = int(num_measured_lines / num_segm)
+        lines = [shot % num_lines_per_segment for shot in range(num_shots)]
         if EPI_factor == 1: # (turbo) spin echo
-            segment_order = get_segment_order(turbo_factor, num_sym_segm, k0_rf_echo_index)
-            if is_radial:
-                pe_table = [[[segment] for segment in segment_order] for shot in range(num_shots)]
-            else:
-                pe_table = [[[segment * num_shots + shot] for segment in segment_order] for shot in range(num_shots)]
+            segment_order = np.array(get_segment_order(turbo_factor, num_sym_segm, k0_rf_echo_index)).reshape(-1, 1)
         else: # EPI and GRASE
             order = -1 if reverse_linear_order else 1
-            if is_radial:
-                pe_table = [[list(range(rf_echo, sum(lines_to_measure), turbo_factor))[::order] for rf_echo in range(turbo_factor)][::order] for shot in range(num_shots)]
-            else:
-                pe_table = [[list(range(rf_echo * num_shots + shot, sum(lines_to_measure), num_shots * turbo_factor))[::order] for rf_echo in range(turbo_factor)][::order] for shot in range(num_shots)]
-        return np.array(pe_table)
+            segment_order = np.array(range(EPI_factor))[None, ::order] * turbo_factor + np.array(range(turbo_factor))[::order, None]
+        return num_lines_per_segment * segment_order + np.array(lines)[:, None, None]
 
     def k_axes_func(self, freq_dir, phase_dir, k_read_axis, k_phase_axis, lines_to_measure):
         k_axes = [None]*2
