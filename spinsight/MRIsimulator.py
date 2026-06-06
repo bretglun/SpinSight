@@ -367,7 +367,7 @@ class MRIsimulator(param.Parameterized):
         node_specs['set_pixel_bandwidth_bounds'] = {
             'action': True,
             'func': self.set_pixel_bandwidth_bounds,
-            'parents': ['matrix_F', 'FOV_F', 'is_gradient_echo', 'RF_refocusing', 'turbo_factor', 'EPI_factor', 'TE', 'RF_excitation', 'refocusing_time', 'readtrain_spacing', 'TR', 'sequence_start', 'spoiler', 'k0_gr_echo_index_linear_order', 'k0_gr_echo_index_reverse_linear_order', 'reverse_linear_order', 'read_prephaser', 'phaser_duration', 'slice_select_excitation', 'slice_select_rephaser', 'max_blip_dur', 'slice_select_refocusing']
+            'parents': ['matrix_F', 'FOV_F', 'is_gradient_echo', 'RF_refocusing', 'turbo_factor', 'EPI_factor', 'TE', 'RF_excitation', 'refocusing_time', 'readtrain_spacing', 'TR', 'sequence_start', 'spoiler', 'k0_echo_indices_linear_order', 'k0_echo_indices_reverse_linear_order', 'reverse_linear_order', 'read_prephaser', 'phaser_duration', 'slice_select_excitation', 'slice_select_rephaser', 'max_blip_dur', 'slice_select_refocusing']
         }
         
         node_specs['set_matrix_F_bounds'] = {
@@ -821,7 +821,7 @@ class MRIsimulator(param.Parameterized):
         
         node_specs['min_TE'] = {
             'func': self.min_TE_func,
-            'parents': ['k0_gr_echo_index_linear_order', 'k0_rf_echo_index_linear_order', 'k0_gr_echo_index_reverse_linear_order', 'k0_rf_echo_index_reverse_linear_order', 'min_refocusing_time', 'min_RF_to_readtrain_center', 'gr_echo_spacing', 'EPI_factor', 'is_gradient_echo', 'turbo_factor']
+            'parents': ['k0_echo_indices_linear_order', 'k0_echo_indices_reverse_linear_order', 'min_refocusing_time', 'min_RF_to_readtrain_center', 'gr_echo_spacing', 'EPI_factor', 'is_gradient_echo', 'turbo_factor']
         }
         
         node_specs['min_TR'] = {
@@ -849,29 +849,19 @@ class MRIsimulator(param.Parameterized):
             'parents': ['is_gradient_echo', 'RF_excitation', 'read_prephaser_floating', 'slice_select_excitation', 'slice_select_rephaser', 'RF_refocusing_floating', 'slice_select_refocusing_floating', 'gre_echo_train_dur', 'readout_risetime', 'phaser_duration']
         }
 
-        node_specs['k0_rf_echo_index_linear_order'] = {
-            'func': self.k0_rf_echo_index_linear_order_func,
+        node_specs['k0_echo_indices_linear_order'] = {
+            'func': self.k0_echo_indices_linear_order_func,
             'parents': ['k0_segment', 'turbo_factor']
-        }
-        
-        node_specs['k0_rf_echo_index_reverse_linear_order'] = {
-            'func': self.k0_rf_echo_index_reverse_linear_order_func,
-            'parents': ['turbo_factor', 'k0_rf_echo_index_linear_order']
         }
 
-        node_specs['k0_gr_echo_index_linear_order'] = {
-            'func': self.k0_gr_echo_index_linear_order_func,
-            'parents': ['k0_segment', 'turbo_factor']
-        }
-        
-        node_specs['k0_gr_echo_index_reverse_linear_order'] = {
-            'func': self.k0_gr_echo_index_reverse_linear_order_func,
-            'parents': ['EPI_factor', 'k0_gr_echo_index_linear_order']
+        node_specs['k0_echo_indices_reverse_linear_order'] = {
+            'func': self.k0_echo_indices_reverse_linear_order_func,
+            'parents': ['k0_echo_indices_linear_order', 'EPI_factor', 'turbo_factor']
         }
 
         node_specs['k0_index'] = {
             'func': self.k0_index_func,
-            'parents': ['k0_gr_echo_index_reverse_linear_order', 'k0_rf_echo_index_reverse_linear_order', 'k0_gr_echo_index_linear_order', 'k0_rf_echo_index_linear_order', 'is_gradient_echo', 'turbo_factor', 'TE', 'EPI_factor', 'gr_echo_spacing', 'min_refocusing_time', 'min_RF_to_readtrain_center']
+            'parents': ['k0_echo_indices_reverse_linear_order', 'k0_echo_indices_linear_order', 'is_gradient_echo', 'turbo_factor', 'TE', 'EPI_factor', 'gr_echo_spacing', 'min_refocusing_time', 'min_RF_to_readtrain_center']
         }
         
         node_specs['k0_rf_echo_index'] = {
@@ -1530,7 +1520,7 @@ class MRIsimulator(param.Parameterized):
             self.trajectory = updated
         self.param.trajectory.objects = [t for t in constants.TRAJECTORIES if t != invalid]
 
-    def set_pixel_bandwidth_bounds(self, matrix_F, FOV_F, is_gradient_echo, RF_refocusing, turbo_factor, EPI_factor, TE, RF_excitation, refocusing_time, readtrain_spacing, TR, sequence_start, spoiler, k0_gr_echo_index_linear_order, k0_gr_echo_index_reverse_linear_order, reverse_linear_order, read_prephaser, phaser_duration, slice_select_excitation, slice_select_rephaser, max_blip_dur, slice_select_refocusing):
+    def set_pixel_bandwidth_bounds(self, matrix_F, FOV_F, is_gradient_echo, RF_refocusing, turbo_factor, EPI_factor, TE, RF_excitation, refocusing_time, readtrain_spacing, TR, sequence_start, spoiler, k0_echo_indices_linear_order, k0_echo_indices_reverse_linear_order, reverse_linear_order, read_prephaser, phaser_duration, slice_select_excitation, slice_select_rephaser, max_blip_dur, slice_select_refocusing):
         readout_area = 1e3 * matrix_F / (FOV_F * constants.GYRO)
         # min limit imposed by maximum gradient amplitude:
         min_read_duration = readout_area / self.max_amp
@@ -1542,7 +1532,7 @@ class MRIsimulator(param.Parameterized):
         
         slice_select_rewind_dur = slice_select_excitation['risetime_f'] + slice_select_rephaser['dur_f'] if is_gradient_echo else slice_select_refocusing[0]['risetime_f']
 
-        k0_gr_echo_indices = k0_gr_echo_index_reverse_linear_order if reverse_linear_order else k0_gr_echo_index_linear_order
+        k0_echo_indices = k0_echo_indices_linear_order if reverse_linear_order else k0_echo_indices_reverse_linear_order
         
         pixel_bandwidth_values = []
         for pixel_bandwidth in param_values['pixel_bandwidth'].values():
@@ -1555,7 +1545,7 @@ class MRIsimulator(param.Parameterized):
             readout_risetime = readout_area / read_duration / self.max_slew
             readout_gap = max(max_blip_dur, 2 * readout_risetime)
             
-            for gr_echo in k0_gr_echo_indices:
+            for (gr_echo, _) in k0_echo_indices:
                 num_blips_before_ref = gr_echo if (turbo_factor == 1) else (EPI_factor-1) / 2
                 num_blips_after_ref = EPI_factor - 1 - num_blips_before_ref
                 
@@ -1754,13 +1744,11 @@ class MRIsimulator(param.Parameterized):
     def set_apodization_alpha_visibility(self, do_apodize):
         self.set_visibility('apodization_alpha', do_apodize)
     
-    def min_TE_func(self, k0_gr_echo_index_linear_order, k0_rf_echo_index_linear_order, k0_gr_echo_index_reverse_linear_order, k0_rf_echo_index_reverse_linear_order, min_refocusing_time, min_RF_to_readtrain_center, gr_echo_spacing, EPI_factor, is_gradient_echo, turbo_factor):
+    def min_TE_func(self, k0_echo_indices_linear_order, k0_echo_indices_reverse_linear_order, min_refocusing_time, min_RF_to_readtrain_center, gr_echo_spacing, EPI_factor, is_gradient_echo, turbo_factor):
         min_TE_cands = []
-        for gr_indices, rf_indices in [
-            (k0_gr_echo_index_linear_order, k0_rf_echo_index_linear_order), (k0_gr_echo_index_reverse_linear_order, k0_rf_echo_index_reverse_linear_order)]:
-            for rf_index in rf_indices:
-                for gr_index in gr_indices:
-                    min_TE_cands.append(min_TE_from_k0_echo_indices(gr_echo_spacing, gr_index, EPI_factor, is_gradient_echo, min_RF_to_readtrain_center, turbo_factor, min_refocusing_time, rf_index))
+        for indices in [k0_echo_indices_linear_order, k0_echo_indices_reverse_linear_order]:
+            for (gr_index, rf_index) in indices:
+                min_TE_cands.append(min_TE_from_k0_echo_indices(gr_echo_spacing, gr_index, EPI_factor, is_gradient_echo, min_RF_to_readtrain_center, turbo_factor, min_refocusing_time, rf_index))
         min_TE = min(min_TE_cands)
         return min([v for v in param_values['TE'].values() if v >= min_TE])
 
@@ -1846,30 +1834,24 @@ class MRIsimulator(param.Parameterized):
             slice_rewind_dur
             )
 
-    def k0_rf_echo_index_linear_order_func(self, k0_segment, turbo_factor):
-        return [segment % turbo_factor for segment in k0_segment]
+    def k0_echo_indices_linear_order_func(self, k0_segment, turbo_factor):
+        # (k0_gr_echo_index, k0_rf_echo_index)
+        return [(segment // turbo_factor, segment % turbo_factor) for segment in k0_segment]
 
-    def k0_rf_echo_index_reverse_linear_order_func(self, turbo_factor, k0_rf_echo_index_linear_order):
-        return [turbo_factor - 1 - index for index in k0_rf_echo_index_linear_order]
-    
-    def k0_gr_echo_index_linear_order_func(self, k0_segment, turbo_factor):
-        return [segment // turbo_factor for segment in k0_segment]
-    
-    def k0_gr_echo_index_reverse_linear_order_func(self, EPI_factor, k0_gr_echo_index_linear_order):
-        return [EPI_factor - 1 - index for index in k0_gr_echo_index_linear_order]
+    def k0_echo_indices_reverse_linear_order_func(self, k0_echo_indices_linear_order, EPI_factor, turbo_factor):
+        return {(EPI_factor - 1 - gr_index, turbo_factor - 1 - rf_index) for (gr_index, rf_index) in k0_echo_indices_linear_order}
 
-    def k0_index_func(self, k0_gr_echo_index_reverse_linear_order, k0_rf_echo_index_reverse_linear_order, k0_gr_echo_index_linear_order, k0_rf_echo_index_linear_order, is_gradient_echo, turbo_factor, TE, EPI_factor, gr_echo_spacing, min_refocusing_time, min_RF_to_readtrain_center):
+    def k0_index_func(self, k0_echo_indices_reverse_linear_order, k0_echo_indices_linear_order, is_gradient_echo, turbo_factor, TE, EPI_factor, gr_echo_spacing, min_refocusing_time, min_RF_to_readtrain_center):
         # choose order that minimizes readtrain spacing
         readtrain_spacings = {}
-        for reverse_order, gr_indices, rf_indices in [
-            (True, k0_gr_echo_index_reverse_linear_order, k0_rf_echo_index_reverse_linear_order),
-            (False, k0_gr_echo_index_linear_order, k0_rf_echo_index_linear_order)]:
-            for rf_index in rf_indices:
-                for gr_index in gr_indices:
-                    first_refocusing_time = get_first_refocusing_time(is_gradient_echo, turbo_factor, TE, EPI_factor, gr_echo_spacing, gr_index, rf_index)
-                    RF_to_readtrain_center = get_RF_to_readtrain_center(TE, EPI_factor, gr_echo_spacing, gr_index, rf_index, first_refocusing_time)
-                    if (first_refocusing_time >= min_refocusing_time) and (RF_to_readtrain_center >= min_RF_to_readtrain_center):
-                        readtrain_spacings[(rf_index, gr_index, reverse_order)] = first_refocusing_time + RF_to_readtrain_center
+        for reverse_order, indices in [
+            (True, k0_echo_indices_reverse_linear_order),
+            (False, k0_echo_indices_linear_order)]:
+            for (gr_index, rf_index) in indices:
+                first_refocusing_time = get_first_refocusing_time(is_gradient_echo, turbo_factor, TE, EPI_factor, gr_echo_spacing, gr_index, rf_index)
+                RF_to_readtrain_center = get_RF_to_readtrain_center(TE, EPI_factor, gr_echo_spacing, gr_index, rf_index, first_refocusing_time)
+                if (first_refocusing_time >= min_refocusing_time) and (RF_to_readtrain_center >= min_RF_to_readtrain_center):
+                    readtrain_spacings[(rf_index, gr_index, reverse_order)] = first_refocusing_time + RF_to_readtrain_center
         if not readtrain_spacings:
             warnings.warn('No valid order found')
             return (0, 0, False)
