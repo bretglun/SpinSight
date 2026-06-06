@@ -350,7 +350,7 @@ class MRIsimulator(param.Parameterized):
         node_specs['set_pixel_bandwidth_bounds'] = {
             'action': True,
             'func': self.set_pixel_bandwidth_bounds,
-            'parents': ['matrix_F', 'FOV_F', 'is_gradient_echo', 'gre_max_read_duration', 'RF_refocusing', 'turbo_factor', 'EPI_factor', 'TE', 'RF_excitation', 'refocusing_time', 'readtrain_spacing', 'TR', 'sequence_start', 'spoiler', 'k0_gr_echo_index', 'phaser_duration', 'max_blip_dur', 'slice_select_refocusing']
+            'parents': ['matrix_F', 'FOV_F', 'is_gradient_echo', 'RF_refocusing', 'turbo_factor', 'EPI_factor', 'TE', 'RF_excitation', 'refocusing_time', 'readtrain_spacing', 'TR', 'sequence_start', 'spoiler', 'k0_gr_echo_index', 'read_prephaser', 'phaser_duration', 'slice_select_excitation', 'slice_select_rephaser', 'max_blip_dur', 'slice_select_refocusing']
         }
         
         node_specs['set_matrix_F_bounds'] = {
@@ -812,21 +812,6 @@ class MRIsimulator(param.Parameterized):
             'parents': ['spoiler', 'sequence_start']
         }
         
-        node_specs['gre_read_start_to_k0'] = {
-            'func': self.gre_read_start_to_k0_func,
-            'parents': ['is_gradient_echo', 'phaser_duration', 'TE', 'RF_excitation', 'read_prephaser', 'readout_risetime', 'slice_select_excitation', 'slice_select_rephaser']
-        }
-
-        node_specs['gre_k0_to_read_end'] = {
-            'func': self.gre_k0_to_read_end_func,
-            'parents': ['is_gradient_echo', 'TR', 'sequence_start', 'spoiler', 'TE']
-        }
-
-        node_specs['gre_max_read_duration'] = {
-            'func': self.gre_max_read_duration_func,
-            'parents': ['gre_read_start_to_k0', 'gre_k0_to_read_end', 'k0_gr_echo_index', 'readout_risetime', 'EPI_factor']
-        }
-
         node_specs['max_readout_area'] = {
             'func': self.max_readout_area_func,
             'parents': ['pixel_bandwidth', 'is_gradient_echo', 'k0_gr_echo_index', 'RF_excitation', 'phaser_duration', 'slice_select_excitation', 'slice_select_rephaser', 'max_blip_dur', 'readtrain_spacing', 'RF_refocusing_floating', 'EPI_factor']
@@ -1523,55 +1508,61 @@ class MRIsimulator(param.Parameterized):
             self.trajectory = updated
         self.param.trajectory.objects = [t for t in constants.TRAJECTORIES if t != invalid]
 
-    def set_pixel_bandwidth_bounds(self, matrix_F, FOV_F, is_gradient_echo, gre_max_read_duration, RF_refocusing, turbo_factor, EPI_factor, TE, RF_excitation, refocusing_time, readtrain_spacing, TR, sequence_start, spoiler, k0_gr_echo_index, phaser_duration, max_blip_dur, slice_select_refocusing):
-        # See paramBounds.tex for formulae relating to the readout board
-        s = self.max_slew
-        A = 1e3 * matrix_F / (FOV_F * constants.GYRO) # readout area
+    def set_pixel_bandwidth_bounds(self, matrix_F, FOV_F, is_gradient_echo, RF_refocusing, turbo_factor, EPI_factor, TE, RF_excitation, refocusing_time, readtrain_spacing, TR, sequence_start, spoiler, k0_gr_echo_index, read_prephaser, phaser_duration, slice_select_excitation, slice_select_rephaser, max_blip_dur, slice_select_refocusing):
+        readout_area = 1e3 * matrix_F / (FOV_F * constants.GYRO)
         # min limit imposed by maximum gradient amplitude:
-        min_read_durations = [A / self.max_amp]
-        max_read_durations = []
-        if is_gradient_echo:
-            max_read_durations.append(gre_max_read_duration)
-        else: # spin echo
-            refocusing_dur = RF_refocusing[0]['dur_f']
-            if turbo_factor==1 and EPI_factor==1: # prephaser should only be limiting for pure spin echo
-                # min limit imposed by prephaser duration tp:
-                tp = TE/2 - refocusing_dur/2 - RF_excitation['dur_f']/2
-                h = s * tp / 2
-                h = min(h, self.max_amp)
-                denom = 2*h*s*tp - s*A - 2*h**2
-                min_read_durations.append(np.sqrt(A**2/denom) if denom > 0 else np.inf)
-            
-            first_read_start = (refocusing_time[0] + refocusing_dur / 2)
-            first_spin_echo = TE if (turbo_factor == 1) else readtrain_spacing
-            last_read_end = TR + sequence_start - spoiler['dur_f']
-            last_spin_echo = TE if (turbo_factor == 1) else readtrain_spacing * turbo_factor
-            idle_space_left_half = first_spin_echo - first_read_start
-            idle_space_right_half = last_read_end - last_spin_echo
-            
-            # max limit imposed by phaser:
-            num_blips_left_half = k0_gr_echo_index if (turbo_factor == 1) else (EPI_factor-1) / 2
-            num_blips_right_half = EPI_factor - 1 - num_blips_left_half
-            max_read_durations.append((idle_space_left_half - phaser_duration - max_blip_dur * num_blips_left_half) / (num_blips_left_half + 1/2))
-            max_read_durations.append((idle_space_right_half - phaser_duration - max_blip_dur * num_blips_right_half) / (num_blips_right_half + 1/2))
+        min_read_duration = readout_area / self.max_amp
 
-            # max limit imposed by readout rise time:
-            for tr in [idle_space_left_half / (num_blips_left_half * 2 + 1), 
-                       idle_space_right_half / (num_blips_right_half * 2 + 1)]:
-                # tr is half the maximum readout gradient duration
-                radicand = tr**2 - 2*A/s
-                if radicand >= 0:
-                    max_read_durations.append(tr + np.sqrt(radicand))
-                else:
-                    max_read_durations.append(0)
+        first_readtrain_ref = TE if (turbo_factor == 1) else readtrain_spacing
+        last_readtrain_ref = TE if (turbo_factor == 1) else readtrain_spacing * turbo_factor
+        last_read_end = TR + sequence_start - spoiler['dur_f']
+        max_dur_ref_to_read_end = last_read_end - last_readtrain_ref
+        
+        slice_select_rewind_dur = slice_select_excitation['risetime_f'] + slice_select_rephaser['dur_f'] if is_gradient_echo else slice_select_refocusing[0]['risetime_f']
+        
+        pixel_bandwidth_values = []
+        for pixel_bandwidth in param_values['pixel_bandwidth'].values():
             
-            # max limit imposed by slice select refocusing down ramp time:
-            max_read_durations.append((idle_space_left_half - slice_select_refocusing[0]['risetime_f']) / (num_blips_left_half + 1/2))
+            read_duration = 1e3 / pixel_bandwidth
             
-        min_read_duration, max_read_duration = max(min_read_durations), min(max_read_durations)
-        min_pixel_BW = 1e3 / max_read_duration if max_read_duration > 0 else np.inf
-        max_pixel_BW = 1e3 / min_read_duration if min_read_duration > 0 else np.inf
-        self.set_param_bounds(self.param.pixel_bandwidth, minval=min_pixel_BW, maxval=max_pixel_BW)
+            if read_duration < min_read_duration:
+                continue
+            
+            readout_risetime = readout_area / read_duration / self.max_slew
+            readout_gap = max(max_blip_dur, 2 * readout_risetime)
+            
+            num_blips_before_ref = k0_gr_echo_index if (turbo_factor == 1) else (EPI_factor-1) / 2
+            num_blips_after_ref = EPI_factor - 1 - num_blips_before_ref
+            
+            dur_ref_to_read_end = read_duration * (num_blips_after_ref + 1/2) + readout_gap * num_blips_after_ref
+            if dur_ref_to_read_end > max_dur_ref_to_read_end:
+                continue
+            
+            if is_gradient_echo:
+                first_read_start = RF_excitation['dur_f']/2 + max(
+                    read_prephaser['dur_f'] + readout_risetime,
+                    phaser_duration,
+                    slice_select_rewind_dur
+                    )
+            else: # spin echo
+                refocusing_dur = RF_refocusing[0]['dur_f']
+                first_read_start = (refocusing_time[0] + refocusing_dur / 2) + max(
+                    readout_risetime,
+                    phaser_duration,
+                    slice_select_rewind_dur
+                    )
+            
+            max_dur_read_start_to_ref = first_readtrain_ref - first_read_start
+            dur_read_start_to_ref = read_duration * (num_blips_before_ref + 1/2) + readout_gap * num_blips_before_ref
+            
+            if dur_read_start_to_ref > max_dur_read_start_to_ref:
+                continue
+
+            pixel_bandwidth_values.append(pixel_bandwidth)
+
+        min_pixel_bandwidth = min(pixel_bandwidth_values, default=np.inf)
+        max_pixel_bandwidth = max(pixel_bandwidth_values, default=-np.inf)
+        self.set_param_bounds(self.param.pixel_bandwidth, minval=min_pixel_bandwidth, maxval=max_pixel_bandwidth)
 
     def set_matrix_F_bounds(self, max_readout_area, FOV_F, parameter_style, FOV_bandwidth):
         min_matrix_F = []
@@ -1751,35 +1742,6 @@ class MRIsimulator(param.Parameterized):
     def min_TR_func(self, spoiler, sequence_start):
         min_TR = spoiler['time'][-1] - sequence_start
         return min([v for v in param_values['TR'].values() if v >= min_TR])
-    
-    def gre_read_start_to_k0_func(self, is_gradient_echo, phaser_duration, TE, RF_excitation, read_prephaser, readout_risetime, slice_select_excitation, slice_select_rephaser):
-        if not is_gradient_echo:
-            return None
-        read_start_to_k0 = TE - RF_excitation['dur_f']/2
-        read_start_to_k0 -= max(
-            read_prephaser['dur_f'] + readout_risetime, # TODO: consider maximum dur+risetime, not only current (difficult!)
-            phaser_duration,
-            slice_select_excitation['risetime_f'] + slice_select_rephaser['dur_f'])
-        return read_start_to_k0
-    
-    def gre_k0_to_read_end_func(self, is_gradient_echo, TR, sequence_start, spoiler, TE):
-        if not is_gradient_echo:
-            return None
-        return (TR - (-sequence_start) - spoiler['dur_f']) - TE
-    
-    def gre_max_read_duration_func(self, gre_read_start_to_k0, gre_k0_to_read_end, k0_gr_echo_index, readout_risetime, EPI_factor):
-        if gre_read_start_to_k0 is None:
-            return None
-        # simplification: use current risetime (self.readout_risetime)
-        num_early_readouts = k0_gr_echo_index + 1/2
-        num_early_ramps = k0_gr_echo_index * 2
-        # max limit imposed by TE:
-        max_read_dur_early = ((gre_read_start_to_k0 - num_early_ramps * readout_risetime) / num_early_readouts)
-        num_late_readouts = EPI_factor - num_early_readouts
-        num_late_ramps = (EPI_factor - 1) * 2 - num_early_ramps
-        # max limit imposed by TR:
-        max_read_dur_late = ((gre_k0_to_read_end - num_late_ramps * readout_risetime) / num_late_readouts)
-        return min(max_read_dur_early, max_read_dur_late)
     
     def max_readout_area_func(self, pixel_bandwidth, is_gradient_echo, k0_gr_echo_index, RF_excitation, phaser_duration, slice_select_excitation, slice_select_rephaser, max_blip_dur, readtrain_spacing, RF_refocusing, EPI_factor):
         max_readout_areas = []
