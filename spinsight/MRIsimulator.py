@@ -824,7 +824,7 @@ class MRIsimulator(param.Parameterized):
 
         node_specs['min_readtrain_spacing'] = {
             'func': self.min_readtrain_spacing_func,
-            'parents': ['is_gradient_echo', 'RF_excitation', 'gre_echo_train_dur', 'readout_risetime', 'read_prephaser_floating', 'phaser_duration', 'slice_select_excitation', 'slice_select_rephaser', 'RF_refocusing_floating', 'slice_select_refocusing_floating', 'turbo_factor', 'k0_gr_echo_index_linear_order', 'k0_gr_echo_index_reverse_linear_order', 'gr_echo_spacing', 'readout_gap']
+            'parents': ['is_gradient_echo', 'RF_excitation', 'gre_echo_train_dur', 'readout_risetime', 'read_prephaser_floating', 'phaser_duration', 'slice_select_excitation', 'slice_select_rephaser', 'RF_refocusing_floating', 'slice_select_refocusing_floating', 'turbo_factor']
         }
 
         node_specs['k0_rf_echo_index_linear_order'] = {
@@ -1799,7 +1799,7 @@ class MRIsimulator(param.Parameterized):
             max_phaserarea = (max_phaser_duration/2)**2 * self.max_slew
         return max_phaserarea
     
-    def min_readtrain_spacing_func(self, is_gradient_echo, RF_excitation, gre_echo_train_dur, readout_risetime, read_prephaser, phaser_duration, slice_select_excitation, slice_select_rephaser, RF_refocusing, slice_select_refocusing, turbo_factor, k0_gr_echo_index_linear_order, k0_gr_echo_index_reverse_linear_order, gr_echo_spacing, readout_gap):
+    def min_readtrain_spacing_func(self, is_gradient_echo, RF_excitation, gre_echo_train_dur, readout_risetime, read_prephaser, phaser_duration, slice_select_excitation, slice_select_rephaser, RF_refocusing, slice_select_refocusing, turbo_factor):
         # Get shortest spacing for bewteen readout (trains)
         # Equals center position of gradient echo (train) for GRE and SE sequences
         # Equals rf echo spacing for TSE and GRASE sequences
@@ -1826,8 +1826,9 @@ class MRIsimulator(param.Parameterized):
             phaser_duration,
             slice_select_refocusing[0]['risetime_f']
         )
-        spacing = max(left_side, right_side) * 2
-        return spacing
+        if turbo_factor == 1:
+            return left_side + right_side # spin echo may be shifted from readtrain center
+        return max(left_side, right_side) * 2 # spin echo must be at readtrain center
     
     def k0_rf_echo_index_linear_order_func(self, k0_segment, turbo_factor):
         return [segment % turbo_factor for segment in k0_segment]
@@ -1850,7 +1851,6 @@ class MRIsimulator(param.Parameterized):
             for rf_index in rf_indices:
                 for gr_index in gr_indices:
                     spacing = get_readtrain_spacing(TE, EPI_factor, gr_echo_spacing, gr_index, rf_index)
-                    # TODO: proper invalidation
                     if spacing >= min_readtrain_spacing:
                         spacings[(rf_index, gr_index, reverse_order)] = spacing
         if not spacings:
