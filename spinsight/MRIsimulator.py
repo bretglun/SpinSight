@@ -1813,7 +1813,7 @@ class MRIsimulator(param.Parameterized):
         if is_gradient_echo:
             max_phaser_duration = readtrain_spacing - RF_excitation['dur_f']/2 - gre_echo_train_dur/2 + readout_risetime
         else:
-            max_phaser_duration = (readtrain_spacing - refocusing_time[0] - RF_refocusing[0]['dur_f'] / 2 - gre_echo_train_dur)/2 + readout_risetime
+            max_phaser_duration = readtrain_spacing - refocusing_time[0] - RF_refocusing[0]['dur_f'] / 2 - gre_echo_train_dur / 2 + readout_risetime
         max_risetime = self.max_amp / self.max_slew
         if max_phaser_duration > 2 * max_risetime: # trapezoid maxPhaser
             max_phaserarea = (max_phaser_duration - max_risetime) * self.max_amp
