@@ -814,12 +814,12 @@ class MRIsimulator(param.Parameterized):
         
         node_specs['max_readout_area'] = {
             'func': self.max_readout_area_func,
-            'parents': ['pixel_bandwidth', 'is_gradient_echo', 'k0_gr_echo_index', 'RF_excitation', 'phaser_duration', 'slice_select_excitation', 'slice_select_rephaser', 'max_blip_dur', 'readtrain_spacing', 'RF_refocusing_floating', 'EPI_factor']
+            'parents': ['pixel_bandwidth', 'is_gradient_echo', 'k0_gr_echo_index', 'RF_excitation', 'phaser_duration', 'slice_select_excitation', 'slice_select_rephaser', 'max_blip_dur', 'readtrain_spacing', 'refocusing_time', 'RF_refocusing_floating', 'EPI_factor']
         }
 
         node_specs['max_phaser_area'] = {
             'func': self.max_phaser_area_func,
-            'parents': ['is_gradient_echo', 'readtrain_spacing', 'RF_excitation', 'gre_echo_train_dur', 'readout_risetime', 'RF_refocusing']
+            'parents': ['is_gradient_echo', 'readtrain_spacing', 'RF_excitation', 'gre_echo_train_dur', 'readout_risetime', 'refocusing_time', 'RF_refocusing']
         }
 
         node_specs['min_readtrain_spacing'] = {
@@ -1751,7 +1751,7 @@ class MRIsimulator(param.Parameterized):
         min_TR = spoiler['time'][-1] - sequence_start
         return min([v for v in param_values['TR'].values() if v >= min_TR])
     
-    def max_readout_area_func(self, pixel_bandwidth, is_gradient_echo, k0_gr_echo_index, RF_excitation, phaser_duration, slice_select_excitation, slice_select_rephaser, max_blip_dur, readtrain_spacing, RF_refocusing, EPI_factor):
+    def max_readout_area_func(self, pixel_bandwidth, is_gradient_echo, k0_gr_echo_index, RF_excitation, phaser_duration, slice_select_excitation, slice_select_rephaser, max_blip_dur, readtrain_spacing, refocusing_time, RF_refocusing, EPI_factor):
         max_readout_areas = []
         # See paramBounds.tex for formulae
         d = 1e3 / pixel_bandwidth # readout duration
@@ -1780,11 +1780,11 @@ class MRIsimulator(param.Parameterized):
                 v = max(max_blip_dur - 2 * read_risetime, 0)
         else: # (turbo) spin echo / GRASE
             # limit by half readout duration tr:
-            tr = (readtrain_spacing - RF_refocusing[0]['dur_f']) / EPI_factor / 2
+            tr = (readtrain_spacing - refocusing_time[0] - RF_refocusing[0]['dur_f'] / 2) / EPI_factor
             Ar = d*s* tr - d**2*s/2
             max_readout_areas.append(Ar)
             # limit by prephaser duration tp:
-            tp = (readtrain_spacing - RF_refocusing[0]['dur_f'] - RF_excitation['dur_f'])/2
+            tp = refocusing_time[0] - RF_refocusing[0]['dur_f'] / 2 - RF_excitation['dur_f'] / 2
             h = s * tp / 2
             h = min(h, self.max_amp)
             Ap = d * (np.sqrt((d*s)**2 - 8*h*(h-s*tp)) - d*s) / 2
@@ -1792,11 +1792,11 @@ class MRIsimulator(param.Parameterized):
         max_readout_areas.append(self.max_amp * 1e3 / pixel_bandwidth) # max wrt max_amp
         return min(max_readout_areas)
 
-    def max_phaser_area_func(self, is_gradient_echo, readtrain_spacing, RF_excitation, gre_echo_train_dur, readout_risetime, RF_refocusing):
+    def max_phaser_area_func(self, is_gradient_echo, readtrain_spacing, RF_excitation, gre_echo_train_dur, readout_risetime, refocusing_time, RF_refocusing):
         if is_gradient_echo:
             max_phaser_duration = readtrain_spacing - RF_excitation['dur_f']/2 - gre_echo_train_dur/2 + readout_risetime
         else:
-            max_phaser_duration = (readtrain_spacing - RF_refocusing[0]['dur_f'] - gre_echo_train_dur)/2 + readout_risetime
+            max_phaser_duration = (readtrain_spacing - refocusing_time[0] - RF_refocusing[0]['dur_f'] / 2 - gre_echo_train_dur)/2 + readout_risetime
         max_risetime = self.max_amp / self.max_slew
         if max_phaser_duration > 2 * max_risetime: # trapezoid maxPhaser
             max_phaserarea = (max_phaser_duration - max_risetime) * self.max_amp
