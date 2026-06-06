@@ -1549,7 +1549,7 @@ class MRIsimulator(param.Parameterized):
                         )
                 else: # spin echo
                     refocusing_dur = RF_refocusing[0]['dur_f']
-                    first_read_start = (refocusing_time[0] + refocusing_dur / 2) + max(
+                    first_read_start = refocusing_time[0] + refocusing_dur / 2 + max(
                         readout_risetime,
                         phaser_duration,
                         slice_select_rewind_dur
