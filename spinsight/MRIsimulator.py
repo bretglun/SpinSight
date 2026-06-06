@@ -827,6 +827,11 @@ class MRIsimulator(param.Parameterized):
             'parents': ['is_gradient_echo', 'RF_excitation', 'gre_echo_train_dur', 'readout_risetime', 'read_prephaser_floating', 'phaser_duration', 'slice_select_excitation', 'slice_select_rephaser', 'RF_refocusing_floating', 'slice_select_refocusing_floating', 'turbo_factor']
         }
 
+        node_specs['min_readstart'] = {
+            'func': self.min_readstart_func,
+            'parents': ['is_gradient_echo', 'RF_excitation', 'read_prephaser_floating', 'readout_risetime', 'phaser_duration', 'slice_select_excitation', 'slice_select_rephaser', 'turbo_factor', 'TE', 'RF_refocusing_floating', 'slice_select_refocusing_floating']
+        }
+        
         node_specs['k0_rf_echo_index_linear_order'] = {
             'func': self.k0_rf_echo_index_linear_order_func,
             'parents': ['k0_segment', 'turbo_factor']
@@ -849,7 +854,7 @@ class MRIsimulator(param.Parameterized):
 
         node_specs['k0_index'] = {
             'func': self.k0_index_func,
-            'parents': ['EPI_factor', 'k0_rf_echo_index_reverse_linear_order', 'k0_rf_echo_index_linear_order', 'k0_gr_echo_index_linear_order', 'k0_gr_echo_index_reverse_linear_order', 'TE', 'gr_echo_spacing', 'min_readtrain_spacing']
+            'parents': ['EPI_factor', 'k0_rf_echo_index_reverse_linear_order', 'k0_rf_echo_index_linear_order', 'k0_gr_echo_index_linear_order', 'k0_gr_echo_index_reverse_linear_order', 'TE', 'gr_echo_spacing', 'min_readtrain_spacing', 'turbo_factor', 'gre_echo_train_dur', 'readout_risetime', 'min_readstart']
         }
         
         node_specs['k0_rf_echo_index'] = {
@@ -1829,6 +1834,21 @@ class MRIsimulator(param.Parameterized):
         if turbo_factor == 1:
             return left_side + right_side # spin echo may be shifted from readtrain center
         return max(left_side, right_side) * 2 # spin echo must be at readtrain center
+
+    def min_readstart_func(self, is_gradient_echo, RF_excitation, read_prephaser_floating, readout_risetime, phaser_duration, slice_select_excitation, slice_select_rephaser, turbo_factor, TE, RF_refocusing_floating, slice_select_refocusing_floating):
+        if is_gradient_echo:
+            return RF_excitation['dur_f']/2 + max(
+                read_prephaser_floating['dur_f'] + readout_risetime,
+                phaser_duration,
+                slice_select_excitation['risetime_f'] + slice_select_rephaser['dur_f']
+                )
+        if turbo_factor > 1:
+            return None
+        return TE/2 + RF_refocusing_floating[0]['dur_f'] / 2 + max(
+            readout_risetime,
+            phaser_duration,
+            slice_select_refocusing_floating[0]['risetime_f']
+            )
     
     def k0_rf_echo_index_linear_order_func(self, k0_segment, turbo_factor):
         return [segment % turbo_factor for segment in k0_segment]
@@ -1841,8 +1861,8 @@ class MRIsimulator(param.Parameterized):
     
     def k0_gr_echo_index_reverse_linear_order_func(self, EPI_factor, k0_gr_echo_index_linear_order):
         return [EPI_factor - 1 - index for index in k0_gr_echo_index_linear_order]
-    
-    def k0_index_func(self, EPI_factor, k0_rf_echo_index_reverse_linear_order, k0_rf_echo_index_linear_order, k0_gr_echo_index_linear_order, k0_gr_echo_index_reverse_linear_order, TE, gr_echo_spacing, min_readtrain_spacing):
+
+    def k0_index_func(self, EPI_factor, k0_rf_echo_index_reverse_linear_order, k0_rf_echo_index_linear_order, k0_gr_echo_index_linear_order, k0_gr_echo_index_reverse_linear_order, TE, gr_echo_spacing, min_readtrain_spacing, turbo_factor, gre_echo_train_dur, readout_risetime, min_readstart):
         # choose order that minimizes readtrain spacing
         spacings = {}
         for reverse_order, gr_indices, rf_indices in [
@@ -1851,7 +1871,8 @@ class MRIsimulator(param.Parameterized):
             for rf_index in rf_indices:
                 for gr_index in gr_indices:
                     spacing = get_readtrain_spacing(TE, EPI_factor, gr_echo_spacing, gr_index, rf_index)
-                    if spacing >= min_readtrain_spacing:
+                    readstart = spacing - gre_echo_train_dur / 2 + readout_risetime
+                    if spacing >= min_readtrain_spacing and (turbo_factor > 1 or readstart >= min_readstart):
                         spacings[(rf_index, gr_index, reverse_order)] = spacing
         if not spacings:
             warnings.warn('No valid order found')
