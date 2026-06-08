@@ -128,7 +128,7 @@ def get_RF_to_readtrain_center(TE, num_gr_echoes, gr_echo_spacing, k0_gr_echo_in
     first_readtrain_center = get_readtrain_spacing(TE, num_gr_echoes, gr_echo_spacing, k0_gr_echo_index, k0_rf_echo_index)
     return first_readtrain_center - first_refocusing_time
 
-def min_TE_from_k0_echo_indices(gr_echo_spacing, k0_gr_echo_index, num_gr_echoes, is_gradient_echo, min_RF_to_readtrain_center, num_rf_echoes, min_refocusing_time, k0_rf_echo_index):
+def min_readtrain_spacing_from_k0_echo_indices(gr_echo_spacing, k0_gr_echo_index, num_gr_echoes, is_gradient_echo, min_RF_to_readtrain_center, num_rf_echoes, min_refocusing_time):
     TE_shift = readtrain_shift(gr_echo_spacing, k0_gr_echo_index, num_gr_echoes)
     if is_gradient_echo:
         return min_RF_to_readtrain_center + TE_shift
@@ -139,8 +139,12 @@ def min_TE_from_k0_echo_indices(gr_echo_spacing, k0_gr_echo_index, num_gr_echoes
     min_first_readtrain_center = min_first_spin_echo
     if num_rf_echoes == 1:
         min_first_readtrain_center -= TE_shift
-    min_spin_echo_time = min_first_readtrain_center * (1 + k0_rf_echo_index)
-    return min_spin_echo_time + TE_shift
+    return min_first_readtrain_center
+
+def min_TE_from_k0_echo_indices(gr_echo_spacing, k0_gr_echo_index, num_gr_echoes, is_gradient_echo, min_RF_to_readtrain_center, num_rf_echoes, min_refocusing_time, k0_rf_echo_index):
+    min_readtrain_spacing = min_readtrain_spacing_from_k0_echo_indices(gr_echo_spacing, k0_gr_echo_index, num_gr_echoes, is_gradient_echo, min_RF_to_readtrain_center, num_rf_echoes, min_refocusing_time)
+    min_spin_echo_time = min_readtrain_spacing * (1 + k0_rf_echo_index)
+    return min_spin_echo_time + readtrain_shift(gr_echo_spacing, k0_gr_echo_index, num_gr_echoes)
 
 def get_k_coords(t, gp, tp, refocus_intervals):
     g = np.interp(t, tp, gp)
@@ -1745,11 +1749,15 @@ class MRIsimulator(param.Parameterized):
         self.set_visibility('apodization_alpha', do_apodize)
     
     def min_TE_func(self, k0_echo_indices_linear_order, k0_echo_indices_reverse_linear_order, min_refocusing_time, min_RF_to_readtrain_center, gr_echo_spacing, EPI_factor, is_gradient_echo, turbo_factor):
-        min_TE_cands = []
-        for indices in [k0_echo_indices_linear_order, k0_echo_indices_reverse_linear_order]:
-            for (gr_index, rf_index) in indices:
-                min_TE_cands.append(min_TE_from_k0_echo_indices(gr_echo_spacing, gr_index, EPI_factor, is_gradient_echo, min_RF_to_readtrain_center, turbo_factor, min_refocusing_time, rf_index))
-        min_TE = min(min_TE_cands)
+        if EPI_factor == 1:
+            gr_index, rf_index = 0, 0
+            min_TE = min_TE_from_k0_echo_indices(gr_echo_spacing, gr_index, EPI_factor, is_gradient_echo, min_RF_to_readtrain_center, turbo_factor, min_refocusing_time, rf_index)
+        else:
+            min_TE_cands = []
+            for indices in [k0_echo_indices_linear_order, k0_echo_indices_reverse_linear_order]:
+                for (gr_index, rf_index) in indices:
+                    min_TE_cands.append(min_TE_from_k0_echo_indices(gr_echo_spacing, gr_index, EPI_factor, is_gradient_echo, min_RF_to_readtrain_center, turbo_factor, min_refocusing_time, rf_index))
+            min_TE = min(min_TE_cands)
         return min([v for v in param_values['TE'].values() if v >= min_TE])
 
     def min_TR_func(self, spoiler, sequence_start):
@@ -1842,6 +1850,16 @@ class MRIsimulator(param.Parameterized):
         return {(EPI_factor - 1 - gr_index, turbo_factor - 1 - rf_index) for (gr_index, rf_index) in k0_echo_indices_linear_order}
 
     def k0_index_func(self, k0_echo_indices_reverse_linear_order, k0_echo_indices_linear_order, is_gradient_echo, turbo_factor, TE, EPI_factor, gr_echo_spacing, min_refocusing_time, min_RF_to_readtrain_center):
+        if EPI_factor == 1:
+            gr_index = 0
+            reverse_order = False
+            if is_gradient_echo or turbo_factor == 1:
+                rf_index = 0
+            else: # flexible segment order
+                min_readtrain_spacing = min_readtrain_spacing_from_k0_echo_indices(gr_echo_spacing, gr_index, EPI_factor, is_gradient_echo, min_RF_to_readtrain_center, turbo_factor, min_refocusing_time)
+                rf_index = int(np.floor(TE / min_readtrain_spacing)) - 1
+                rf_index = min(rf_index, turbo_factor - 1)
+            return (rf_index, gr_index, reverse_order)
         # choose order that minimizes readtrain spacing
         readtrain_spacings = {}
         for reverse_order, indices in [
