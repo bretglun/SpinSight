@@ -347,7 +347,7 @@ class MRIsimulator(param.Parameterized):
         node_specs['set_TI_bounds'] = {
             'action': True,
             'func': self.set_TI_bounds,
-            'parents': ['sequence_type', 'TR', 'min_TR', 'TI']
+            'parents': ['sequence_type', 'TR', 'spoiler', 'slice_select_inversion_floating']
         }
         
         node_specs['set_x_y_labels'] = {
@@ -1500,10 +1500,11 @@ class MRIsimulator(param.Parameterized):
     def set_TE_bounds(self, min_TE, max_TE):
         self.set_param_bounds(self.param.TE, minval=min_TE, maxval=max_TE)
     
-    def set_TI_bounds(self, sequence_type, TR, min_TR, TI):
+    def set_TI_bounds(self, sequence_type, TR, spoiler, slice_select_inversion_floating):
         if sequence_type != 'Inversion Recovery':
             return
-        max_TI = TR - min_TR + TI
+        max_TI = TR - spoiler['time'][-1] - slice_select_inversion_floating['dur_f'] / 2
+        max_TI = max([v for v in param_values['TI'].values() if v <= max_TI])
         self.set_param_bounds(self.param.TI, maxval=max_TI)
     
     def set_x_y_labels(self, frequency_direction):
