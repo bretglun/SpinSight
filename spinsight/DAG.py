@@ -75,18 +75,14 @@ class ActionNode:
     def __init__(self, func, parents):
         self.func = func
         self.parents = parents
-        self._queued = False
         for parent in self.parents:
             parent.children.append(self)
 
     def execute(self):
         self.func(*[parent.value for parent in self.parents])
-        self._queued = False
     
     def invalidate(self):
-        if not self._queued:
-            scheduler.queue_action(self)
-            self._queued = True
+        scheduler.queue_action(self)
 
 
 class OutputParamNode(ComputeNode):
@@ -94,7 +90,6 @@ class OutputParamNode(ComputeNode):
         super().__init__(func, parents)
         self.params = params
         self.name = name
-        self._queued = False
 
     @property
     def value(self):
@@ -106,13 +101,10 @@ class OutputParamNode(ComputeNode):
 
     def execute(self):
         self.value
-        self._queued = False
     
     def invalidate(self):
         super().invalidate()
-        if not self._queued:
-            scheduler.queue_action(self)
-            self._queued = True
+        scheduler.queue_action(self)
 
 
 def make_node(name, specs, graph):
