@@ -341,7 +341,7 @@ class MRIsimulator(param.Parameterized):
         node_specs['set_TE_bounds'] = {
             'action': True,
             'func': self.set_TE_bounds,
-            'parents': ['TR', 'min_TR', 'TE', 'min_TE']
+            'parents': ['min_TE', 'max_TE']
         }
         
         node_specs['set_TI_bounds'] = {
@@ -826,6 +826,11 @@ class MRIsimulator(param.Parameterized):
         node_specs['min_TE'] = {
             'func': self.min_TE_func,
             'parents': ['k0_echo_indices_linear_order', 'k0_echo_indices_reverse_linear_order', 'min_refocusing_time', 'min_RF_to_readtrain_center', 'gr_echo_spacing', 'EPI_factor', 'is_gradient_echo', 'turbo_factor']
+        }
+        
+        node_specs['max_TE'] = {
+            'func': self.max_TE_func,
+            'parents': ['TR', 'sequence_start', 'spoiler_floating', 'readout_risetime', 'gre_echo_train_dur', 'EPI_factor', 'turbo_factor', 'k0_echo_indices_linear_order', 'k0_echo_indices_reverse_linear_order', 'gr_echo_spacing']
         }
         
         node_specs['min_TR'] = {
@@ -1492,9 +1497,7 @@ class MRIsimulator(param.Parameterized):
     def set_TR_bounds(self, min_TR):
         self.set_param_bounds(self.param.TR, minval=min_TR)
 
-    def set_TE_bounds(self, TR, min_TR, TE, min_TE):
-        #TODO: shouldn't depend on TE!
-        max_TE = TR - min_TR + TE
+    def set_TE_bounds(self, min_TE, max_TE):
         self.set_param_bounds(self.param.TE, minval=min_TE, maxval=max_TE)
     
     def set_TI_bounds(self, sequence_type, TR, min_TR, TI):
@@ -1763,6 +1766,21 @@ class MRIsimulator(param.Parameterized):
     def min_TR_func(self, spoiler, sequence_start):
         min_TR = spoiler['time'][-1] - sequence_start
         return min([v for v in param_values['TR'].values() if v >= min_TR])
+    
+    def max_TE_func(self, TR, sequence_start, spoiler_floating, readout_risetime, gre_echo_train_dur, EPI_factor, turbo_factor, k0_echo_indices_linear_order, k0_echo_indices_reverse_linear_order, gr_echo_spacing):
+        last_readtrain_center = TR + sequence_start - spoiler_floating['dur_f'] + readout_risetime - gre_echo_train_dur / 2
+        if EPI_factor == 1:
+            max_TE = last_readtrain_center
+        else:
+            readtrain_spacing = last_readtrain_center / turbo_factor
+            max_TE_cands = []
+            for indices in [k0_echo_indices_linear_order, k0_echo_indices_reverse_linear_order]:
+                for (gr_index, rf_index) in indices:
+                    readtrain_center = get_readtrain_pos(readtrain_spacing, rf_index)
+                    TE = readtrain_center + readtrain_shift(gr_echo_spacing, gr_index, EPI_factor)
+                    max_TE_cands.append(TE)
+            max_TE = max(max_TE_cands)
+        return max([v for v in param_values['TE'].values() if v <= max_TE])
     
     def max_readout_area_func(self, pixel_bandwidth, is_gradient_echo, k0_gr_echo_index, RF_excitation, phaser_duration, slice_select_excitation, slice_select_rephaser, max_blip_dur, readtrain_spacing, refocusing_time, RF_refocusing, EPI_factor):
         max_readout_areas = []
