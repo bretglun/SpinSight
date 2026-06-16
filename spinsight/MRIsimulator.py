@@ -10,6 +10,7 @@ from spinsight.DAG import build_graph
 from bokeh.models import HoverTool, CustomJS, ColumnDataSource
 from functools import partial
 import warnings
+import copy
 
 hv.extension('bokeh')
 
@@ -1985,7 +1986,7 @@ class MRIsimulator(param.Parameterized):
     
     def k_grid_axes_func(self, is_radial, k_axes, FOV, matrix, fantom):
         if not is_radial:
-            return k_axes.copy()
+            return copy.deepcopy(k_axes)
         k_grid_axes = [None, None]
         for dim in range(2):
             voxel_size = FOV[dim] / matrix[dim]
@@ -2043,7 +2044,7 @@ class MRIsimulator(param.Parameterized):
         return time_after_excitation
         
     def time_relative_inphase_func(self, time_after_excitation, is_gradient_echo, spin_echoes, phase_dir):
-        time_relative_inphase = time_after_excitation.copy()
+        time_relative_inphase = copy.deepcopy(time_after_excitation)
         if not is_gradient_echo:
             # for spinecho, subtract Hahn echo position from time_after_excitation
             time_relative_inphase -= np.expand_dims(spin_echoes, axis=[dim for dim in range(3) if dim != phase_dir])
@@ -2086,7 +2087,7 @@ class MRIsimulator(param.Parameterized):
         return {component: get_PD_and_T1w(component, sequence_type, TR, TI, FA, field_strength) for component in set(tissues).union(set(constants.FAT_RESONANCES.keys()))}
 
     def measured_kspace_func(self, noise, kspace_comps, FatSat, PD_and_T1w):
-        measured_kspace = noise.copy()
+        measured_kspace = copy.deepcopy(noise)
         for component in kspace_comps:
             if 'Fat' in component:
                 tissue = component[:component.find('Fat')]
@@ -2122,13 +2123,13 @@ class MRIsimulator(param.Parameterized):
         return full_kspace
 
     def apodized_kspace_func(self, full_kspace, do_apodize, apodization_alpha):
-        apodized_kspace = full_kspace.copy()
+        apodized_kspace = copy.deepcopy(full_kspace)
         if do_apodize: 
             apodized_kspace *= recon.radial_Tukey(apodization_alpha, full_kspace.shape)
         return apodized_kspace
 
     def oversampled_recon_matrix_func(self, recon_matrix, full_k_matrix, matrix):
-        oversampled_recon_matrix = recon_matrix.copy()
+        oversampled_recon_matrix = copy.deepcopy(recon_matrix)
         for dim in range(2):
             oversampled_recon_matrix[dim] = int(np.round(recon_matrix[dim] * full_k_matrix[dim] / matrix[dim]))
         return oversampled_recon_matrix
@@ -2312,7 +2313,7 @@ class MRIsimulator(param.Parameterized):
             return None
         slice_select_refocusing = []
         for rf_echo, grad in enumerate(slice_select_refocusing_floating):
-            slice_select_refocusing.append(grad)
+            slice_select_refocusing.append(copy.deepcopy(grad))
             sequence.move_waveform(slice_select_refocusing[rf_echo], refocusing_time[rf_echo])
         return slice_select_refocusing
 
@@ -2321,28 +2322,28 @@ class MRIsimulator(param.Parameterized):
             return None
         RF_refocusing = []
         for rf_echo, RF in enumerate(RF_refocusing_floating):
-            RF_refocusing.append(RF)
+            RF_refocusing.append(copy.deepcopy(RF))
             sequence.move_waveform(RF_refocusing[rf_echo], refocusing_time[rf_echo])
         return RF_refocusing
 
     def slice_select_inversion_func(self, slice_select_inversion_floating, TI):
         if slice_select_inversion_floating is None:
             return None
-        slice_select_inversion = slice_select_inversion_floating
+        slice_select_inversion = copy.deepcopy(slice_select_inversion_floating)
         sequence.move_waveform(slice_select_inversion, -TI)
         return slice_select_inversion
         
     def RF_inversion_func(self, RF_inversion_floating, TI):
         if RF_inversion_floating is None:
             return None
-        RF_inversion = RF_inversion_floating
+        RF_inversion = copy.deepcopy(RF_inversion_floating)
         sequence.move_waveform(RF_inversion, -TI)
         return RF_inversion
     
     def inversion_spoiler_func(self, inversion_spoiler_floating, RF_inversion):
         if inversion_spoiler_floating is None:
             return None
-        inversion_spoiler = inversion_spoiler_floating
+        inversion_spoiler = copy.deepcopy(inversion_spoiler_floating)
         time = RF_inversion['time'][-1] + inversion_spoiler['dur_f']/2
         sequence.move_waveform(inversion_spoiler, time)
         return inversion_spoiler
@@ -2350,7 +2351,7 @@ class MRIsimulator(param.Parameterized):
     def FatSat_spoiler_func(self, FatSat_spoiler_floating, slice_select_excitation):
         if FatSat_spoiler_floating is None:
             return None
-        FatSat_spoiler = FatSat_spoiler_floating
+        FatSat_spoiler = copy.deepcopy(FatSat_spoiler_floating)
         time = slice_select_excitation['time'][0] - FatSat_spoiler['dur_f']/2
         sequence.move_waveform(FatSat_spoiler, time)
         return FatSat_spoiler
@@ -2358,7 +2359,7 @@ class MRIsimulator(param.Parameterized):
     def RF_FatSat_func(self, RF_FatSat_floating, FatSat_spoiler_floating):
         if RF_FatSat_floating is None:
             return None
-        RF_FatSat = RF_FatSat_floating
+        RF_FatSat = copy.deepcopy(RF_FatSat_floating)
         t = FatSat_spoiler_floating['time'][0] - RF_FatSat['dur_f']/2
         sequence.move_waveform(RF_FatSat, t)
         return RF_FatSat
@@ -2369,7 +2370,7 @@ class MRIsimulator(param.Parameterized):
             readouts.append([])
             readtrain_pos = get_readtrain_pos(readtrain_spacing, rf_echo)
             for gr_echo in range(EPI_factor):
-                readout = readouts_floating[rf_echo][gr_echo]
+                readout = copy.deepcopy(readouts_floating[rf_echo][gr_echo])
                 pos = readtrain_pos + (gr_echo - (EPI_factor-1) / 2) * gr_echo_spacing
                 sequence.move_waveform(readout, pos)
                 if gr_echo%2 and readout['area_f'] > 0:
@@ -2383,14 +2384,14 @@ class MRIsimulator(param.Parameterized):
             readtrain_pos = get_readtrain_pos(readtrain_spacing, rf_echo)
             sampling_windows.append([])
             for gr_echo in range(EPI_factor):
-                sampling_window = sampling_windows_floating[rf_echo][gr_echo]
+                sampling_window = copy.deepcopy(sampling_windows_floating[rf_echo][gr_echo])
                 pos = readtrain_pos + (gr_echo - (EPI_factor-1) / 2) * gr_echo_spacing
                 sequence.move_waveform(sampling_window, pos)
                 sampling_windows[-1].append(sampling_window)
         return sampling_windows
     
     def read_prephaser_func(self, read_prephaser_floating, is_gradient_echo, readouts, RF_excitation):
-        read_prephaser = read_prephaser_floating
+        read_prephaser = copy.deepcopy(read_prephaser_floating)
                 
         if is_gradient_echo:
             if read_prephaser['area_f'] > 0:
@@ -2407,7 +2408,7 @@ class MRIsimulator(param.Parameterized):
     def phasers_func(self, turbo_factor, readtrain_spacing, phasers_floating, gre_echo_train_dur, readout_risetime):
         phasers = []
         for rf_echo in range(turbo_factor):
-            phaser = phasers_floating[rf_echo]
+            phaser = copy.deepcopy(phasers_floating[rf_echo])
             readtrain_pos = get_readtrain_pos(readtrain_spacing, rf_echo)
             phaser_time = readtrain_pos - (gre_echo_train_dur + phaser['dur_f'])/2 + readout_risetime
             sequence.move_waveform(phaser, phaser_time)
@@ -2418,7 +2419,7 @@ class MRIsimulator(param.Parameterized):
         rephasers = []
         for rf_echo in range(turbo_factor):
             readtrain_pos = get_readtrain_pos(readtrain_spacing, rf_echo)
-            rephaser = rephasers_floating[rf_echo]
+            rephaser = copy.deepcopy(rephasers_floating[rf_echo])
             rephaser_time = readtrain_pos + (gre_echo_train_dur + rephaser['dur_f'])/2 - readout_risetime
             sequence.move_waveform(rephaser, rephaser_time)
             rephasers.append(rephaser)
@@ -2430,14 +2431,14 @@ class MRIsimulator(param.Parameterized):
             readtrain_pos = get_readtrain_pos(readtrain_spacing, rf_echo)
             blips.append([])
             for gr_echo in range(EPI_factor-1):
-                blip = blips_floating[rf_echo][gr_echo]
+                blip = copy.deepcopy(blips_floating[rf_echo][gr_echo])
                 blip_time = readtrain_pos + gr_echo_spacing * (gr_echo - EPI_factor/2 + 1)
                 sequence.move_waveform(blip, blip_time)
                 blips[-1].append(blip)
         return blips
 
     def spoiler_func(self, readouts, spoiler_floating):
-        spoiler = spoiler_floating
+        spoiler = copy.deepcopy(spoiler_floating)
         spoiler_time = readouts[-1][-1]['center_f'] + (readouts[-1][-1]['flat_dur_f'] + spoiler['dur_f']) / 2
         sequence.move_waveform(spoiler, spoiler_time)
         return spoiler
@@ -2650,7 +2651,7 @@ class MRIsimulator(param.Parameterized):
             radial_FOV = FOV[freq_dir] * len(k_read_axis) / matrix[freq_dir]
             acq_FOV_shape = hv.Ellipse(0, 0, radial_FOV).opts(line_color='lightblue')
         else:
-            acq_FOV = FOV.copy()
+            acq_FOV = copy.deepcopy(FOV)
             acq_FOV[phase_dir] *= len(k_phase_axis) / matrix[phase_dir]
             acq_FOV_shape = hv.Box(0, 0, tuple(acq_FOV[::-1])).opts(color='lightblue')
         return acq_FOV_shape * rec_FOV_shape

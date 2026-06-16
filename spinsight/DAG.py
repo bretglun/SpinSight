@@ -1,4 +1,28 @@
 from graphlib import TopologicalSorter
+import numpy as np
+
+
+def equal(a, b):
+    if a is b:
+        return True
+    
+    if type(a) is not type(b):
+        return False
+
+    if isinstance(a, np.ndarray):
+        return np.array_equal(a, b)
+
+    if isinstance(a, dict):
+        if a.keys() != b.keys():
+            return False
+        return all(equal(a[k], b[k]) for k in a)
+
+    if isinstance(a, (list, tuple)):
+        if len(a) != len(b):
+            return False
+        return all(equal(x, y) for x, y in zip(a, b))
+
+    return a == b
 
 
 class GraphScheduler:
@@ -31,6 +55,7 @@ class InputParamNode:
     def __init__(self, params, name):
         self.params = params
         self.name = name
+        self.version = 0
         self.children = []
         params.param.watch(self._on_change, name)
 
@@ -39,6 +64,7 @@ class InputParamNode:
         return getattr(self.params, self.name)
 
     def _on_change(self, event):
+        self.version += 1
         scheduler.begin_invalidation()
         for child in self.children:
             child.invalidate()
@@ -51,6 +77,8 @@ class ComputeNode:
         self.parents = parents
         self._valid = False
         self._cache = None
+        self.version = 0
+        self.parent_versions = None
         self.children = []
         for parent in self.parents:
             parent.children.append(self)
@@ -66,20 +94,33 @@ class ComputeNode:
     def value(self):
         if not self._valid:
             inputs = [parent.value for parent in self.parents]
+            current_versions = tuple(p.version for p in self.parents)
+            if current_versions != self.parent_versions:
+                old = self._cache
+                new = self.func(*inputs)
+                self.parent_versions = current_versions
+                if not equal(old, new):
+                    self._cache = new
+                    self.version += 1
             self._cache = self.func(*inputs)
             self._valid = True
         return self._cache
-    
+
 
 class ActionNode:
     def __init__(self, func, parents):
         self.func = func
         self.parents = parents
+        self.parent_versions = None
         for parent in self.parents:
             parent.children.append(self)
 
     def execute(self):
-        self.func(*[parent.value for parent in self.parents])
+        inputs = [parent.value for parent in self.parents]
+        current_versions = tuple(p.version for p in self.parents)
+        if current_versions != self.parent_versions:
+            self.func(*inputs)
+            self.parent_versions = current_versions
     
     def invalidate(self):
         scheduler.queue_action(self)
