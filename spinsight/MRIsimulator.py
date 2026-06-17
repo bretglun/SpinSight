@@ -104,11 +104,9 @@ def get_segment_order(N, Nsym, c):
     return segment_order
 
 
-def place_waveform(waveform_floating, time, rescale=1):
+def place_waveform(waveform_floating, time):
     waveform = copy.deepcopy(waveform_floating)
     sequence.move_waveform(waveform, time)
-    if rescale != 1:
-        sequence.rescale_gradient(waveform, rescale)
     return waveform
 
 
@@ -673,7 +671,7 @@ class MRIsimulator(param.Parameterized):
 
         node_specs['read_prephaser_floating'] = {
             'func': self.read_prephaser_floating_func,
-            'parents': ['readouts_floating']
+            'parents': ['readouts_floating', 'is_gradient_echo']
         }
 
         node_specs['phase_step_area'] = {
@@ -788,12 +786,12 @@ class MRIsimulator(param.Parameterized):
         
         node_specs['readouts'] = {
             'func': self.readouts_func,
-            'parents': ['turbo_factor', 'EPI_factor', 'readouts_floating', 'readout_center_time']
+            'parents': ['readouts_floating', 'readout_center_time']
         }
 
         node_specs['sampling_windows'] = {
             'func': self.sampling_windows_func,
-            'parents': ['turbo_factor', 'EPI_factor', 'sampling_windows_floating', 'readout_center_time']
+            'parents': ['sampling_windows_floating', 'readout_center_time']
         }
 
         node_specs['read_prephaser'] = {
@@ -2241,6 +2239,8 @@ class MRIsimulator(param.Parameterized):
                         + ("." if (turbo_factor > 1 and EPI_factor > 1) else "")
                         + (str(gr_echo + 1) if EPI_factor > 1 else ""))
                 readout = sequence.get_gradient('frequency', max_amp=amp, flat_area=flat_area, name='readout'+suffix, max_slew=self.max_slew)
+                if gr_echo % 2: # even EPI echoes must have negative polarity
+                    sequence.rescale_gradient(readout, -1)
                 readouts[-1].append(readout)
         return readouts
     
@@ -2260,8 +2260,11 @@ class MRIsimulator(param.Parameterized):
     def readout_risetime_func(self, readouts_floating):
         return readouts_floating[0][0]['risetime_f']
     
-    def read_prephaser_floating_func(self, readouts_floating):
-        return sequence.get_gradient('frequency', total_area=readouts_floating[0][0]['area_f']/2, name='read prephaser', max_amp=self.max_amp, max_slew=self.max_slew)
+    def read_prephaser_floating_func(self, readouts_floating, is_gradient_echo):
+        read_prephaser = sequence.get_gradient('frequency', total_area=readouts_floating[0][0]['area_f']/2, name='read prephaser', max_amp=self.max_amp, max_slew=self.max_slew)
+        if is_gradient_echo:
+            sequence.rescale_gradient(read_prephaser, -1)
+        return read_prephaser
 
     def phaser_duration_func(self, largest_phaser_area):
         largest_phaser = sequence.get_gradient('phase', total_area=largest_phaser_area, max_amp=self.max_amp, max_slew=self.max_slew)
@@ -2362,36 +2365,19 @@ class MRIsimulator(param.Parameterized):
         time = FatSat_spoiler_floating['time'][0] - RF_FatSat_floating['dur_f']/2
         return place_waveform(RF_FatSat_floating, time)
 
-    def readouts_func(self, turbo_factor, EPI_factor, readouts_floating, readout_center_time):
-        readouts = []
-        for rf_echo in range(turbo_factor):
-            readouts.append([])
-            for gr_echo in range(EPI_factor):
-                readout = readouts_floating[rf_echo][gr_echo]
-                rescale = -1 if gr_echo%2 and readout['area_f'] > 0 else 1
-                readouts[-1].append(place_waveform(readout, readout_center_time[rf_echo][gr_echo], rescale))
-        return readouts
-                    
-    def sampling_windows_func(self, turbo_factor, EPI_factor, sampling_windows_floating, readout_center_time):
-        sampling_windows = []
-        for rf_echo in range(turbo_factor):
-            sampling_windows.append([])
-            for gr_echo in range(EPI_factor):
-                sampling_windows[-1].append(place_waveform(sampling_windows_floating[rf_echo][gr_echo], readout_center_time[rf_echo][gr_echo]))
-        return sampling_windows
+    def readouts_func(self, readouts_floating, readout_center_time):
+        return [[place_waveform(readout, time) for readout, time in zip(readouts, times)] for readouts, times in zip(readouts_floating, readout_center_time)]
+
+    def sampling_windows_func(self, sampling_windows_floating, readout_center_time):
+        return [[place_waveform(sampling, time) for sampling, time in zip(samplings, times)] for samplings, times in zip(sampling_windows_floating, readout_center_time)]
     
     def read_prephaser_func(self, read_prephaser_floating, is_gradient_echo, readouts, RF_excitation):
-        rescale = 1
         if is_gradient_echo:
-            if read_prephaser_floating['area_f'] > 0:
-                rescale = -1
             first_readout = readouts[0][0]
-            time = first_readout['center_f'] - sum([grad['dur_f'] for grad in [read_prephaser_floating, first_readout]])/2
+            time = first_readout['center_f'] - (read_prephaser_floating['dur_f'] + first_readout['dur_f']) / 2
         else:
-            if read_prephaser_floating['area_f'] < 0:
-                rescale = -1
-            time = sum([object['dur_f'] for object in [RF_excitation, read_prephaser_floating]])/2
-        return place_waveform(read_prephaser_floating, time, rescale)
+            time = (RF_excitation['dur_f'] + read_prephaser_floating['dur_f']) / 2
+        return place_waveform(read_prephaser_floating, time)
     
     def phasers_func(self, readtrain_center_time, phasers_floating, gre_echo_train_dur, readout_risetime):
         return [place_waveform(phaser, center - (gre_echo_train_dur + phaser['dur_f'])/2 + readout_risetime) for phaser, center in zip(phasers_floating, readtrain_center_time)]
