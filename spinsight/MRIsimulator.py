@@ -110,6 +110,14 @@ def get_readtrain_pos(readtrain_spacing, rf_echo_num):
     return readtrain_pos
 
 
+def place_waveform(waveform_floating, time, rescale=1):
+    waveform = copy.deepcopy(waveform_floating)
+    sequence.move_waveform(waveform, time)
+    if rescale != 1:
+        sequence.rescale_gradient(waveform, rescale)
+    return waveform
+
+
 def readtrain_shift(gr_echo_spacing, k0_gr_echo_index, num_gr_echoes):
     return gr_echo_spacing * (k0_gr_echo_index - (num_gr_echoes-1)/2)
 
@@ -2311,58 +2319,40 @@ class MRIsimulator(param.Parameterized):
     def slice_select_refocusing_func(self, slice_select_refocusing_floating, refocusing_time):
         if slice_select_refocusing_floating is None:
             return None
-        slice_select_refocusing = []
-        for rf_echo, grad in enumerate(slice_select_refocusing_floating):
-            slice_select_refocusing.append(copy.deepcopy(grad))
-            sequence.move_waveform(slice_select_refocusing[rf_echo], refocusing_time[rf_echo])
-        return slice_select_refocusing
+        return [place_waveform(grad, time) for grad, time in zip(slice_select_refocusing_floating, refocusing_time)]
 
     def RF_refocusing_func(self, RF_refocusing_floating, refocusing_time):
         if RF_refocusing_floating is None:
             return None
-        RF_refocusing = []
-        for rf_echo, RF in enumerate(RF_refocusing_floating):
-            RF_refocusing.append(copy.deepcopy(RF))
-            sequence.move_waveform(RF_refocusing[rf_echo], refocusing_time[rf_echo])
-        return RF_refocusing
+        return [place_waveform(RF, time) for RF, time in zip(RF_refocusing_floating, refocusing_time)]
 
     def slice_select_inversion_func(self, slice_select_inversion_floating, TI):
         if slice_select_inversion_floating is None:
             return None
-        slice_select_inversion = copy.deepcopy(slice_select_inversion_floating)
-        sequence.move_waveform(slice_select_inversion, -TI)
-        return slice_select_inversion
+        return place_waveform(slice_select_inversion_floating, -TI)
         
     def RF_inversion_func(self, RF_inversion_floating, TI):
         if RF_inversion_floating is None:
             return None
-        RF_inversion = copy.deepcopy(RF_inversion_floating)
-        sequence.move_waveform(RF_inversion, -TI)
-        return RF_inversion
+        return place_waveform(RF_inversion_floating, -TI)
     
     def inversion_spoiler_func(self, inversion_spoiler_floating, RF_inversion):
         if inversion_spoiler_floating is None:
             return None
-        inversion_spoiler = copy.deepcopy(inversion_spoiler_floating)
-        time = RF_inversion['time'][-1] + inversion_spoiler['dur_f']/2
-        sequence.move_waveform(inversion_spoiler, time)
-        return inversion_spoiler
+        time = RF_inversion['time'][-1] + inversion_spoiler_floating['dur_f']/2
+        return place_waveform(inversion_spoiler_floating, time)
 
     def FatSat_spoiler_func(self, FatSat_spoiler_floating, slice_select_excitation):
         if FatSat_spoiler_floating is None:
             return None
-        FatSat_spoiler = copy.deepcopy(FatSat_spoiler_floating)
-        time = slice_select_excitation['time'][0] - FatSat_spoiler['dur_f']/2
-        sequence.move_waveform(FatSat_spoiler, time)
-        return FatSat_spoiler
+        time = slice_select_excitation['time'][0] - FatSat_spoiler_floating['dur_f']/2
+        return place_waveform(FatSat_spoiler_floating, time)
 
     def RF_FatSat_func(self, RF_FatSat_floating, FatSat_spoiler_floating):
         if RF_FatSat_floating is None:
             return None
-        RF_FatSat = copy.deepcopy(RF_FatSat_floating)
-        t = FatSat_spoiler_floating['time'][0] - RF_FatSat['dur_f']/2
-        sequence.move_waveform(RF_FatSat, t)
-        return RF_FatSat
+        time = FatSat_spoiler_floating['time'][0] - RF_FatSat_floating['dur_f']/2
+        return place_waveform(RF_FatSat_floating, time)
 
     def readouts_func(self, turbo_factor, readtrain_spacing, EPI_factor, gr_echo_spacing, readouts_floating):
         readouts = []
@@ -2370,12 +2360,10 @@ class MRIsimulator(param.Parameterized):
             readouts.append([])
             readtrain_pos = get_readtrain_pos(readtrain_spacing, rf_echo)
             for gr_echo in range(EPI_factor):
-                readout = copy.deepcopy(readouts_floating[rf_echo][gr_echo])
-                pos = readtrain_pos + (gr_echo - (EPI_factor-1) / 2) * gr_echo_spacing
-                sequence.move_waveform(readout, pos)
-                if gr_echo%2 and readout['area_f'] > 0:
-                    sequence.rescale_gradient(readout, -1)
-                readouts[-1].append(readout)
+                readout = readouts_floating[rf_echo][gr_echo]
+                time = readtrain_pos + (gr_echo - (EPI_factor-1) / 2) * gr_echo_spacing
+                rescale = -1 if gr_echo%2 and readout['area_f'] > 0 else 1
+                readouts[-1].append(place_waveform(readout, time, rescale))
         return readouts
                     
     def sampling_windows_func(self, turbo_factor, readtrain_spacing, EPI_factor, gr_echo_spacing, sampling_windows_floating):
@@ -2384,45 +2372,37 @@ class MRIsimulator(param.Parameterized):
             readtrain_pos = get_readtrain_pos(readtrain_spacing, rf_echo)
             sampling_windows.append([])
             for gr_echo in range(EPI_factor):
-                sampling_window = copy.deepcopy(sampling_windows_floating[rf_echo][gr_echo])
-                pos = readtrain_pos + (gr_echo - (EPI_factor-1) / 2) * gr_echo_spacing
-                sequence.move_waveform(sampling_window, pos)
-                sampling_windows[-1].append(sampling_window)
+                time = readtrain_pos + (gr_echo - (EPI_factor-1) / 2) * gr_echo_spacing
+                sampling_windows[-1].append(place_waveform(sampling_windows_floating[rf_echo][gr_echo], time))
         return sampling_windows
     
     def read_prephaser_func(self, read_prephaser_floating, is_gradient_echo, readouts, RF_excitation):
-        read_prephaser = copy.deepcopy(read_prephaser_floating)
-                
+        rescale = 1
         if is_gradient_echo:
-            if read_prephaser['area_f'] > 0:
-                sequence.rescale_gradient(read_prephaser, -1)
+            if read_prephaser_floating['area_f'] > 0:
+                rescale = -1
             first_readout = readouts[0][0]
-            prephase_time = first_readout['center_f'] - sum([grad['dur_f'] for grad in [read_prephaser, first_readout]])/2
+            time = first_readout['center_f'] - sum([grad['dur_f'] for grad in [read_prephaser_floating, first_readout]])/2
         else:
-            if read_prephaser['area_f'] < 0:
-                sequence.rescale_gradient(read_prephaser, -1)
-            prephase_time = sum([object['dur_f'] for object in [RF_excitation, read_prephaser]])/2
-        sequence.move_waveform(read_prephaser, prephase_time)
-        return read_prephaser
+            if read_prephaser_floating['area_f'] < 0:
+                rescale = -1
+            time = sum([object['dur_f'] for object in [RF_excitation, read_prephaser_floating]])/2
+        return place_waveform(read_prephaser_floating, time, rescale)
     
     def phasers_func(self, turbo_factor, readtrain_spacing, phasers_floating, gre_echo_train_dur, readout_risetime):
         phasers = []
         for rf_echo in range(turbo_factor):
-            phaser = copy.deepcopy(phasers_floating[rf_echo])
             readtrain_pos = get_readtrain_pos(readtrain_spacing, rf_echo)
-            phaser_time = readtrain_pos - (gre_echo_train_dur + phaser['dur_f'])/2 + readout_risetime
-            sequence.move_waveform(phaser, phaser_time)
-            phasers.append(phaser)
+            time = readtrain_pos - (gre_echo_train_dur + phasers_floating[rf_echo]['dur_f'])/2 + readout_risetime
+            phasers.append(place_waveform(phasers_floating[rf_echo], time))
         return phasers
     
     def rephasers_func(self, turbo_factor, readtrain_spacing, gre_echo_train_dur, readout_risetime, rephasers_floating):
         rephasers = []
         for rf_echo in range(turbo_factor):
             readtrain_pos = get_readtrain_pos(readtrain_spacing, rf_echo)
-            rephaser = copy.deepcopy(rephasers_floating[rf_echo])
-            rephaser_time = readtrain_pos + (gre_echo_train_dur + rephaser['dur_f'])/2 - readout_risetime
-            sequence.move_waveform(rephaser, rephaser_time)
-            rephasers.append(rephaser)
+            time = readtrain_pos + (gre_echo_train_dur + rephasers_floating[rf_echo]['dur_f'])/2 - readout_risetime
+            rephasers.append(place_waveform(rephasers_floating[rf_echo], time))
         return rephasers
         
     def blips_func(self, turbo_factor, readtrain_spacing, EPI_factor, gr_echo_spacing, blips_floating):
@@ -2430,18 +2410,14 @@ class MRIsimulator(param.Parameterized):
         for rf_echo in range(turbo_factor):
             readtrain_pos = get_readtrain_pos(readtrain_spacing, rf_echo)
             blips.append([])
-            for gr_echo in range(EPI_factor-1):
-                blip = copy.deepcopy(blips_floating[rf_echo][gr_echo])
-                blip_time = readtrain_pos + gr_echo_spacing * (gr_echo - EPI_factor/2 + 1)
-                sequence.move_waveform(blip, blip_time)
-                blips[-1].append(blip)
+            for gr_echo, blip in enumerate(blips_floating[rf_echo]):
+                time = readtrain_pos + gr_echo_spacing * (gr_echo - EPI_factor/2 + 1)
+                blips[-1].append(place_waveform(blip, time))
         return blips
 
     def spoiler_func(self, readouts, spoiler_floating):
-        spoiler = copy.deepcopy(spoiler_floating)
-        spoiler_time = readouts[-1][-1]['center_f'] + (readouts[-1][-1]['flat_dur_f'] + spoiler['dur_f']) / 2
-        sequence.move_waveform(spoiler, spoiler_time)
-        return spoiler
+        time = readouts[-1][-1]['center_f'] + (readouts[-1][-1]['flat_dur_f'] + spoiler_floating['dur_f']) / 2
+        return place_waveform(spoiler_floating, time)
 
     def sequence_start_func(self, sequence_type, slice_select_inversion, RF_FatSat, slice_select_excitation):
         if sequence_type == 'Inversion Recovery': 
