@@ -1,4 +1,5 @@
 import numpy as np
+from spinsight import formatting
 
 
 GYRO = 42.577 # 1H gyromagnetic ratio [MHz/T]
@@ -44,3 +45,33 @@ DIRECTIONS = {'anterior-posterior': 0, 'left-right': 1}
 TRAJECTORIES = ['Cartesian', 'Radial', 'PROPELLER']
 
 OPERATORS = {'Magnitude': np.abs, 'Phase': np.angle, 'Real': np.real, 'Imaginary': np.imag}
+
+PARAM_VALUES = {
+    'TR': {tr + ' msec': float(tr) for tr in [formatting.format_float(tr, 2) for tr in 10.**np.linspace(0, 4, 500)]},
+    'TE': {te + ' msec': float(te) for te in [formatting.format_float(te, 2) for te in 10.**np.linspace(0, 3, 500)]},
+    'FA': {str(int(fa)) + '°': float(fa) for fa in range(1, 91)},
+    'TI': {ti + ' msec': float(ti) for ti in [formatting.format_float(ti, 2) for ti in 10.**np.linspace(1.6, 4, 500)]},
+    'FOV_P': {str(int(fov)) + ' mm': float(fov) for fov in range(100, 601)},
+    'FOV_F': {str(int(fov)) + ' mm': float(fov) for fov in range(100, 601)},
+    'phase_oversampling': {str(int(po)) + '%': float(po) for po in range(0, 101)},
+    'pixel_bandwidth': {bw + ' Hz': float(bw) for bw in [formatting.format_float(bw, 3) for bw in 10.**np.linspace(2.097, 3.301, 500)]},
+    'matrix_P': list(range(16, 600+1)),
+    'matrix_F': list(range(16, 600+1)),
+    'recon_matrix_P': list(range(16, 1200+1)),
+    'recon_matrix_F': list(range(16, 1200+1)),
+    'slice_thickness': {thk + ' mm': float(thk) for thk in [formatting.format_float(thk, 2) for thk in np.linspace(0.5, 10, 96)]},
+    'EPI_factor': list(range(1, 64+1)),
+}
+
+MAX_AMP = 25. # mT/m
+MAX_SLEW = 80. # T/m/s
+INVERSION_THK_FACTOR = 1.1 # make inversion slice 10% thicker
+
+BOARD_COLORS = {
+    'frequency': 'cadetblue',
+    'phase': 'cadetblue',
+    'slice': 'cadetblue',
+    'RF': 'red',
+    'signal': 'orange',
+    'ADC': 'peru',
+}
