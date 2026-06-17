@@ -6,7 +6,7 @@ import math
 from pathlib import Path
 import xarray as xr
 from spinsight import constants, sequence, recon, phantom
-from spinsight.DAG import build_graph
+from spinsight.DAG import Graph
 from bokeh.models import HoverTool, CustomJS, ColumnDataSource
 from functools import partial
 import warnings
@@ -1282,7 +1282,7 @@ class MRIsimulator(param.Parameterized):
             'parents': ['image_type', 'recon_matrix', 'FOV', 'image_array']
         }
 
-        self.graph = build_graph(node_specs)
+        self.graph = Graph(node_specs)
 
         self.set_reference_SNR()
 
@@ -1484,14 +1484,14 @@ class MRIsimulator(param.Parameterized):
 
     def handle_outbound(self, par_name):
         bounds_func = f'set_{par_name}_bounds'
-        self.graph[bounds_func]._queued = False
-        self.graph[bounds_func].invalidate()
-        min_TE = self.graph['min_TE'].value
+        self.graph.nodes[bounds_func]._queued = False
+        self.graph.nodes[bounds_func].invalidate()
+        min_TE = self.graph.nodes['min_TE'].value
         if self.TE < min_TE:
             print(f'Increasing TE from {self.TE} to {min_TE} to resolve conflict')
             self.set_param(self.param.TE, min_TE, values=param_values['TE'], mode='ceil')
             return
-        min_TR =  self.graph['min_TR'].value
+        min_TR =  self.graph.nodes['min_TR'].value
         if self.TR < min_TR:
             print(f'Increasing TR from {self.TR} to {min_TR} to resolve conflict')
             self.set_param(self.param.TR, min_TR, mode='ceil')
@@ -2428,8 +2428,8 @@ class MRIsimulator(param.Parameterized):
             return
         board = hover_index['board'][0]
         index = hover_index['index'][0]
-        object = self.graph[f'{board}_objects'].value[index]
-        k_trajectory = self.graph['k_trajectory'].value
+        object = self.graph.nodes[f'{board}_objects'].value[index]
+        k_trajectory = self.graph.nodes['k_trajectory'].value
         self.k_line.event(coords=list(get_k_on_interval(object['time'][[0, -1]], k_trajectory)))
 
     def k_trajectory_func(self, RF_refocusing, frequency_board, phase_board, is_radial, phase_dir, spoke_angle):
@@ -2617,16 +2617,16 @@ class MRIsimulator(param.Parameterized):
         return hv.Overlay([hv.Image(img, vdims=['magnitude'])])
     
     def set_reference_SNR(self, event=None):
-        self.reference_SNR = self.graph['SNR'].value
+        self.reference_SNR = self.graph.nodes['SNR'].value
     
     @param.depends('sequence_type', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOV_F', 'FOV_P', 'phase_oversampling', 'num_shots', 'matrix_F', 'matrix_P', 'slice_thickness', 'trajectory', 'frequency_direction', 'pixel_bandwidth', 'partial_Fourier', 'turbo_factor', 'EPI_factor', 'shot')
     def display_sequence_plot(self):
-        return self.graph['sequence_plot'].value
+        return self.graph.nodes['sequence_plot'].value
     
     @param.depends('object', 'field_strength', 'sequence_type', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOV_F', 'FOV_P', 'phase_oversampling', 'num_shots', 'matrix_F', 'matrix_P', 'recon_matrix_F', 'recon_matrix_P', 'slice_thickness', 'trajectory', 'frequency_direction', 'pixel_bandwidth', 'NSA', 'partial_Fourier', 'turbo_factor', 'EPI_factor', 'kspace_type', 'show_processed_kspace', 'kspace_exponent', 'homodyne', 'do_apodize', 'apodization_alpha', 'do_zerofill', 'radial_FOV_oversampling')
     def display_kspace(self):
-        return self.graph['kspace'].value
+        return self.graph.nodes['kspace'].value
 
     @param.depends('object', 'field_strength', 'sequence_type', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOV_F', 'FOV_P', 'phase_oversampling', 'num_shots', 'matrix_F', 'matrix_P', 'recon_matrix_F', 'recon_matrix_P', 'slice_thickness', 'trajectory', 'frequency_direction', 'pixel_bandwidth', 'NSA', 'partial_Fourier', 'turbo_factor', 'EPI_factor', 'image_type', 'show_FOV', 'homodyne', 'do_apodize', 'apodization_alpha', 'do_zerofill', 'radial_FOV_oversampling')
     def display_image(self):
-        return self.graph['image'].value * self.graph['FOV_box'].value
+        return self.graph.nodes['image'].value * self.graph.nodes['FOV_box'].value
