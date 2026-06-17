@@ -697,14 +697,14 @@ class MRIsimulator(param.Parameterized):
         }
         
         node_specs['readout_gap'] = {
-            'func': lambda max_blip_dur, readouts:
-                    max(max_blip_dur - 2 * readouts[0][0]['risetime_f'], 0),
+            'func': lambda max_blip_dur, readouts_floating:
+                    max(max_blip_dur - 2 * readouts_floating[0][0]['risetime_f'], 0),
             'parents': ['max_blip_dur', 'readouts_floating']
         }
         
         node_specs['gr_echo_spacing'] = {
-            'func': lambda readouts, readout_gap:
-                    readouts[0][0]['dur_f'] + readout_gap,
+            'func': lambda readouts_floating, readout_gap:
+                    readouts_floating[0][0]['dur_f'] + readout_gap,
             'parents': ['readouts_floating', 'readout_gap']
         }
         
@@ -1794,7 +1794,7 @@ class MRIsimulator(param.Parameterized):
             max_TE = max(max_TE_cands)
         return max([v for v in param_values['TE'].values() if v <= max_TE])
     
-    def max_readout_area_func(self, pixel_bandwidth, is_gradient_echo, k0_gr_echo_index, RF_excitation, phaser_duration, slice_select_excitation, slice_select_rephaser, max_blip_dur, readtrain_spacing, refocusing_time, RF_refocusing, EPI_factor):
+    def max_readout_area_func(self, pixel_bandwidth, is_gradient_echo, k0_gr_echo_index, RF_excitation, phaser_duration, slice_select_excitation, slice_select_rephaser, max_blip_dur, readtrain_spacing, refocusing_time, RF_refocusing_floating, EPI_factor):
         max_readout_areas = []
         # See paramBounds.tex for formulae
         d = 1e3 / pixel_bandwidth # readout duration
@@ -1823,11 +1823,11 @@ class MRIsimulator(param.Parameterized):
                 v = max(max_blip_dur - 2 * read_risetime, 0)
         else: # (turbo) spin echo / GRASE
             # limit by half readout duration tr:
-            tr = (readtrain_spacing - refocusing_time[0] - RF_refocusing[0]['dur_f'] / 2) / EPI_factor
+            tr = (readtrain_spacing - refocusing_time[0] - RF_refocusing_floating[0]['dur_f'] / 2) / EPI_factor
             Ar = d*s* tr - d**2*s/2
             max_readout_areas.append(Ar)
             # limit by prephaser duration tp:
-            tp = refocusing_time[0] - RF_refocusing[0]['dur_f'] / 2 - RF_excitation['dur_f'] / 2
+            tp = refocusing_time[0] - RF_refocusing_floating[0]['dur_f'] / 2 - RF_excitation['dur_f'] / 2
             h = s * tp / 2
             h = min(h, self.max_amp)
             Ap = d * (np.sqrt((d*s)**2 - 8*h*(h-s*tp)) - d*s) / 2
