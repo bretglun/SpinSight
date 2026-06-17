@@ -538,69 +538,57 @@ class MRIsimulator(param.Parameterized):
         }
 
         node_specs['phantom'] = {
-            'func': lambda object, min_voxel_size:
-                    phantom.load(object, min_voxel_size),
+            'func': self.phantom_func,
             'parents': ['object', 'min_voxel_size']
         }
         
         node_specs['tissues'] = {
-            'func': lambda fantom:
-                    list(fantom['shapes'].keys()),
+            'func': self.tissues_func,
             'parents': ['phantom']
         }
 
         node_specs['is_radial'] = {
-            'func': lambda trajectory: 
-                    trajectory in ['Radial', 'PROPELLER'],
+            'func': self.is_radial_func,
             'parents': ['trajectory']
         }
         
         node_specs['is_gradient_echo'] = {
-            'func': lambda sequence_type: 
-                    'Gradient Echo' in sequence_type, 
+            'func': self.is_gradient_echo_func,
             'parents': ['sequence_type']
         }
 
         node_specs['freq_dir'] = {
-            'func': lambda frequency_direction, is_radial: 
-                    constants.DIRECTIONS[frequency_direction] if not is_radial else 1,
+            'func': self.freq_dir_func,
             'parents': ['frequency_direction', 'is_radial']
         }
 
         node_specs['phase_dir'] = {
-            'func': lambda freq_dir: 
-                    1 - freq_dir,
+            'func': self.phase_dir_func,
             'parents': ['freq_dir']
         }
         
         node_specs['FOV'] = {
-            'func': lambda FOV_F, FOV_P, freq_dir: 
-                    [FOV_P, FOV_F] if freq_dir else [FOV_F, FOV_P],
+            'func': self.FOV_func,
             'parents': ['FOV_F', 'FOV_P', 'freq_dir']
         }
 
-
         node_specs['matrix'] = {
-            'func': lambda matrix_F, matrix_P, freq_dir: 
-                    [matrix_P, matrix_F] if freq_dir else [matrix_F, matrix_P],
+            'func': self.matrix_func,
             'parents': ['matrix_F', 'matrix_P', 'freq_dir']
         }
 
         node_specs['recon_matrix'] = {
-            'func': lambda recon_matrix_P, recon_matrix_F, freq_dir, do_zerofill, matrix:
-                    ([recon_matrix_P, recon_matrix_F] if freq_dir else [recon_matrix_F, recon_matrix_P]) if do_zerofill else matrix,
+            'func': self.recon_matrix_func,
             'parents': ['recon_matrix_P', 'recon_matrix_F', 'freq_dir', 'do_zerofill', 'matrix']
         }
 
         node_specs['rec_acq_ratio_F'] = {
-            'func': lambda recon_matrix_F, matrix_F:
-                    recon_matrix_F / matrix_F,
+            'func': self.rec_acq_ratio_F_func,
             'parents': ['recon_matrix_F', 'matrix_F']
         }
 
         node_specs['rec_acq_ratio_P'] = {
-            'func': lambda recon_matrix_P, matrix_P:
-                    recon_matrix_P / matrix_P,
+            'func': self.rec_acq_ratio_P_func,
             'parents': ['recon_matrix_P', 'matrix_P']
         }
 
@@ -675,14 +663,12 @@ class MRIsimulator(param.Parameterized):
         }
 
         node_specs['phase_step_area'] = {
-            'func': lambda k_phase_axis:
-                    np.mean(np.diff(k_phase_axis)) * 1e3 / constants.GYRO, # uTs/m
+            'func': self.phase_step_area_func,
             'parents': ['k_phase_axis']
         }
         
         node_specs['largest_phaser_area'] = {
-            'func': lambda k_phase_axis:
-                    np.min(k_phase_axis) * 1e3 / constants.GYRO, # uTs/m
+            'func': self.largest_phaser_area_func,
             'parents': ['k_phase_axis']
         }
         
@@ -697,20 +683,17 @@ class MRIsimulator(param.Parameterized):
         }
         
         node_specs['readout_gap'] = {
-            'func': lambda max_blip_dur, readouts_floating:
-                    max(max_blip_dur - 2 * readouts_floating[0][0]['risetime_f'], 0),
+            'func': self.readout_gap_func,
             'parents': ['max_blip_dur', 'readouts_floating']
         }
         
         node_specs['gr_echo_spacing'] = {
-            'func': lambda readouts_floating, readout_gap:
-                    readouts_floating[0][0]['dur_f'] + readout_gap,
+            'func': self.gr_echo_spacing_func,
             'parents': ['readouts_floating', 'readout_gap']
         }
         
         node_specs['gre_echo_train_dur'] = {
-            'func': lambda EPI_factor, gr_echo_spacing, readout_gap:
-                    EPI_factor * gr_echo_spacing - readout_gap,
+            'func': self.gre_echo_train_dur_func,
             'parents': ['EPI_factor', 'gr_echo_spacing', 'readout_gap']
         }
         
@@ -905,42 +888,36 @@ class MRIsimulator(param.Parameterized):
         }
 
         node_specs['num_blades'] = {
-            'func': lambda is_radial, matrix, radial_factor, turbo_factor, EPI_factor:
-                    int(np.ceil(max(matrix) * radial_factor / turbo_factor / EPI_factor * np.pi / 2)) if is_radial else 1,
+            'func': self.num_blades_func,
             'parents': ['is_radial', 'matrix', 'radial_factor', 'turbo_factor', 'EPI_factor']
         }
 
         node_specs['k_angles'] = {
-            'func': lambda num_blades: 
-                    np.linspace(0, np.pi, num_blades, endpoint=False),
+            'func': self.k_angles_func,
             'parents': ['num_blades']
         }
 
         node_specs['spoke_angle'] = {
             'params': self,
-            'func': lambda k_angles, shot: 
-                    np.degrees(k_angles[min(shot-1, len(k_angles)-1)]),
+            'func': self.spoke_angle_func,
             'parents': ['k_angles', 'shot']
         }
 
         node_specs['num_shots'] = {
             'params': self,
-            'func': lambda matrix_P, phase_oversampling, partial_Fourier, turbo_factor, EPI_factor, is_radial, num_blades:
-                    int(np.ceil(matrix_P * (1 + phase_oversampling / 100) * partial_Fourier / turbo_factor / EPI_factor)) if not is_radial else num_blades,
+            'func': self.num_shots_func,
             'parents': ['matrix_P', 'phase_oversampling', 'partial_Fourier', 'turbo_factor', 'EPI_factor', 'is_radial', 'num_blades']
         }
 
         node_specs['shot_label'] = {
             'params': self,
-            'func': lambda is_radial, EPI_factor, turbo_factor:
-                    'shot' if not is_radial else 'spoke' if (EPI_factor * turbo_factor == 1) else 'blade',
+            'func': self.shot_label_func,
             'parents': ['is_radial', 'EPI_factor', 'turbo_factor']
         }
 
         node_specs['num_measured_lines'] = {
             # measured lines per blade
-            'func': lambda turbo_factor, EPI_factor, num_shots, is_radial:
-                    turbo_factor * EPI_factor * (num_shots if not is_radial else 1),
+            'func': self.num_measured_lines_func,
             'parents': ['turbo_factor', 'EPI_factor', 'num_shots', 'is_radial']
         }
 
@@ -950,8 +927,7 @@ class MRIsimulator(param.Parameterized):
         }
 
         node_specs['num_blank_lines'] = {
-            'func': lambda k_phase_axis, lines_to_measure:
-                    len(k_phase_axis) - sum(lines_to_measure),
+            'func': self.num_blank_lines_func,
             'parents': ['k_phase_axis', 'lines_to_measure']
         }
 
@@ -1061,8 +1037,7 @@ class MRIsimulator(param.Parameterized):
         }
 
         node_specs['reference_signal'] = {
-            'func': lambda decayed_signal, PD_and_T1w, reference_tissue:
-                    decayed_signal * np.abs(PD_and_T1w[reference_tissue]),
+            'func': self.reference_signal_func,
             'parents': ['decayed_signal', 'PD_and_T1w', 'reference_tissue']
         }
 
@@ -1077,15 +1052,13 @@ class MRIsimulator(param.Parameterized):
         }
 
         node_specs['SNR'] = {
-            'func': lambda signal, noise_std:
-                    signal / noise_std,
+            'func': self.SNR_func,
             'parents': ['reference_signal', 'noise_std']
         }
 
         node_specs['relative_SNR'] = {
             'params': self,
-            'func': lambda SNR, reference_SNR:
-                    SNR / reference_SNR * 100,
+            'func': self.relative_SNR_func,
             'parents': ['SNR', 'reference_SNR']
         }
         
@@ -1096,8 +1069,7 @@ class MRIsimulator(param.Parameterized):
         
         node_specs['scantime'] = {
             'params': self,
-            'func': lambda num_shots, NSA, TR:
-                    format_scantime(num_shots * NSA * TR),
+            'func': self.scantime_func,
             'parents': ['num_shots', 'NSA', 'TR']
         }
         
@@ -1117,8 +1089,7 @@ class MRIsimulator(param.Parameterized):
         }
         
         node_specs['full_k_matrix'] = {
-            'func': lambda full_kspace: 
-                    full_kspace.shape, 
+            'func': self.full_k_space_matrix_func, 
             'parents': ['full_kspace']
         }
         
@@ -1763,6 +1734,39 @@ class MRIsimulator(param.Parameterized):
     def set_apodization_alpha_visibility(self, do_apodize):
         self.set_visibility('apodization_alpha', do_apodize)
     
+    def phantom_func(self, object, min_voxel_size):
+        return phantom.load(object, min_voxel_size)
+    
+    def tissues_func(self, phantom):
+        return list(phantom['shapes'].keys())
+
+    def is_radial_func(self, trajectory):
+        return trajectory in ['Radial', 'PROPELLER']
+        
+    def is_gradient_echo_func(self, sequence_type):
+        return 'Gradient Echo' in sequence_type
+
+    def freq_dir_func(self, frequency_direction, is_radial):
+        return constants.DIRECTIONS[frequency_direction] if not is_radial else 1
+
+    def phase_dir_func(self, freq_dir):
+        return 1 - freq_dir
+        
+    def FOV_func(self, FOV_F, FOV_P, freq_dir):
+        return [FOV_P, FOV_F] if freq_dir else [FOV_F, FOV_P]
+
+    def matrix_func(self, matrix_F, matrix_P, freq_dir):
+        return [matrix_P, matrix_F] if freq_dir else [matrix_F, matrix_P]
+
+    def recon_matrix_func(self, recon_matrix_P, recon_matrix_F, freq_dir, do_zerofill, matrix):
+        return ([recon_matrix_P, recon_matrix_F] if freq_dir else [recon_matrix_F, recon_matrix_P]) if do_zerofill else matrix
+
+    def rec_acq_ratio_F_func(self, recon_matrix_F, matrix_F):
+        return recon_matrix_F / matrix_F
+
+    def rec_acq_ratio_P_func(self, recon_matrix_P, matrix_P):
+        return recon_matrix_P / matrix_P
+    
     def min_TE_func(self, k0_echo_indices_linear_order, k0_echo_indices_reverse_linear_order, min_refocusing_time, min_RF_to_readtrain_center, gr_echo_spacing, EPI_factor, is_gradient_echo, turbo_factor):
         if EPI_factor == 1:
             gr_index, rf_index = 0, 0
@@ -1921,7 +1925,26 @@ class MRIsimulator(param.Parameterized):
         # Equals center position of gradient echo (train) for gradient echo sequences
         # Equals rf echo spacing for spin echo sequences
         return get_readtrain_spacing(TE, EPI_factor, gr_echo_spacing, k0_gr_echo_index, k0_rf_echo_index)
-        
+    
+    def num_blades_func(self, is_radial, matrix, radial_factor, turbo_factor, EPI_factor):
+        return int(np.ceil(max(matrix) * radial_factor / turbo_factor / EPI_factor * np.pi / 2)) if is_radial else 1
+
+    def k_angles_func(self, num_blades):
+        return np.linspace(0, np.pi, num_blades, endpoint=False)
+
+    def spoke_angle_func(self, k_angles, shot):
+        return np.degrees(k_angles[min(shot-1, len(k_angles)-1)])
+
+    def num_shots_func(self, matrix_P, phase_oversampling, partial_Fourier, turbo_factor, EPI_factor, is_radial, num_blades):
+        return int(np.ceil(matrix_P * (1 + phase_oversampling / 100) * partial_Fourier / turbo_factor / EPI_factor)) if not is_radial else num_blades
+
+    def shot_label_func(self, is_radial, EPI_factor, turbo_factor):
+        return 'shot' if not is_radial else 'spoke' if (EPI_factor * turbo_factor == 1) else 'blade'
+
+    def num_measured_lines_func(self, turbo_factor, EPI_factor, num_shots, is_radial):
+        # measured lines per blade
+        return turbo_factor * EPI_factor * (num_shots if not is_radial else 1)
+
     def k_read_axis_func(self, freq_dir, FOV, matrix, is_radial, fantom, radial_FOV_oversampling):
         voxel_size = FOV[freq_dir] / matrix[freq_dir]
         if not is_radial:
@@ -1943,6 +1966,9 @@ class MRIsimulator(param.Parameterized):
             num_lines = num_measured_lines # future: take undersampling into account
             voxel_size = max(FOV) / num_lines # corresponding to blade width
         return recon.get_k_axis(num_lines, voxel_size)
+
+    def num_blank_lines_func(self, k_phase_axis, lines_to_measure):
+        return len(k_phase_axis) - sum(lines_to_measure)
 
     def lines_to_measure_func(self, k_phase_axis, num_measured_lines):
         lines_to_measure = np.ones(len(k_phase_axis), dtype=bool)
@@ -2093,8 +2119,20 @@ class MRIsimulator(param.Parameterized):
         sampled_matrix = k_samples.shape[:-1]
         return np.random.normal(0, noise_std, sampled_matrix) + 1j * np.random.normal(0, noise_std, sampled_matrix)
 
+    def SNR_func(self, reference_signal, noise_std):
+        return reference_signal / noise_std
+    
+    def relative_SNR_func(self, SNR, reference_SNR):
+        return SNR / reference_SNR * 100
+
     def PD_and_T1w_func(self, sequence_type, TR, TI, FA, field_strength, tissues):
         return {component: get_PD_and_T1w(component, sequence_type, TR, TI, FA, field_strength) for component in set(tissues).union(set(constants.FAT_RESONANCES.keys()))}
+
+    def reference_signal_func(self, decayed_signal, PD_and_T1w, reference_tissue):
+        return decayed_signal * np.abs(PD_and_T1w[reference_tissue])
+    
+    def scantime_func(self, num_shots, NSA, TR):
+        return format_scantime(num_shots * NSA * TR)
 
     def measured_kspace_func(self, noise, kspace_comps, FatSat, PD_and_T1w):
         measured_kspace = copy.deepcopy(noise)
@@ -2131,6 +2169,9 @@ class MRIsimulator(param.Parameterized):
             full_kspace *= recon.homodyne_weights(len(k_phase_axis), num_blank_lines, phase_dir) # pre-weighting
             full_kspace += np.conjugate(np.flip(full_kspace))
         return full_kspace
+
+    def full_k_space_matrix_func(self, full_kspace):
+        return full_kspace.shape
 
     def apodized_kspace_func(self, full_kspace, do_apodize, apodization_alpha):
         apodized_kspace = copy.deepcopy(full_kspace)
@@ -2266,6 +2307,12 @@ class MRIsimulator(param.Parameterized):
             sequence.rescale_gradient(read_prephaser, -1)
         return read_prephaser
 
+    def phase_step_area_func(self, k_phase_axis):
+        return np.mean(np.diff(k_phase_axis)) * 1e3 / constants.GYRO # uTs/m
+        
+    def largest_phaser_area_func(self, k_phase_axis):
+        return np.min(k_phase_axis) * 1e3 / constants.GYRO # uTs/m
+
     def phaser_duration_func(self, largest_phaser_area):
         largest_phaser = sequence.get_gradient('phase', total_area=largest_phaser_area, max_amp=self.max_amp, max_slew=self.max_slew)
         return largest_phaser['dur_f']
@@ -2276,6 +2323,15 @@ class MRIsimulator(param.Parameterized):
         max_blip_area = phase_step_area * num_shots * turbo_factor
         max_blip = sequence.get_gradient('phase', total_area=max_blip_area, max_amp=self.max_amp, max_slew=self.max_slew)
         return max_blip['dur_f']
+    
+    def readout_gap_func(self, max_blip_dur, readouts_floating):
+        return max(max_blip_dur - 2 * readouts_floating[0][0]['risetime_f'], 0)
+    
+    def gr_echo_spacing_func(self, readouts_floating, readout_gap):
+        return readouts_floating[0][0]['dur_f'] + readout_gap
+    
+    def gre_echo_train_dur_func(self, EPI_factor, gr_echo_spacing, readout_gap):
+        return EPI_factor * gr_echo_spacing - readout_gap
     
     def phasers_floating_func(self, turbo_factor, largest_phaser_area, pe_table, phase_step_area, shot):
         phasers = []
