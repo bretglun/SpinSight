@@ -2433,8 +2433,8 @@ class MRIsimulator(param.Parameterized):
         self.k_line.event(coords=list(get_k_on_interval(object['time'][[0, -1]], k_trajectory)))
 
     def k_trajectory_func(self, RF_refocusing, frequency_board, phase_board, is_radial, phase_dir, spoke_angle):
-        frequency_area = frequency_board[1] # TODO: avoid hard-coding
-        phase_area = phase_board[1] # TODO: avoid hard-coding
+        frequency_area = frequency_board['net_gradient']
+        phase_area = phase_board['net_gradient']
         dt = .01
         refocus_intervals = [list(rf['time'][[0, -1]]) for rf in RF_refocusing] if RF_refocusing else []
         t = np.concatenate((*(area['time'] for area in [frequency_area, phase_area]), [t for ref in refocus_intervals for t in ref])) # k event times
@@ -2520,51 +2520,51 @@ class MRIsimulator(param.Parameterized):
     
     def frequency_board_func(self, time_dim, frequency_dim, frequency_objects, TR_span, frequency_hover):
         vdims = [tip[0] for tip in frequency_hover.tooltips]
-        specs = [hline(time_dim, frequency_dim),
-                 hv.Area(sequence.accumulate_waveforms(frequency_objects, 'frequency'), time_dim, frequency_dim).opts(color=BOARD_COLORS['frequency']),
-                 hv.Polygons(frequency_objects, kdims=[time_dim, frequency_dim], vdims=vdims).opts(tools=[frequency_hover], cmap=[BOARD_COLORS['frequency']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=(-19000, 19000))]),
-                 TR_span['frequency']]
+        specs = {'zero_line': hline(time_dim, frequency_dim),
+                 'net_gradient': hv.Area(sequence.accumulate_waveforms(frequency_objects, 'frequency'), time_dim, frequency_dim).opts(color=BOARD_COLORS['frequency']),
+                 'waveforms': hv.Polygons(frequency_objects, kdims=[time_dim, frequency_dim], vdims=vdims).opts(tools=[frequency_hover], cmap=[BOARD_COLORS['frequency']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=(-19000, 19000))]),
+                 'TR_span': TR_span['frequency']}
         return specs
         
     def phase_board_func(self, time_dim, phase_dim, phase_objects, TR_span, phase_hover):
         vdims = [tip[0] for tip in phase_hover.tooltips]
-        specs = [hline(time_dim, phase_dim),
-                 hv.Area(sequence.accumulate_waveforms(phase_objects, 'phase'), time_dim, phase_dim).opts(color=BOARD_COLORS['phase']),
-                 hv.Polygons(phase_objects, kdims=[time_dim, phase_dim], vdims=vdims).opts(tools=[phase_hover], cmap=[BOARD_COLORS['phase']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=(-19000, 19000))]),
-                 TR_span['phase']]
+        specs = {'zero_lines': hline(time_dim, phase_dim),
+                 'net_gradient': hv.Area(sequence.accumulate_waveforms(phase_objects, 'phase'), time_dim, phase_dim).opts(color=BOARD_COLORS['phase']),
+                 'waveforms': hv.Polygons(phase_objects, kdims=[time_dim, phase_dim], vdims=vdims).opts(tools=[phase_hover], cmap=[BOARD_COLORS['phase']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=(-19000, 19000))]),
+                 'TR_span': TR_span['phase']}
         return specs
     
     def slice_board_func(self, time_dim, slice_dim, slice_objects, TR_span, slice_hover):
         vdims = [tip[0] for tip in slice_hover.tooltips]
-        specs = [hline(time_dim, slice_dim),
-                 hv.Area(sequence.accumulate_waveforms(slice_objects, 'slice'), time_dim, slice_dim).opts(color=BOARD_COLORS['slice']),
-                 hv.Polygons(slice_objects, kdims=[time_dim, slice_dim], vdims=vdims).opts(tools=[slice_hover], cmap=[BOARD_COLORS['slice']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=(-19000, 19000))]),
-                 TR_span['slice']]
+        specs = {'zero_lines': hline(time_dim, slice_dim),
+                 'net_gradient': hv.Area(sequence.accumulate_waveforms(slice_objects, 'slice'), time_dim, slice_dim).opts(color=BOARD_COLORS['slice']),
+                 'waveforms': hv.Polygons(slice_objects, kdims=[time_dim, slice_dim], vdims=vdims).opts(tools=[slice_hover], cmap=[BOARD_COLORS['slice']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=(-19000, 19000))]),
+                 'TR_span': TR_span['slice']}
         return specs
     
     def RF_board_func(self, time_dim, RF_dim, RF_objects, TR_span, RF_hover):
         vdims = [tip[0] for tip in RF_hover.tooltips]
-        specs = [hline(time_dim, RF_dim),
-                 hv.Area(sequence.accumulate_waveforms(RF_objects, 'RF'), time_dim, RF_dim).opts(color=BOARD_COLORS['RF']),
-                 hv.Polygons(RF_objects, kdims=[time_dim, RF_dim], vdims=vdims).opts(tools=[RF_hover], cmap=[BOARD_COLORS['RF']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=(-19000, 19000))]),
-                 TR_span['RF']]
+        specs = {'zero_lines': hline(time_dim, RF_dim),
+                 'net_RF': hv.Area(sequence.accumulate_waveforms(RF_objects, 'RF'), time_dim, RF_dim).opts(color=BOARD_COLORS['RF']),
+                 'waveforms': hv.Polygons(RF_objects, kdims=[time_dim, RF_dim], vdims=vdims).opts(tools=[RF_hover], cmap=[BOARD_COLORS['RF']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=(-19000, 19000))]),
+                 'TR_span': TR_span['RF']}
         return specs
     
     def signal_board_func(self, time_dim, signal_dim, signal_objects, ADC_objects, TR_span, signal_hover):
         vdims = [tip[0] for tip in signal_hover.tooltips]
-        specs = [hline(time_dim, signal_dim),
-                 hv.Area(sequence.accumulate_waveforms(signal_objects, 'signal'), time_dim, signal_dim).opts(color=BOARD_COLORS['signal']),
-                 hv.Polygons(signal_objects, kdims=[time_dim, signal_dim], vdims='signal').opts(tools=[], cmap=[BOARD_COLORS['signal']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=(-19000, 19000))]),
-                 hv.Rectangles(ADC_objects, kdims=['c1', 'c2', 'c3', 'c4'], vdims=vdims).opts(tools=[signal_hover]),
-                 TR_span['signal']]
+        specs = {'zero_lines': hline(time_dim, signal_dim),
+                 'net_signal': hv.Area(sequence.accumulate_waveforms(signal_objects, 'signal'), time_dim, signal_dim).opts(color=BOARD_COLORS['signal']),
+                 'waveforms': hv.Polygons(signal_objects, kdims=[time_dim, signal_dim], vdims='signal').opts(tools=[], cmap=[BOARD_COLORS['signal']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=(-19000, 19000))]),
+                 'sampling_windows': hv.Rectangles(ADC_objects, kdims=['c1', 'c2', 'c3', 'c4'], vdims=vdims).opts(tools=[signal_hover]),
+                 'TR_span': TR_span['signal']}
         return specs
 
     def sequence_plot_func(self, frequency_board, phase_board, slice_board, RF_board, signal_board):
         boards = [frequency_board, phase_board, slice_board, RF_board, signal_board]
         board_plots = []
-        for board in boards[:-1]:
-            board_plots.append(hv.Overlay(board).opts(width=1700, height=120, border=0, xaxis=None))
-        board_plots.append(hv.Overlay(boards[-1]).opts(width=1700, height=180, border=0, xaxis='bottom'))
+        for board in boards:
+            last = board is boards[-1]
+            board_plots.append(hv.Overlay(board.values()).opts(width=1700, height=180 if last else 120, border=0, xaxis='bottom' if last else None))
         return hv.Layout(list(board_plots)).cols(1).options(toolbar='below')
 
     def kspace_func(self, kspace_type, show_processed_kspace, oversampled_recon_matrix, FOV, recon_matrix, full_k_matrix, zerofilled_kspace, kspace_exponent, gridded_kspace, k_grid_axes):
