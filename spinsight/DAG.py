@@ -59,7 +59,7 @@ class Node:
         self._valid = False
         for child in self.children:
             child.invalidate()
-        if self.graph is not None: # TODO: should add: and self.params is not None:
+        if self.graph is not None and self.params is None:
             self.graph.queue_action(self)
 
     @property
