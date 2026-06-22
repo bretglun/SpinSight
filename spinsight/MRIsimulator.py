@@ -165,6 +165,36 @@ class MRIsimulator(param.Parameterized):
             'func': self.set_labels_by_trajectory,
             'parents': ['shot_label']
         }
+
+        node_specs['set_shot_label'] = {
+            'action': True,
+            'func': self.set_shot_label,
+            'parents': ['shot_label']
+        }
+        
+        node_specs['set_spoke_angle'] = {
+            'action': True,
+            'func': self.set_spoke_angle,
+            'parents': ['spoke_angle']
+        }
+        
+        node_specs['set_num_shots'] = {
+            'action': True,
+            'func': self.set_num_shots,
+            'parents': ['num_shots']
+        }
+        
+        node_specs['set_relative_SNR'] = {
+            'action': True,
+            'func': self.set_relative_SNR,
+            'parents': ['relative_SNR']
+        }
+        
+        node_specs['set_scantime'] = {
+            'action': True,
+            'func': self.set_scantime,
+            'parents': ['scantime']
+        }
         
         node_specs['set_trajectory_objects'] = {
             'action': True,
@@ -701,19 +731,16 @@ class MRIsimulator(param.Parameterized):
         }
 
         node_specs['spoke_angle'] = {
-            'params': self,
             'func': nodes.spoke_angle_func,
             'parents': ['k_angles', 'shot']
         }
 
         node_specs['num_shots'] = {
-            'params': self,
             'func': nodes.num_shots_func,
             'parents': ['matrix_P', 'phase_oversampling', 'partial_Fourier', 'turbo_factor', 'EPI_factor', 'is_radial', 'num_blades']
         }
 
         node_specs['shot_label'] = {
-            'params': self,
             'func': nodes.shot_label_func,
             'parents': ['is_radial', 'EPI_factor', 'turbo_factor']
         }
@@ -860,7 +887,6 @@ class MRIsimulator(param.Parameterized):
         }
 
         node_specs['relative_SNR'] = {
-            'params': self,
             'func': nodes.relative_SNR_func,
             'parents': ['SNR', 'reference_SNR']
         }
@@ -871,7 +897,6 @@ class MRIsimulator(param.Parameterized):
         }
         
         node_specs['scantime'] = {
-            'params': self,
             'func': nodes.scantime_func,
             'parents': ['num_shots', 'NSA', 'TR']
         }
@@ -1305,6 +1330,21 @@ class MRIsimulator(param.Parameterized):
         self.param.shot.label = f'Displayed {shot_label}'
         self.param.radial_factor.label = f'{shot_label.capitalize()} sampling factor'
 
+    def set_shot_label(self, shot_label):
+        self.set_param(self.param.shot_label, shot_label)
+    
+    def set_spoke_angle(self, spoke_angle):
+        self.set_param(self.param.spoke_angle, spoke_angle)
+    
+    def set_num_shots(self, num_shots):
+        self.set_param(self.param.num_shots, num_shots)
+    
+    def set_relative_SNR(self, relative_SNR):
+        self.set_param(self.param.relative_SNR, relative_SNR)
+    
+    def set_scantime(self, scantime):
+        self.set_param(self.param.scantime, scantime)
+    
     def set_trajectory_objects(self, EPI_factor, turbo_factor):
         # Label radial trajectory 'Radial' or 'PROPELLER' depending on nLines per shot
         self.param.trajectory.objects = constants.TRAJECTORIES

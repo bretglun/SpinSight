@@ -72,8 +72,6 @@ class Node:
                 if not equal(self._cache, new):
                     self.version += 1
                     self._cache = new
-                    if self.params and new != getattr(self.params, self.name):
-                        setattr(self.params, self.name, new)
                 self.parent_versions = current_versions if self.parents else None
             self._valid = True
         return self._cache
