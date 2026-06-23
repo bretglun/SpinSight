@@ -1,5 +1,6 @@
 import xarray as xr
 from spinsight import constants, formatting, sequence, recon, phantom
+from spinsight.DAG import Graph
 from functools import partial
 import numpy as np
 import warnings
@@ -156,51 +157,63 @@ def flatten_dicts(list_of_dicts_and_lists):
 ### Node functions ###
 
 
-def phantom_object_func(object, min_voxel_size):
+@Graph.node()
+def phantom_object(object, min_voxel_size):
     return phantom.load(object, min_voxel_size)
 
 
-def tissues_func(phantom_object):
+@Graph.node()
+def tissues(phantom_object):
     return list(phantom_object['shapes'].keys())
 
 
-def is_radial_func(trajectory):
+@Graph.node()
+def is_radial(trajectory):
     return trajectory in ['Radial', 'PROPELLER']
 
 
-def is_gradient_echo_func(sequence_type):
+@Graph.node()
+def is_gradient_echo(sequence_type):
     return 'Gradient Echo' in sequence_type
 
 
-def freq_dir_func(frequency_direction, is_radial):
+@Graph.node()
+def freq_dir(frequency_direction, is_radial):
     return constants.DIRECTIONS[frequency_direction] if not is_radial else 1
 
 
-def phase_dir_func(freq_dir):
+@Graph.node()
+def phase_dir(freq_dir):
     return 1 - freq_dir
 
 
-def FOV_func(FOV_F, FOV_P, freq_dir):
+@Graph.node()
+def FOV(FOV_F, FOV_P, freq_dir):
     return [FOV_P, FOV_F] if freq_dir else [FOV_F, FOV_P]
 
 
-def matrix_func(matrix_F, matrix_P, freq_dir):
+@Graph.node()
+def matrix(matrix_F, matrix_P, freq_dir):
     return [matrix_P, matrix_F] if freq_dir else [matrix_F, matrix_P]
 
 
-def recon_matrix_func(recon_matrix_P, recon_matrix_F, freq_dir, do_zerofill, matrix):
+@Graph.node()
+def recon_matrix(recon_matrix_P, recon_matrix_F, freq_dir, do_zerofill, matrix):
     return ([recon_matrix_P, recon_matrix_F] if freq_dir else [recon_matrix_F, recon_matrix_P]) if do_zerofill else matrix
 
 
-def rec_acq_ratio_F_func(recon_matrix_F, matrix_F):
+@Graph.node()
+def rec_acq_ratio_F(recon_matrix_F, matrix_F):
     return recon_matrix_F / matrix_F
 
 
-def rec_acq_ratio_P_func(recon_matrix_P, matrix_P):
+@Graph.node()
+def rec_acq_ratio_P(recon_matrix_P, matrix_P):
     return recon_matrix_P / matrix_P
 
 
-def min_TE_func(k0_echo_indices_linear_order, k0_echo_indices_reverse_linear_order, min_refocusing_time, min_RF_to_readtrain_center, gr_echo_spacing, EPI_factor, is_gradient_echo, turbo_factor):
+@Graph.node()
+def min_TE(k0_echo_indices_linear_order, k0_echo_indices_reverse_linear_order, min_refocusing_time, min_RF_to_readtrain_center, gr_echo_spacing, EPI_factor, is_gradient_echo, turbo_factor):
     if EPI_factor == 1:
         gr_index, rf_index = 0, 0
         min_TE = min_TE_from_k0_echo_indices(gr_echo_spacing, gr_index, EPI_factor, is_gradient_echo, min_RF_to_readtrain_center, turbo_factor, min_refocusing_time, rf_index)
@@ -213,12 +226,14 @@ def min_TE_func(k0_echo_indices_linear_order, k0_echo_indices_reverse_linear_ord
     return min([v for v in constants.PARAM_VALUES['TE'].values() if v >= min_TE])
 
 
-def min_TR_func(spoiler, sequence_start):
+@Graph.node()
+def min_TR(spoiler, sequence_start):
     min_TR = spoiler['time'][-1] - sequence_start
     return min([v for v in constants.PARAM_VALUES['TR'].values() if v >= min_TR])
 
 
-def max_TE_func(TR, sequence_start, spoiler_floating, readout_risetime, gre_echo_train_dur, EPI_factor, turbo_factor, k0_echo_indices_linear_order, k0_echo_indices_reverse_linear_order, gr_echo_spacing):
+@Graph.node()
+def max_TE(TR, sequence_start, spoiler_floating, readout_risetime, gre_echo_train_dur, EPI_factor, turbo_factor, k0_echo_indices_linear_order, k0_echo_indices_reverse_linear_order, gr_echo_spacing):
     last_readtrain_center = TR + sequence_start - spoiler_floating['dur_f'] + readout_risetime - gre_echo_train_dur / 2
     if EPI_factor == 1:
         max_TE = last_readtrain_center
@@ -234,7 +249,8 @@ def max_TE_func(TR, sequence_start, spoiler_floating, readout_risetime, gre_echo
     return max([v for v in constants.PARAM_VALUES['TE'].values() if v <= max_TE])
 
 
-def max_readout_area_func(pixel_bandwidth, is_gradient_echo, k0_gr_echo_index, TE, RF_excitation, phaser_duration, slice_select_excitation, slice_select_rephaser, max_blip_dur, readtrain_spacing, refocusing_time, RF_refocusing_floating, EPI_factor):
+@Graph.node()
+def max_readout_area(pixel_bandwidth, is_gradient_echo, k0_gr_echo_index, TE, RF_excitation, phaser_duration, slice_select_excitation, slice_select_rephaser, max_blip_dur, readtrain_spacing, refocusing_time, RF_refocusing_floating, EPI_factor):
     max_readout_areas = []
     # See paramBounds.tex for formulae
     d = 1e3 / pixel_bandwidth # readout duration
@@ -276,7 +292,8 @@ def max_readout_area_func(pixel_bandwidth, is_gradient_echo, k0_gr_echo_index, T
     return min(max_readout_areas)
 
 
-def max_phaser_area_func(is_gradient_echo, readtrain_spacing, RF_excitation, gre_echo_train_dur, readout_risetime, refocusing_time, RF_refocusing):
+@Graph.node()
+def max_phaser_area(is_gradient_echo, readtrain_spacing, RF_excitation, gre_echo_train_dur, readout_risetime, refocusing_time, RF_refocusing):
     if is_gradient_echo:
         max_phaser_duration = readtrain_spacing - RF_excitation['dur_f']/2 - gre_echo_train_dur/2 + readout_risetime
     else:
@@ -289,7 +306,8 @@ def max_phaser_area_func(is_gradient_echo, readtrain_spacing, RF_excitation, gre
     return max_phaserarea
 
 
-def min_refocusing_time_func(is_gradient_echo, RF_excitation, RF_refocusing_floating, read_prephaser_floating, slice_select_excitation, slice_select_rephaser, slice_select_refocusing_floating):
+@Graph.node()
+def min_refocusing_time(is_gradient_echo, RF_excitation, RF_refocusing_floating, read_prephaser_floating, slice_select_excitation, slice_select_rephaser, slice_select_refocusing_floating):
     # Get earliest position of refocusing pulse
     if is_gradient_echo:
         return 0
@@ -299,7 +317,8 @@ def min_refocusing_time_func(is_gradient_echo, RF_excitation, RF_refocusing_floa
         )
 
 
-def min_RF_to_readtrain_center_func(is_gradient_echo, RF_excitation, read_prephaser_floating, slice_select_excitation, slice_select_rephaser, RF_refocusing_floating, slice_select_refocusing_floating, gre_echo_train_dur, readout_risetime, phaser_duration):
+@Graph.node()
+def min_RF_to_readtrain_center(is_gradient_echo, RF_excitation, read_prephaser_floating, slice_select_excitation, slice_select_rephaser, RF_refocusing_floating, slice_select_refocusing_floating, gre_echo_train_dur, readout_risetime, phaser_duration):
     # Get shortest spacing bewteen RF (excitation or refocusing for gradient / spin echo) and center of readout (train)
     if is_gradient_echo:
         RF_dur = RF_excitation['dur_f']
@@ -316,16 +335,19 @@ def min_RF_to_readtrain_center_func(is_gradient_echo, RF_excitation, read_prepha
         )
 
 
-def k0_echo_indices_linear_order_func(k0_segment, turbo_factor):
+@Graph.node()
+def k0_echo_indices_linear_order(k0_segment, turbo_factor):
     # (k0_gr_echo_index, k0_rf_echo_index)
     return [(segment // turbo_factor, segment % turbo_factor) for segment in k0_segment]
 
 
-def k0_echo_indices_reverse_linear_order_func(k0_echo_indices_linear_order, EPI_factor, turbo_factor):
+@Graph.node()
+def k0_echo_indices_reverse_linear_order(k0_echo_indices_linear_order, EPI_factor, turbo_factor):
     return {(EPI_factor - 1 - gr_index, turbo_factor - 1 - rf_index) for (gr_index, rf_index) in k0_echo_indices_linear_order}
 
 
-def k0_index_func(k0_echo_indices_reverse_linear_order, k0_echo_indices_linear_order, is_gradient_echo, turbo_factor, TE, EPI_factor, gr_echo_spacing, min_refocusing_time, min_RF_to_readtrain_center):
+@Graph.node()
+def k0_index(k0_echo_indices_reverse_linear_order, k0_echo_indices_linear_order, is_gradient_echo, turbo_factor, TE, EPI_factor, gr_echo_spacing, min_refocusing_time, min_RF_to_readtrain_center):
     if EPI_factor == 1:
         gr_index = 0
         reverse_order = False
@@ -355,50 +377,61 @@ def k0_index_func(k0_echo_indices_reverse_linear_order, k0_echo_indices_linear_o
             return k0_index
 
 
-def k0_rf_echo_index_func(k0_index):
+@Graph.node()
+def k0_rf_echo_index(k0_index):
     return k0_index[0]
 
 
-def k0_gr_echo_index_func(k0_index):
+@Graph.node()
+def k0_gr_echo_index(k0_index):
     return k0_index[1]
 
 
-def reverse_linear_order_func(k0_index):
+@Graph.node()
+def reverse_linear_order(k0_index):
     return k0_index[2]
 
 
-def readtrain_spacing_func(EPI_factor, gr_echo_spacing, TE, k0_gr_echo_index, k0_rf_echo_index):
+@Graph.node()
+def readtrain_spacing(EPI_factor, gr_echo_spacing, TE, k0_gr_echo_index, k0_rf_echo_index):
     # Equals center position of gradient echo (train) for gradient echo sequences
     # Equals rf echo spacing for spin echo sequences
     return get_readtrain_spacing(TE, EPI_factor, gr_echo_spacing, k0_gr_echo_index, k0_rf_echo_index)
 
 
-def num_blades_func(is_radial, matrix, radial_factor, turbo_factor, EPI_factor):
+@Graph.node()
+def num_blades(is_radial, matrix, radial_factor, turbo_factor, EPI_factor):
     return int(np.ceil(max(matrix) * radial_factor / turbo_factor / EPI_factor * np.pi / 2)) if is_radial else 1
 
 
-def k_angles_func(num_blades):
+@Graph.node()
+def k_angles(num_blades):
     return np.linspace(0, np.pi, num_blades, endpoint=False)
 
 
-def spoke_angle_func(k_angles, shot):
+@Graph.node()
+def spoke_angle(k_angles, shot):
     return np.degrees(k_angles[min(shot-1, len(k_angles)-1)])
 
 
-def num_shots_func(matrix_P, phase_oversampling, partial_Fourier, turbo_factor, EPI_factor, is_radial, num_blades):
+@Graph.node()
+def num_shots(matrix_P, phase_oversampling, partial_Fourier, turbo_factor, EPI_factor, is_radial, num_blades):
     return int(np.ceil(matrix_P * (1 + phase_oversampling / 100) * partial_Fourier / turbo_factor / EPI_factor)) if not is_radial else num_blades
 
 
-def shot_label_func(is_radial, EPI_factor, turbo_factor):
+@Graph.node()
+def shot_label(is_radial, EPI_factor, turbo_factor):
     return 'shot' if not is_radial else 'spoke' if (EPI_factor * turbo_factor == 1) else 'blade'
 
 
-def num_measured_lines_func(turbo_factor, EPI_factor, num_shots, is_radial):
+@Graph.node()
+def num_measured_lines(turbo_factor, EPI_factor, num_shots, is_radial):
     # measured lines per blade
     return turbo_factor * EPI_factor * (num_shots if not is_radial else 1)
 
 
-def k_read_axis_func(freq_dir, FOV, matrix, is_radial, phantom_object, radial_FOV_oversampling):
+@Graph.node()
+def k_read_axis(freq_dir, FOV, matrix, is_radial, phantom_object, radial_FOV_oversampling):
     voxel_size = FOV[freq_dir] / matrix[freq_dir]
     if not is_radial:
         num_samples = matrix[freq_dir]
@@ -411,7 +444,8 @@ def k_read_axis_func(freq_dir, FOV, matrix, is_radial, phantom_object, radial_FO
     return recon.get_k_axis(num_samples, voxel_size)
 
 
-def k_phase_axis_func(is_radial, num_measured_lines, matrix, phase_dir, phase_oversampling, FOV):
+@Graph.node()
+def k_phase_axis(is_radial, num_measured_lines, matrix, phase_dir, phase_oversampling, FOV):
     if not is_radial:
         # oversampling may be higher than prescribed since num_shots must be integer:
         num_lines = max(num_measured_lines, int(np.ceil(matrix[phase_dir] * (1 + phase_oversampling / 100))))
@@ -422,11 +456,13 @@ def k_phase_axis_func(is_radial, num_measured_lines, matrix, phase_dir, phase_ov
     return recon.get_k_axis(num_lines, voxel_size)
 
 
-def num_blank_lines_func(k_phase_axis, lines_to_measure):
+@Graph.node()
+def num_blank_lines(k_phase_axis, lines_to_measure):
     return len(k_phase_axis) - sum(lines_to_measure)
 
 
-def lines_to_measure_func(k_phase_axis, num_measured_lines):
+@Graph.node()
+def lines_to_measure(k_phase_axis, num_measured_lines):
     lines_to_measure = np.ones(len(k_phase_axis), dtype=bool)
     # undersample by partial Fourier:
     lines_to_measure[num_measured_lines:] = False
@@ -434,16 +470,19 @@ def lines_to_measure_func(k_phase_axis, num_measured_lines):
     return lines_to_measure
 
 
-def num_segm_func(turbo_factor, EPI_factor):
+@Graph.node()
+def num_segm(turbo_factor, EPI_factor):
     # number of k-space segments
     return turbo_factor * EPI_factor
 
 
-def num_sym_lines_func(num_measured_lines, k_phase_axis):
+@Graph.node()
+def num_sym_lines(num_measured_lines, k_phase_axis):
     return 2 * num_measured_lines - len(k_phase_axis)
 
 
-def num_sym_segm_func(num_segm, num_sym_lines, num_measured_lines):
+@Graph.node()
+def num_sym_segm(num_segm, num_sym_lines, num_measured_lines):
     # number of k-space segments symmetric about k0:
     num_sym_segm = num_segm * (num_sym_lines / num_measured_lines)
     if (num_sym_segm % 2 == 0):
@@ -451,14 +490,16 @@ def num_sym_segm_func(num_segm, num_sym_lines, num_measured_lines):
     return int(np.round((num_sym_segm - 1) / 2)) * 2 + 1
 
 
-def k0_segment_func(num_segm, num_sym_segm):
+@Graph.node()
+def k0_segment(num_segm, num_sym_segm):
     k0_segment = num_segm - num_sym_segm // 2 - 1
     if (num_sym_segm % 2 == 0):
         return [k0_segment, k0_segment + 1] # k0 lies between two segments
     return [k0_segment]
 
 
-def pe_table_func(num_measured_lines, num_segm, num_shots, EPI_factor, turbo_factor, num_sym_segm, k0_rf_echo_index, reverse_linear_order):
+@Graph.node()
+def pe_table(num_measured_lines, num_segm, num_shots, EPI_factor, turbo_factor, num_sym_segm, k0_rf_echo_index, reverse_linear_order):
     num_lines_per_segment = int(num_measured_lines / num_segm)
     lines = [shot % num_lines_per_segment for shot in range(num_shots)]
     if EPI_factor == 1: # (turbo) spin echo
@@ -469,14 +510,16 @@ def pe_table_func(num_measured_lines, num_segm, num_shots, EPI_factor, turbo_fac
     return num_lines_per_segment * segment_order + np.array(lines)[:, None, None]
 
 
-def k_axes_func(freq_dir, phase_dir, k_read_axis, k_phase_axis, lines_to_measure):
+@Graph.node()
+def k_axes(freq_dir, phase_dir, k_read_axis, k_phase_axis, lines_to_measure):
     k_axes = [None]*2
     k_axes[freq_dir] = k_read_axis
     k_axes[phase_dir] = k_phase_axis[lines_to_measure]
     return k_axes
 
 
-def k_samples_func(k_axes, k_angles):
+@Graph.node()
+def k_samples(k_axes, k_angles):
     k_samples = np.array(np.meshgrid(k_axes[0], k_axes[1])).T
     # rotate samples for each angle:
     rotmat = np.array([[np.cos(k_angles), -np.sin(k_angles)], 
@@ -484,7 +527,8 @@ def k_samples_func(k_axes, k_angles):
     return np.einsum('ijk,klm->ijml', k_samples, rotmat) # shape=(Nx, Ny, Nangles, 2)
 
 
-def k_grid_axes_func(is_radial, k_axes, FOV, matrix, phantom_object):
+@Graph.node()
+def k_grid_axes(is_radial, k_axes, FOV, matrix, phantom_object):
     if not is_radial:
         return copy.deepcopy(k_axes)
     k_grid_axes = [None, None]
@@ -495,13 +539,15 @@ def k_grid_axes_func(is_radial, k_axes, FOV, matrix, phantom_object):
     return k_grid_axes
 
 
-def plain_kspace_comps_func(is_radial, phantom_object, k_grid_axes, k_samples):
+@Graph.node()
+def plain_kspace_comps(is_radial, phantom_object, k_grid_axes, k_samples):
     if not is_radial:
         return recon.resample_kspace_Cartesian(phantom_object, k_grid_axes, shape=k_samples.shape[:-1])
     return recon.resample_kspace(phantom_object, k_samples)
 
 
-def thick_kspace_comps_func(slice_thickness, k_samples, plain_kspace_comps):
+@Graph.node()
+def thick_kspace_comps(slice_thickness, k_samples, plain_kspace_comps):
     # Lorenzian line shape to mimic slice thickness
     blur_factor = .5
     slice_thickness_filter = slice_thickness * np.exp(-blur_factor * slice_thickness * np.sqrt(np.sum(k_samples**2, axis=-1)))
@@ -511,22 +557,26 @@ def thick_kspace_comps_func(slice_thickness, k_samples, plain_kspace_comps):
     return thick_kspace_comps
 
 
-def signal_level_func(k_read_axis, lines_to_measure, num_blades, slice_thickness, FOV, matrix):
+@Graph.node()
+def signal_level(k_read_axis, lines_to_measure, num_blades, slice_thickness, FOV, matrix):
     return np.sqrt(len(k_read_axis) * sum(lines_to_measure) * num_blades) * slice_thickness * np.prod(FOV) / np.prod(matrix)
 
 
-def sampling_time_func(pixel_bandwidth, k_read_axis):
+@Graph.node()
+def sampling_time(pixel_bandwidth, k_read_axis):
     # time of sample along (positive) readout relative to (k-space) center
     half_read_duration = .5e3 / pixel_bandwidth # msec
     return np.linspace(-half_read_duration, half_read_duration, len(k_read_axis))
 
 
-def noise_std_func(sampling_time, noise_gain, NSA, field_strength):
+@Graph.node()
+def noise_std(sampling_time, noise_gain, NSA, field_strength):
     dwell_time = np.diff(sampling_time[:2])[0]
     return noise_gain / np.sqrt(dwell_time * NSA) / field_strength
 
 
-def spin_echoes_func(lines_to_measure, pe_table, readtrain_spacing):
+@Graph.node()
+def spin_echoes(lines_to_measure, pe_table, readtrain_spacing):
     spin_echoes = np.zeros((sum(lines_to_measure)))
     for ky in range(sum(lines_to_measure)):
         shot, rf_echo, gr_echo = np.argwhere(pe_table==ky)[0]
@@ -534,7 +584,8 @@ def spin_echoes_func(lines_to_measure, pe_table, readtrain_spacing):
     return spin_echoes
 
 
-def time_after_excitation_func(lines_to_measure, pe_table, readouts, sampling_time, freq_dir, phase_dir):
+@Graph.node()
+def time_after_excitation(lines_to_measure, pe_table, readouts, sampling_time, freq_dir, phase_dir):
     TEs = np.zeros((sum(lines_to_measure)))
     reverse = np.zeros((sum(lines_to_measure)), dtype=bool)
     for ky in range(sum(lines_to_measure)):
@@ -551,7 +602,8 @@ def time_after_excitation_func(lines_to_measure, pe_table, readouts, sampling_ti
     return time_after_excitation
 
 
-def time_relative_inphase_func(time_after_excitation, is_gradient_echo, spin_echoes, phase_dir):
+@Graph.node()
+def time_relative_inphase(time_after_excitation, is_gradient_echo, spin_echoes, phase_dir):
     time_relative_inphase = copy.deepcopy(time_after_excitation)
     if not is_gradient_echo:
         # for spinecho, subtract Hahn echo position from time_after_excitation
@@ -559,14 +611,16 @@ def time_relative_inphase_func(time_after_excitation, is_gradient_echo, spin_ech
     return time_relative_inphase
 
 
-def dephasing_func(field_strength, time_relative_inphase):
+@Graph.node()
+def dephasing(field_strength, time_relative_inphase):
     dephasing = {}
     for component, resonance in constants.FAT_RESONANCES.items():
         dephasing[component] = np.exp(2j*np.pi * constants.GYRO * field_strength * resonance['shift'] * time_relative_inphase * 1e-3)
     return dephasing
 
 
-def T2w_func(tissues, time_after_excitation, time_relative_inphase, field_strength):
+@Graph.node()
+def T2w(tissues, time_after_excitation, time_relative_inphase, field_strength):
     T2w = {}
     for tissue in tissues:
         T2w[tissue] = get_T2w(tissue, time_after_excitation, time_relative_inphase, field_strength)
@@ -576,7 +630,8 @@ def T2w_func(tissues, time_after_excitation, time_relative_inphase, field_streng
     return T2w
 
 
-def kspace_comps_func(tissues, thick_kspace_comps, T2w, dephasing):
+@Graph.node()
+def kspace_comps(tissues, thick_kspace_comps, T2w, dephasing):
     kspace_comps = {}
     for tissue in tissues:
         if constants.TISSUES[tissue]['FF'] == .00:
@@ -588,36 +643,44 @@ def kspace_comps_func(tissues, thick_kspace_comps, T2w, dephasing):
     return kspace_comps
 
 
-def decayed_signal_func(signal_level, T2w, reference_tissue, k_read_axis, k_phase_axis, freq_dir):
+@Graph.node()
+def decayed_signal(signal_level, T2w, reference_tissue, k_read_axis, k_phase_axis, freq_dir):
     return signal_level * np.take(np.take(T2w[reference_tissue], np.argmin(np.abs(k_read_axis)), axis=freq_dir), np.argmin(np.abs(k_phase_axis)))
 
 
-def noise_func(k_samples, noise_std):
+@Graph.node()
+def noise(k_samples, noise_std):
     sampled_matrix = k_samples.shape[:-1]
     return np.random.normal(0, noise_std, sampled_matrix) + 1j * np.random.normal(0, noise_std, sampled_matrix)
 
 
-def SNR_func(reference_signal, noise_std):
+@Graph.node()
+def SNR(reference_signal, noise_std):
     return reference_signal / noise_std
 
 
-def relative_SNR_func(SNR, reference_SNR):
+@Graph.node()
+def relative_SNR(SNR, reference_SNR):
     return SNR / reference_SNR * 100
 
 
-def PD_and_T1w_func(sequence_type, TR, TI, FA, field_strength, tissues):
+@Graph.node()
+def PD_and_T1w(sequence_type, TR, TI, FA, field_strength, tissues):
     return {component: get_PD_and_T1w(component, sequence_type, TR, TI, FA, field_strength) for component in set(tissues).union(set(constants.FAT_RESONANCES.keys()))}
 
 
-def reference_signal_func(decayed_signal, PD_and_T1w, reference_tissue):
+@Graph.node()
+def reference_signal(decayed_signal, PD_and_T1w, reference_tissue):
     return decayed_signal * np.abs(PD_and_T1w[reference_tissue])
 
 
-def scantime_func(num_shots, NSA, TR):
+@Graph.node()
+def scantime(num_shots, NSA, TR):
     return formatting.format_scantime(num_shots * NSA * TR)
 
 
-def measured_kspace_func(noise, kspace_comps, FatSat, PD_and_T1w):
+@Graph.node()
+def measured_kspace(noise, kspace_comps, FatSat, PD_and_T1w):
     measured_kspace = copy.deepcopy(noise)
     for component in kspace_comps:
         if 'Fat' in component:
@@ -637,7 +700,8 @@ def measured_kspace_func(noise, kspace_comps, FatSat, PD_and_T1w):
     return measured_kspace
 
 
-def gridded_kspace_func(k_grid_axes, is_radial, measured_kspace, k_samples, FOV, matrix):
+@Graph.node()
+def gridded_kspace(k_grid_axes, is_radial, measured_kspace, k_samples, FOV, matrix):
     grid_shape = tuple(len(k_grid_axes[dim]) for dim in range(2))
     if not is_radial:
         return measured_kspace.reshape(grid_shape)
@@ -645,7 +709,8 @@ def gridded_kspace_func(k_grid_axes, is_radial, measured_kspace, k_samples, FOV,
     return recon.grid(measured_kspace, grid_shape, samples)
 
 
-def full_kspace_func(num_blank_lines, is_radial, gridded_kspace, phase_dir, homodyne, k_phase_axis):
+@Graph.node()
+def full_kspace(num_blank_lines, is_radial, gridded_kspace, phase_dir, homodyne, k_phase_axis):
     if (num_blank_lines == 0 or is_radial):
         return np.copy(gridded_kspace)
     shape_unsampled = tuple(num_blank_lines if dim==phase_dir else n for dim, n in enumerate(gridded_kspace.shape))
@@ -656,29 +721,34 @@ def full_kspace_func(num_blank_lines, is_radial, gridded_kspace, phase_dir, homo
     return full_kspace
 
 
-def full_k_matrix_func(full_kspace):
+@Graph.node()
+def full_k_matrix(full_kspace):
     return full_kspace.shape
 
 
-def apodized_kspace_func(full_kspace, do_apodize, apodization_alpha):
+@Graph.node()
+def apodized_kspace(full_kspace, do_apodize, apodization_alpha):
     apodized_kspace = copy.deepcopy(full_kspace)
     if do_apodize: 
         apodized_kspace *= recon.radial_Tukey(apodization_alpha, full_kspace.shape)
     return apodized_kspace
 
 
-def oversampled_recon_matrix_func(recon_matrix, full_k_matrix, matrix):
+@Graph.node()
+def oversampled_recon_matrix(recon_matrix, full_k_matrix, matrix):
     oversampled_recon_matrix = copy.deepcopy(recon_matrix)
     for dim in range(2):
         oversampled_recon_matrix[dim] = int(np.round(recon_matrix[dim] * full_k_matrix[dim] / matrix[dim]))
     return oversampled_recon_matrix
 
 
-def zerofilled_kspace_func(apodized_kspace, oversampled_recon_matrix):
+@Graph.node()
+def zerofilled_kspace(apodized_kspace, oversampled_recon_matrix):
     return recon.zerofill(apodized_kspace, oversampled_recon_matrix)
 
 
-def image_array_func(oversampled_recon_matrix, full_k_matrix, recon_matrix, zerofilled_kspace):
+@Graph.node()
+def image_array(oversampled_recon_matrix, full_k_matrix, recon_matrix, zerofilled_kspace):
     pixel_shifts = [0., 0.]
     sample_shifts = [0., 0.]
     for dim in range(2):
@@ -694,12 +764,14 @@ def image_array_func(oversampled_recon_matrix, full_k_matrix, recon_matrix, zero
     return recon.crop(image_array, recon_matrix)
 
 
-def RF_excitation_func(FA, is_gradient_echo):
+@Graph.node()
+def RF_excitation(FA, is_gradient_echo):
     flip_angle = FA if is_gradient_echo else 90.
     return sequence.get_RF(flip_angle=flip_angle, time=0., dur=3., shape='hamming_sinc',  name='excitation')
 
 
-def RF_refocusing_floating_func(is_gradient_echo, turbo_factor):
+@Graph.node()
+def RF_refocusing_floating(is_gradient_echo, turbo_factor):
     if is_gradient_echo:
         return None
     RF_refocusing = []
@@ -708,33 +780,38 @@ def RF_refocusing_floating_func(is_gradient_echo, turbo_factor):
     return RF_refocusing
 
 
-def RF_inversion_floating_func(sequence_type):
+@Graph.node()
+def RF_inversion_floating(sequence_type):
     if not sequence_type == 'Inversion Recovery':
         return None
     return sequence.get_RF(flip_angle=180., dur=3., shape='hamming_sinc',  name='inversion')
 
 
-def RF_FatSat_floating_func(FatSat, field_strength):
+@Graph.node()
+def RF_FatSat_floating(FatSat, field_strength):
     if not FatSat:
         return None
     return sequence.get_RF(flip_angle=90, time=0., dur=30./field_strength, shape='hamming_sinc',  name='FatSat')
 
 
-def FatSat_spoiler_floating_func(FatSat):
+@Graph.node()
+def FatSat_spoiler_floating(FatSat):
     if not FatSat:
         return None
     spoiler_area = 30. # uTs/m
     return sequence.get_gradient('slice', total_area=spoiler_area, name='FatSat spoiler', max_amp=constants.MAX_AMP, max_slew=constants.MAX_SLEW)
 
 
-def slice_select_excitation_func(RF_excitation, slice_thickness):
+@Graph.node()
+def slice_select_excitation(RF_excitation, slice_thickness):
     flat_dur = RF_excitation['dur_f']
     amp = RF_excitation['FWHM_f'] / (slice_thickness * constants.GYRO)
     time = 0.
     return sequence.get_gradient('slice', time, max_amp=amp, flat_dur=flat_dur, name='slice select excitation', max_slew=constants.MAX_SLEW)
 
 
-def slice_select_rephaser_func(slice_select_excitation):
+@Graph.node()
+def slice_select_rephaser(slice_select_excitation):
     slice_rephaser_area = -slice_select_excitation['area_f']/2
     slice_select_rephaser = sequence.get_gradient('slice', total_area=slice_rephaser_area, name='slice select rephaser', max_amp=constants.MAX_AMP, max_slew=constants.MAX_SLEW)
     time = (slice_select_excitation['dur_f'] + slice_select_rephaser['dur_f']) / 2
@@ -742,7 +819,8 @@ def slice_select_rephaser_func(slice_select_excitation):
     return slice_select_rephaser
 
 
-def slice_select_refocusing_floating_func(RF_refocusing_floating, slice_thickness, turbo_factor):
+@Graph.node()
+def slice_select_refocusing_floating(RF_refocusing_floating, slice_thickness, turbo_factor):
     if RF_refocusing_floating is None:
         return None
     flat_dur = RF_refocusing_floating[0]['dur_f']
@@ -753,7 +831,8 @@ def slice_select_refocusing_floating_func(RF_refocusing_floating, slice_thicknes
     return slice_select_refocusing
 
 
-def slice_select_inversion_floating_func(sequence_type, RF_inversion_floating, slice_thickness):
+@Graph.node()
+def slice_select_inversion_floating(sequence_type, RF_inversion_floating, slice_thickness):
     if sequence_type != 'Inversion Recovery':
         return None
     flat_dur = RF_inversion_floating['dur_f']
@@ -761,14 +840,16 @@ def slice_select_inversion_floating_func(sequence_type, RF_inversion_floating, s
     return sequence.get_gradient('slice', max_amp=amp, flat_dur=flat_dur, name='slice select inversion', max_slew=constants.MAX_SLEW)
 
 
-def inversion_spoiler_floating_func(sequence_type):
+@Graph.node()
+def inversion_spoiler_floating(sequence_type):
     if sequence_type != 'Inversion Recovery':
         return None
     spoiler_area = 30. # uTs/m
     return sequence.get_gradient('slice', total_area=spoiler_area, name='inversion spoiler', max_amp=constants.MAX_AMP, max_slew=constants.MAX_SLEW)
 
 
-def readouts_floating_func(k_read_axis, pixel_bandwidth, matrix_F, FOV_F, turbo_factor, EPI_factor):
+@Graph.node()
+def readouts_floating(k_read_axis, pixel_bandwidth, matrix_F, FOV_F, turbo_factor, EPI_factor):
     pixel_size = (len(k_read_axis)-1) / len(k_read_axis) / (max(k_read_axis)-min(k_read_axis))
     flat_area = 1e3 / pixel_size / constants.GYRO # uTs/m
     amp = pixel_bandwidth * matrix_F / (FOV_F * constants.GYRO) # mT/m
@@ -787,7 +868,8 @@ def readouts_floating_func(k_read_axis, pixel_bandwidth, matrix_F, FOV_F, turbo_
     return readouts
 
 
-def sampling_windows_floating_func(turbo_factor, EPI_factor, readouts_floating):
+@Graph.node()
+def sampling_windows_floating(turbo_factor, EPI_factor, readouts_floating):
     sampling_windows = []
     for rf_echo in range(turbo_factor):
         sampling_windows.append([])
@@ -801,31 +883,37 @@ def sampling_windows_floating_func(turbo_factor, EPI_factor, readouts_floating):
     return sampling_windows
 
 
-def readout_risetime_func(readouts_floating):
+@Graph.node()
+def readout_risetime(readouts_floating):
     return readouts_floating[0][0]['risetime_f']
 
 
-def read_prephaser_floating_func(readouts_floating, is_gradient_echo):
+@Graph.node()
+def read_prephaser_floating(readouts_floating, is_gradient_echo):
     read_prephaser = sequence.get_gradient('frequency', total_area=readouts_floating[0][0]['area_f']/2, name='read prephaser', max_amp=constants.MAX_AMP, max_slew=constants.MAX_SLEW)
     if is_gradient_echo:
         sequence.rescale_gradient(read_prephaser, -1)
     return read_prephaser
 
 
-def phase_step_area_func(k_phase_axis):
+@Graph.node()
+def phase_step_area(k_phase_axis):
     return np.mean(np.diff(k_phase_axis)) * 1e3 / constants.GYRO # uTs/m
 
 
-def largest_phaser_area_func(k_phase_axis):
+@Graph.node()
+def largest_phaser_area(k_phase_axis):
     return np.min(k_phase_axis) * 1e3 / constants.GYRO # uTs/m
 
 
-def phaser_duration_func(largest_phaser_area):
+@Graph.node()
+def phaser_duration(largest_phaser_area):
     largest_phaser = sequence.get_gradient('phase', total_area=largest_phaser_area, max_amp=constants.MAX_AMP, max_slew=constants.MAX_SLEW)
     return largest_phaser['dur_f']
 
 
-def max_blip_dur_func(EPI_factor, phase_step_area, num_shots, turbo_factor):
+@Graph.node()
+def max_blip_dur(EPI_factor, phase_step_area, num_shots, turbo_factor):
     if (EPI_factor <= 1):
         return 0
     max_blip_area = phase_step_area * num_shots * turbo_factor
@@ -833,19 +921,23 @@ def max_blip_dur_func(EPI_factor, phase_step_area, num_shots, turbo_factor):
     return max_blip['dur_f']
 
 
-def readout_gap_func(max_blip_dur, readouts_floating):
+@Graph.node()
+def readout_gap(max_blip_dur, readouts_floating):
     return max(max_blip_dur - 2 * readouts_floating[0][0]['risetime_f'], 0)
 
 
-def gr_echo_spacing_func(readouts_floating, readout_gap):
+@Graph.node()
+def gr_echo_spacing(readouts_floating, readout_gap):
     return readouts_floating[0][0]['dur_f'] + readout_gap
 
 
-def gre_echo_train_dur_func(EPI_factor, gr_echo_spacing, readout_gap):
+@Graph.node()
+def gre_echo_train_dur(EPI_factor, gr_echo_spacing, readout_gap):
     return EPI_factor * gr_echo_spacing - readout_gap
 
 
-def phasers_floating_func(turbo_factor, largest_phaser_area, pe_table, phase_step_area, shot):
+@Graph.node()
+def phasers_floating(turbo_factor, largest_phaser_area, pe_table, phase_step_area, shot):
     phasers = []
     for rf_echo in range(turbo_factor):
         phaser_area = largest_phaser_area + pe_table[shot-1, rf_echo, 0] * phase_step_area
@@ -857,7 +949,8 @@ def phasers_floating_func(turbo_factor, largest_phaser_area, pe_table, phase_ste
     return phasers
 
 
-def blips_floating_func(turbo_factor, EPI_factor, phase_step_area, pe_table, shot):
+@Graph.node()
+def blips_floating(turbo_factor, EPI_factor, phase_step_area, pe_table, shot):
     blips = []
     for rf_echo in range(turbo_factor):
         blips.append([])
@@ -868,7 +961,8 @@ def blips_floating_func(turbo_factor, EPI_factor, phase_step_area, pe_table, sho
     return blips
 
 
-def rephasers_floating_func(turbo_factor, phasers_floating, blips_floating, largest_phaser_area):
+@Graph.node()
+def rephasers_floating(turbo_factor, phasers_floating, blips_floating, largest_phaser_area):
     rephasers = []
     for rf_echo in range(turbo_factor):
         suffix = f' {rf_echo + 1}' if turbo_factor > 1 else ''
@@ -882,80 +976,94 @@ def rephasers_floating_func(turbo_factor, phasers_floating, blips_floating, larg
     return rephasers
 
 
-def spoiler_floating_func():
+@Graph.node()
+def spoiler_floating():
     spoiler_area = 30. # uTs/m
     return sequence.get_gradient('slice', total_area=spoiler_area, name='spoiler', max_amp=constants.MAX_AMP, max_slew=constants.MAX_SLEW)
 
 
-def readtrain_center_time_func(readtrain_spacing, turbo_factor):
+@Graph.node()
+def readtrain_center_time(readtrain_spacing, turbo_factor):
     # center position of gradient echo readout (train)(s)
     return [readtrain_spacing * (rf_echo + 1) for rf_echo in range(turbo_factor)]
 
 
-def readout_center_time_func(EPI_factor, gr_echo_spacing, readtrain_center_time):
+@Graph.node()
+def readout_center_time(EPI_factor, gr_echo_spacing, readtrain_center_time):
     return [[center_time + (gre - (EPI_factor-1) / 2) * gr_echo_spacing for gre in range(EPI_factor)] for center_time in readtrain_center_time]
 
 
-def refocusing_time_func(TE, readtrain_center_time, readtrain_spacing):
+@Graph.node()
+def refocusing_time(TE, readtrain_center_time, readtrain_spacing):
     if len(readtrain_center_time) == 1:
         return [TE / 2]
     return [t - readtrain_spacing / 2 for t in readtrain_center_time]
 
 
-def slice_select_refocusing_func(slice_select_refocusing_floating, refocusing_time):
+@Graph.node()
+def slice_select_refocusing(slice_select_refocusing_floating, refocusing_time):
     if slice_select_refocusing_floating is None:
         return None
     return [place_waveform(grad, time) for grad, time in zip(slice_select_refocusing_floating, refocusing_time)]
 
 
-def RF_refocusing_func(RF_refocusing_floating, refocusing_time):
+@Graph.node()
+def RF_refocusing(RF_refocusing_floating, refocusing_time):
     if RF_refocusing_floating is None:
         return None
     return [place_waveform(RF, time) for RF, time in zip(RF_refocusing_floating, refocusing_time)]
 
 
-def slice_select_inversion_func(slice_select_inversion_floating, TI):
+@Graph.node()
+def slice_select_inversion(slice_select_inversion_floating, TI):
     if slice_select_inversion_floating is None:
         return None
     return place_waveform(slice_select_inversion_floating, -TI)
 
 
-def RF_inversion_func(RF_inversion_floating, TI):
+@Graph.node()
+def RF_inversion(RF_inversion_floating, TI):
     if RF_inversion_floating is None:
         return None
     return place_waveform(RF_inversion_floating, -TI)
 
 
-def inversion_spoiler_func(inversion_spoiler_floating, RF_inversion):
+@Graph.node()
+def inversion_spoiler(inversion_spoiler_floating, RF_inversion):
     if inversion_spoiler_floating is None:
         return None
     time = RF_inversion['time'][-1] + inversion_spoiler_floating['dur_f']/2
     return place_waveform(inversion_spoiler_floating, time)
 
 
-def FatSat_spoiler_func(FatSat_spoiler_floating, slice_select_excitation):
+@Graph.node()
+def FatSat_spoiler(FatSat_spoiler_floating, slice_select_excitation):
     if FatSat_spoiler_floating is None:
         return None
     time = slice_select_excitation['time'][0] - FatSat_spoiler_floating['dur_f']/2
     return place_waveform(FatSat_spoiler_floating, time)
 
 
-def RF_FatSat_func(RF_FatSat_floating, FatSat_spoiler_floating):
+@Graph.node()
+def RF_FatSat(RF_FatSat_floating, FatSat_spoiler_floating):
     if RF_FatSat_floating is None:
         return None
     time = FatSat_spoiler_floating['time'][0] - RF_FatSat_floating['dur_f']/2
     return place_waveform(RF_FatSat_floating, time)
 
 
-def readouts_func(readouts_floating, readout_center_time):
+@Graph.node()
+def readouts(readouts_floating, readout_center_time):
     return [[place_waveform(readout, time) for readout, time in zip(readouts, times)] for readouts, times in zip(readouts_floating, readout_center_time)]
 
 
-def sampling_windows_func(sampling_windows_floating, readout_center_time):
+@Graph.node()
+def sampling_windows(sampling_windows_floating, readout_center_time):
     return [[place_waveform(sampling, time) for sampling, time in zip(samplings, times)] for samplings, times in zip(sampling_windows_floating, readout_center_time)]
 
 
-def read_prephaser_func(read_prephaser_floating, is_gradient_echo, readouts, RF_excitation):
+@Graph.node()
+def read_prephaser(read_prephaser_floating, is_gradient_echo, readouts, RF_excitation):
     if is_gradient_echo:
         first_readout = readouts[0][0]
         time = first_readout['center_f'] - (read_prephaser_floating['dur_f'] + first_readout['dur_f']) / 2
@@ -964,24 +1072,29 @@ def read_prephaser_func(read_prephaser_floating, is_gradient_echo, readouts, RF_
     return place_waveform(read_prephaser_floating, time)
 
 
-def phasers_func(readtrain_center_time, phasers_floating, gre_echo_train_dur, readout_risetime):
+@Graph.node()
+def phasers(readtrain_center_time, phasers_floating, gre_echo_train_dur, readout_risetime):
     return [place_waveform(phaser, center - (gre_echo_train_dur + phaser['dur_f'])/2 + readout_risetime) for phaser, center in zip(phasers_floating, readtrain_center_time)]
 
 
-def rephasers_func(readtrain_center_time, gre_echo_train_dur, readout_risetime, rephasers_floating):
+@Graph.node()
+def rephasers(readtrain_center_time, gre_echo_train_dur, readout_risetime, rephasers_floating):
     return [place_waveform(rephaser, center + (gre_echo_train_dur + rephaser['dur_f'])/2 - readout_risetime) for rephaser, center in zip(rephasers_floating, readtrain_center_time)]
 
 
-def blips_func(readtrain_center_time, EPI_factor, gr_echo_spacing, blips_floating):
+@Graph.node()
+def blips(readtrain_center_time, EPI_factor, gr_echo_spacing, blips_floating):
     return [[place_waveform(blip, center + gr_echo_spacing * (gre - EPI_factor/2 + 1)) for gre, blip in enumerate(blips)] for center, blips in zip(readtrain_center_time, blips_floating)]
 
 
-def spoiler_func(readouts, spoiler_floating):
+@Graph.node()
+def spoiler(readouts, spoiler_floating):
     time = readouts[-1][-1]['center_f'] + (readouts[-1][-1]['flat_dur_f'] + spoiler_floating['dur_f']) / 2
     return place_waveform(spoiler_floating, time)
 
 
-def sequence_start_func(slice_select_inversion, RF_FatSat, slice_select_excitation):
+@Graph.node()
+def sequence_start(slice_select_inversion, RF_FatSat, slice_select_excitation):
     if slice_select_inversion is not None:
         return slice_select_inversion['time'][0]
     elif RF_FatSat is not None:
@@ -990,7 +1103,8 @@ def sequence_start_func(slice_select_inversion, RF_FatSat, slice_select_excitati
         return slice_select_excitation['time'][0]
 
 
-def signal_curves_func(measured_kspace, shot, is_radial, turbo_factor, EPI_factor, pe_table, phase_dir, time_after_excitation):
+@Graph.node()
+def signal_curves(measured_kspace, shot, is_radial, turbo_factor, EPI_factor, pe_table, phase_dir, time_after_excitation):
     signal_curves = []
     scale = 1 / np.max(np.abs(np.real(measured_kspace)))
     signal_exponent = .5
@@ -1006,7 +1120,8 @@ def signal_curves_func(measured_kspace, shot, is_radial, turbo_factor, EPI_facto
     return signal_curves
 
 
-def k_trajectory_func(RF_refocusing, frequency_board, phase_board, is_radial, phase_dir, spoke_angle):
+@Graph.node()
+def k_trajectory(RF_refocusing, frequency_board, phase_board, is_radial, phase_dir, spoke_angle):
     frequency_area = frequency_board['net_gradient']
     phase_area = phase_board['net_gradient']
     dt = .01
@@ -1025,66 +1140,80 @@ def k_trajectory_func(RF_refocusing, frequency_board, phase_board, is_radial, ph
     return {'kx': kx, 'ky': ky, 't': t, 'dt': dt}
 
 
-def time_dim_func():
+@Graph.node()
+def time_dim():
     return hv.Dimension('time', label='time', unit='ms')
 
 
-def frequency_dim_func():
+@Graph.node()
+def frequency_dim():
     return hv.Dimension('frequency', label='G read', unit='mT/m', range=(-30, 30))
 
 
-def phase_dim_func():
+@Graph.node()
+def phase_dim():
     return hv.Dimension('phase', label='G phase', unit='mT/m', range=(-30, 30))
 
 
-def slice_dim_func():
+@Graph.node()
+def slice_dim():
     return hv.Dimension('slice', label='G slice', unit='mT/m', range=(-30, 30))
 
 
-def RF_dim_func():
+@Graph.node()
+def RF_dim():
     return hv.Dimension('RF', label='RF', unit='μT', range=(-5, 25))
 
 
-def signal_dim_func():
+@Graph.node()
+def signal_dim():
     return hv.Dimension('signal', label='signal', unit='a.u.', range=(-1, 1))
 
 
-def ADC_dim_func():
+@Graph.node()
+def ADC_dim():
     return hv.Dimension('ADC', label='ADC', unit='')
 
 
-def frequency_objects_func(read_prephaser, readouts):
+@Graph.node()
+def frequency_objects(read_prephaser, readouts):
     objects = [read_prephaser, *flatten_dicts(readouts)]
     return [obj for obj in objects if obj]
 
 
-def phase_objects_func(phasers, rephasers, blips):
+@Graph.node()
+def phase_objects(phasers, rephasers, blips):
     objects = [*flatten_dicts(phasers), *flatten_dicts(rephasers), *flatten_dicts(blips)]
     return [obj for obj in objects if obj]
 
 
-def slice_objects_func(slice_select_inversion, inversion_spoiler, FatSat_spoiler, slice_select_excitation, slice_select_rephaser, slice_select_refocusing, spoiler):
+@Graph.node()
+def slice_objects(slice_select_inversion, inversion_spoiler, FatSat_spoiler, slice_select_excitation, slice_select_rephaser, slice_select_refocusing, spoiler):
     objects = [slice_select_inversion, inversion_spoiler, FatSat_spoiler, slice_select_excitation, slice_select_rephaser, *flatten_dicts(slice_select_refocusing), spoiler]
     return [obj for obj in objects if obj]
 
 
-def RF_objects_func(RF_inversion, RF_FatSat, RF_excitation, RF_refocusing):
+@Graph.node()
+def RF_objects(RF_inversion, RF_FatSat, RF_excitation, RF_refocusing):
     objects = [RF_inversion, RF_FatSat, RF_excitation, *flatten_dicts(RF_refocusing)]
     return [obj for obj in objects if obj]
 
 
-def signal_objects_func(signal_curves):
+@Graph.node()
+def signal_objects(signal_curves):
     return flatten_dicts(signal_curves)
 
 
-def ADC_objects_func(sampling_windows):
+@Graph.node()
+def ADC_objects(sampling_windows):
     objects = flatten_dicts(sampling_windows)
     for obj in objects:
         obj.update({'c1': obj['time'][0], 'c2': -2, 'c3': obj['time'][-1], 'c4': 2})
     return objects
 
 
-def TR_span_func(sequence_start, TR, time_dim, frequency_dim, phase_dim, slice_dim, RF_dim, signal_dim):
+@Graph.node()
+def TR_span(sequence_start, TR, time_dim, frequency_dim, phase_dim, slice_dim, RF_dim, signal_dim):
     TR_span = {}
     for board_dim in [frequency_dim, phase_dim, slice_dim, RF_dim, signal_dim]:
         TR_span[board_dim.name] = hv.VSpan(-20000, sequence_start, kdims=[time_dim, board_dim]).opts(color='gray', fill_alpha=.3)
@@ -1092,7 +1221,8 @@ def TR_span_func(sequence_start, TR, time_dim, frequency_dim, phase_dim, slice_d
     return TR_span
 
 
-def frequency_board_func(time_dim, frequency_dim, frequency_objects, TR_span, frequency_hover):
+@Graph.node()
+def frequency_board(time_dim, frequency_dim, frequency_objects, TR_span, frequency_hover):
     vdims = [tip[0] for tip in frequency_hover.tooltips]
     specs = {'zero_line': hline(time_dim, frequency_dim),
                 'net_gradient': hv.Area(sequence.accumulate_waveforms(frequency_objects, 'frequency'), time_dim, frequency_dim).opts(color=constants.BOARD_COLORS['frequency']),
@@ -1101,7 +1231,8 @@ def frequency_board_func(time_dim, frequency_dim, frequency_objects, TR_span, fr
     return specs
 
 
-def phase_board_func(time_dim, phase_dim, phase_objects, TR_span, phase_hover):
+@Graph.node()
+def phase_board(time_dim, phase_dim, phase_objects, TR_span, phase_hover):
     vdims = [tip[0] for tip in phase_hover.tooltips]
     specs = {'zero_lines': hline(time_dim, phase_dim),
                 'net_gradient': hv.Area(sequence.accumulate_waveforms(phase_objects, 'phase'), time_dim, phase_dim).opts(color=constants.BOARD_COLORS['phase']),
@@ -1110,7 +1241,8 @@ def phase_board_func(time_dim, phase_dim, phase_objects, TR_span, phase_hover):
     return specs
 
 
-def slice_board_func(time_dim, slice_dim, slice_objects, TR_span, slice_hover):
+@Graph.node()
+def slice_board(time_dim, slice_dim, slice_objects, TR_span, slice_hover):
     vdims = [tip[0] for tip in slice_hover.tooltips]
     specs = {'zero_lines': hline(time_dim, slice_dim),
                 'net_gradient': hv.Area(sequence.accumulate_waveforms(slice_objects, 'slice'), time_dim, slice_dim).opts(color=constants.BOARD_COLORS['slice']),
@@ -1119,7 +1251,8 @@ def slice_board_func(time_dim, slice_dim, slice_objects, TR_span, slice_hover):
     return specs
 
 
-def RF_board_func(time_dim, RF_dim, RF_objects, TR_span, RF_hover):
+@Graph.node()
+def RF_board(time_dim, RF_dim, RF_objects, TR_span, RF_hover):
     vdims = [tip[0] for tip in RF_hover.tooltips]
     specs = {'zero_lines': hline(time_dim, RF_dim),
                 'net_RF': hv.Area(sequence.accumulate_waveforms(RF_objects, 'RF'), time_dim, RF_dim).opts(color=constants.BOARD_COLORS['RF']),
@@ -1128,7 +1261,8 @@ def RF_board_func(time_dim, RF_dim, RF_objects, TR_span, RF_hover):
     return specs
 
 
-def signal_board_func(time_dim, signal_dim, signal_objects, ADC_objects, TR_span, signal_hover):
+@Graph.node()
+def signal_board(time_dim, signal_dim, signal_objects, ADC_objects, TR_span, signal_hover):
     vdims = [tip[0] for tip in signal_hover.tooltips]
     specs = {'zero_lines': hline(time_dim, signal_dim),
                 'net_signal': hv.Area(sequence.accumulate_waveforms(signal_objects, 'signal'), time_dim, signal_dim).opts(color=constants.BOARD_COLORS['signal']),
@@ -1138,7 +1272,8 @@ def signal_board_func(time_dim, signal_dim, signal_objects, ADC_objects, TR_span
     return specs
 
 
-def sequence_plot_func(frequency_board, phase_board, slice_board, RF_board, signal_board):
+@Graph.node()
+def sequence_plot(frequency_board, phase_board, slice_board, RF_board, signal_board):
     boards = [frequency_board, phase_board, slice_board, RF_board, signal_board]
     board_plots = []
     for board in boards:
@@ -1147,7 +1282,8 @@ def sequence_plot_func(frequency_board, phase_board, slice_board, RF_board, sign
     return hv.Layout(list(board_plots)).cols(1).options(toolbar='below')
 
 
-def kspace_func(kspace_type, show_processed_kspace, oversampled_recon_matrix, FOV, recon_matrix, full_k_matrix, zerofilled_kspace, kspace_exponent, gridded_kspace, k_grid_axes):
+@Graph.node()
+def kspace(kspace_type, show_processed_kspace, oversampled_recon_matrix, FOV, recon_matrix, full_k_matrix, zerofilled_kspace, kspace_exponent, gridded_kspace, k_grid_axes):
     operator = constants.OPERATORS[kspace_type]
     if show_processed_kspace:
         k_axes = []
@@ -1173,7 +1309,8 @@ def kspace_func(kspace_type, show_processed_kspace, oversampled_recon_matrix, FO
     return hv.Image(ksp, vdims=['magnitude']).opts(xlim=(-lim,lim), ylim=(-lim,lim))
 
 
-def FOV_box_func(show_FOV, is_radial, FOV, matrix, freq_dir, phase_dir, k_read_axis, k_phase_axis):
+@Graph.node()
+def FOV_box(show_FOV, is_radial, FOV, matrix, freq_dir, phase_dir, k_read_axis, k_phase_axis):
     if not show_FOV:
         return hv.Overlay([])
     rec_FOV_shape = hv.Box(0, 0, tuple(FOV[::-1])).opts(color='yellow')
@@ -1187,7 +1324,8 @@ def FOV_box_func(show_FOV, is_radial, FOV, matrix, freq_dir, phase_dir, k_read_a
     return acq_FOV_shape * rec_FOV_shape
 
 
-def image_func(image_type, recon_matrix, FOV, image_array):
+@Graph.node()
+def image(image_type, recon_matrix, FOV, image_array):
     operator = constants.OPERATORS[image_type]
     axes = [(np.arange(recon_matrix[dim]) - (recon_matrix[dim]-1)/2) / recon_matrix[dim] * FOV[dim] for dim in range(2)]
     img = xr.DataArray(

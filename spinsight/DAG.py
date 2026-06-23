@@ -1,6 +1,7 @@
 from graphlib import TopologicalSorter
 import numpy as np
 from functools import partial
+import inspect
 
 
 def equal(a, b):
@@ -74,9 +75,29 @@ class Node:
 
 class Graph:
 
-    def __init__(self, node_specs):
+    node_specs = {}
+    
+    @classmethod
+    def node(cls, action=False):
+        def decorator(func):
+            func_params = [p.name for p in inspect.signature(func).parameters.values()]
+            cls.node_specs[func.__name__] = {
+                'func': func,
+                'parents': [p for p in func_params if p != 'self'],
+                'simulator': 'self' in func_params, #TODO: nicer!
+                'action': action
+            }
+            return func
+        return decorator
+
+    def __init__(self, simulator):
+
+        self.simulator = simulator
+        
+        self.node_specs.update({par: {'params': True} for par in simulator.param if par != 'name' and par not in self.node_specs})
+
         ts = TopologicalSorter()
-        for name, spec in node_specs.items():
+        for name, spec in self.node_specs.items():
             if 'parents' in spec:
                 ts.add(name, *spec['parents'])
             else:
@@ -85,8 +106,8 @@ class Graph:
         self.nodes = {}
         self.action_nodes = []
         for name in list(ts.static_order()):
-            self.nodes[name] = self.make_node(name, node_specs[name])
-            if node_specs[name].get('action', False):
+            self.nodes[name] = self.make_node(name, self.node_specs[name])
+            if self.node_specs[name].get('action', False):
                 self.action_nodes.append(self.nodes[name])
         
         self.flush_actions()
@@ -99,7 +120,9 @@ class Graph:
         parents = [self.nodes[parent] for parent in specs.get('parents', [])]
         func = specs.get('func', None)
         if func is None: # input node
-            func = partial(getattr, specs.get('params'), name)
+            func = partial(getattr, self.simulator, name)
+        elif specs.get('simulator', False): # simulator node (TODO: nicer!)
+            func = partial(func, self.simulator)
         return Node(name, parents=parents, func=func)
 
 
@@ -108,9 +131,6 @@ def print_dependency_chains(source, sink, chain=''):
         if sink.name == source.name:
             print(sink.name, chain)
         return
-    name = sink.func.__name__
-    if name.endswith('_func'):
-        name = name[:-5]
-    chain = f'-> {name} {chain}'
+    chain = f'-> {sink.func.__name__} {chain}'
     for parent in sink.parents:
         print_dependency_chains(source, parent, chain)
