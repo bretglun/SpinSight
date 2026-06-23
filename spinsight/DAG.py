@@ -27,12 +27,11 @@ def equal(a, b):
 
 
 class Node:
-    # TODO: try to make composite of classes with a single responsibility
-    def __init__(self, name, parents=None, func=None, graph=None):
+    
+    def __init__(self, name, parents=None, func=None):
         self.name = name
         self.parents = parents or []
         self.func = func
-        self.graph = graph
 
         self._valid = False
         self._cache = None
@@ -41,9 +40,6 @@ class Node:
         self.children = []
         for parent in self.parents:
             parent.children.append(self)
-        
-        if graph is not None:
-            graph.queue_action(self)
     
     def invalidate(self):
         if not self._valid:
@@ -51,8 +47,6 @@ class Node:
         self._valid = False
         for child in self.children:
             child.invalidate()
-        if self.graph is not None:
-            self.graph.queue_action(self)
 
     @property
     def value(self):
@@ -79,31 +73,25 @@ class Graph:
             else:
                 ts.add(name)
         
-        self.pending_actions = []
-        
         self.nodes = {}
+        self.action_nodes = []
         for name in list(ts.static_order()):
             self.nodes[name] = self.make_node(name, node_specs[name])
+            if node_specs[name].get('action', False):
+                self.action_nodes.append(self.nodes[name])
         
         self.flush_actions()
 
-    def queue_action(self, action_node):
-        if action_node not in self.pending_actions:
-            self.pending_actions.append(action_node)
-
     def flush_actions(self):
-        while self.pending_actions:
-            action_node = self.pending_actions.pop(0)
-            action_node.value
+        for node in self.action_nodes:
+            node.value
 
     def make_node(self, name, specs):
         parents = [self.nodes[parent] for parent in specs.get('parents', [])]
         func = specs.get('func', None)
-        action = specs.get('action', False)
-        graph = self if action else None
         if func is None: # input node
             func = partial(getattr, specs.get('params'), name)
-        return Node(name, parents=parents, func=func, graph=graph)
+        return Node(name, parents=parents, func=func)
 
 
 def print_dependency_chains(source, sink, chain=''):
