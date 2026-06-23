@@ -27,16 +27,20 @@ def equal(a, b):
     return a == b
 
 
+def topological_order(specs):
+    ts = TopologicalSorter()
+    for name, spec in specs.items():
+        ts.add(name, *spec.get('parents', []))
+    return ts.static_order()
+
+
 class Node:
     
-    def __init__(self, name, parents=None, func=None):
+    def __init__(self, name, func=None):
         self.name = name
         self.func = func
         
-        self.parents = []
-        for parent in parents or []:
-            self.attach(parent)
-        
+        self.parents = []        
         self.children = []
 
         self._valid = False # parent nodes may have changed
@@ -76,16 +80,16 @@ class Node:
 class Graph:
 
     node_specs = {}
-    
+
     @classmethod
-    def node(cls, action=False):
+    def node(cls, action=False, simulator=False):
         def decorator(func):
             func_params = [p.name for p in inspect.signature(func).parameters.values()]
             cls.node_specs[func.__name__] = {
                 'func': func,
                 'parents': [p for p in func_params if p != 'self'],
-                'simulator': 'self' in func_params, #TODO: nicer!
-                'action': action
+                'simulator': simulator, # is func a method of MRIsimulator?
+                'action': action # action node to be flushed?
             }
             return func
         return decorator
@@ -94,36 +98,40 @@ class Graph:
 
         self.simulator = simulator
         
-        self.node_specs.update({par: {'params': True} for par in simulator.param if par != 'name' and par not in self.node_specs})
-
-        ts = TopologicalSorter()
-        for name, spec in self.node_specs.items():
-            if 'parents' in spec:
-                ts.add(name, *spec['parents'])
-            else:
-                ts.add(name)
-        
-        self.nodes = {}
-        self.action_nodes = []
-        for name in list(ts.static_order()):
-            self.nodes[name] = self.make_node(name, self.node_specs[name])
-            if self.node_specs[name].get('action', False):
-                self.action_nodes.append(self.nodes[name])
+        specs = self.build_node_specs()
+        self.nodes, self.action_nodes = self.build_nodes(specs)
         
         self.flush_actions()
+    
+    def build_node_specs(self):
+        # get node specs from decorators
+        specs = dict(type(self).node_specs)
+        # add specs for input nodes
+        specs.update({par: {'params': True} for par in self.simulator.param if par != 'name' and par not in specs})
+        return specs
+    
+    def build_nodes(self, specs):
+        nodes, action_nodes = {}, []
+        for name in topological_order(specs):
+            nodes[name] = self.make_node(name, specs[name])
+            for parent in specs[name].get('parents', []):
+                nodes[name].attach(nodes[parent])
+            if specs[name].get('action', False):
+                action_nodes.append(nodes[name])
+        
+        return nodes, action_nodes
+
+    def make_node(self, name, specs):
+        func = specs.get('func', None)
+        if func is None: # input node
+            func = partial(getattr, self.simulator, name)
+        elif specs.get('simulator', False):
+            func = partial(func, self.simulator)
+        return Node(name, func=func)
 
     def flush_actions(self):
         for node in self.action_nodes:
             node.value
-
-    def make_node(self, name, specs):
-        parents = [self.nodes[parent] for parent in specs.get('parents', [])]
-        func = specs.get('func', None)
-        if func is None: # input node
-            func = partial(getattr, self.simulator, name)
-        elif specs.get('simulator', False): # simulator node (TODO: nicer!)
-            func = partial(func, self.simulator)
-        return Node(name, parents=parents, func=func)
 
 
 def print_dependency_chains(source, sink, chain=''):
