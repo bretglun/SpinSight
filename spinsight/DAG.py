@@ -40,7 +40,7 @@ class Node:
         self.name = name
         self.func = func
         
-        self.parents = []        
+        self.parents = []
         self.children = []
 
         self._valid = False # parent nodes may have changed
@@ -95,13 +95,13 @@ class Graph:
         return decorator
 
     def __init__(self, simulator):
-
         self.simulator = simulator
-        
+
         specs = self.build_node_specs()
         self.nodes, self.action_nodes = self.build_nodes(specs)
-        
+
         self.flush_actions()
+        self.add_input_watchers()
     
     def build_node_specs(self):
         # get node specs from decorators
@@ -113,7 +113,7 @@ class Graph:
     def build_nodes(self, specs):
         nodes, action_nodes = {}, []
         for name in topological_order(specs):
-            nodes[name] = self.make_node(name, specs[name])
+            nodes[name] = self.make_node(name, specs[name].get('func', None), specs[name].get('simulator', False))
             for parent in specs[name].get('parents', []):
                 nodes[name].attach(nodes[parent])
             if specs[name].get('action', False):
@@ -121,14 +121,23 @@ class Graph:
         
         return nodes, action_nodes
 
-    def make_node(self, name, specs):
-        func = specs.get('func', None)
+    def make_node(self, name, func, simulator):
         if func is None: # input node
             func = partial(getattr, self.simulator, name)
-        elif specs.get('simulator', False):
+        elif simulator:
             func = partial(func, self.simulator)
         return Node(name, func=func)
-
+    
+    def add_input_watchers(self):
+        for node in self.input_nodes():
+            def on_change(node, graph, event):
+                node.invalidate()
+                graph.flush_actions()
+            self.simulator.param.watch(partial(on_change, node, self), node.name)
+    
+    def input_nodes(self):
+        return [node for node in self.nodes.values() if not node.parents and node.name in self.simulator.param]
+    
     def flush_actions(self):
         for node in self.action_nodes:
             node.value

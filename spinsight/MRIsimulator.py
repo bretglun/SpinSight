@@ -131,14 +131,6 @@ class MRIsimulator(param.Parameterized):
 
         self.graph = Graph(self)
 
-        for node in self.graph.nodes.values():
-            # add watchers for input nodes
-            if node.name in self.param and not node.parents:
-                def on_change(node, graph, event):
-                    node.invalidate()
-                    graph.flush_actions()
-                self.param.watch(partial(on_change, node, self.graph), node.name)
-
         self.set_reference_SNR()
 
         self.derived_params = ['FOV_bandwidth', 'FW_shift', 'SNR', 'name', 'num_shots', 'recon_voxel_F', 'recon_voxel_P', 'reference_SNR', 'relative_SNR', 'scantime', 'spoke_angle', 'voxel_F', 'voxel_P', 'shot_label']
