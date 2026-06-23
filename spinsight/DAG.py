@@ -28,12 +28,11 @@ def equal(a, b):
 
 class Node:
     # TODO: try to make composite of classes with a single responsibility
-    def __init__(self, name, parents=None, func=None, graph=None, params=None):
+    def __init__(self, name, parents=None, func=None, graph=None):
         self.name = name
         self.parents = parents or []
         self.func = func
         self.graph = graph
-        self.params = params
 
         self._valid = False
         self._cache = None
@@ -42,16 +41,9 @@ class Node:
         self.children = []
         for parent in self.parents:
             parent.children.append(self)
-
-        if not parents and params is not None:
-            params.param.watch(self._on_change, name)
         
-        if parents and graph is not None:
+        if graph is not None:
             graph.queue_action(self)
-
-    def _on_change(self, event):
-        self.invalidate()
-        self.graph.flush_actions()
     
     def invalidate(self):
         if not self._valid:
@@ -59,7 +51,7 @@ class Node:
         self._valid = False
         for child in self.children:
             child.invalidate()
-        if self.graph is not None and self.params is None:
+        if self.graph is not None:
             self.graph.queue_action(self)
 
     @property
@@ -108,11 +100,10 @@ class Graph:
         parents = [self.nodes[parent] for parent in specs.get('parents', [])]
         func = specs.get('func', None)
         action = specs.get('action', False)
-        params = specs.get('params', None)
-        graph = self if action or params is not None else None
+        graph = self if action else None
         if func is None: # input node
-            func = partial(getattr, params, name)
-        return Node(name, parents=parents, func=func, graph=graph, params=params)
+            func = partial(getattr, specs.get('params'), name)
+        return Node(name, parents=parents, func=func, graph=graph)
 
 
 def print_dependency_chains(source, sink, chain=''):

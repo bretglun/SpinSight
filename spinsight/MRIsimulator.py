@@ -8,6 +8,7 @@ from spinsight import constants, formatting, phantom, nodes
 from spinsight.DAG import Graph
 from bokeh.models import HoverTool, CustomJS, ColumnDataSource
 import warnings
+from functools import partial
 
 hv.extension('bokeh')
 
@@ -1082,6 +1083,14 @@ class MRIsimulator(param.Parameterized):
         }
 
         self.graph = Graph(node_specs)
+
+        for node in self.graph.nodes.values():
+            # add watchers for input nodes
+            if node.name in self.param and not node.parents:
+                def on_change(node, graph, event):
+                    node.invalidate()
+                    graph.flush_actions()
+                self.param.watch(partial(on_change, node, self.graph), node.name)
 
         self.set_reference_SNR()
 
