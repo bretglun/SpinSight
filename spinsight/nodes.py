@@ -656,7 +656,7 @@ def full_kspace_func(num_blank_lines, is_radial, gridded_kspace, phase_dir, homo
     return full_kspace
 
 
-def full_k_space_matrix_func(full_kspace):
+def full_k_matrix_func(full_kspace):
     return full_kspace.shape
 
 

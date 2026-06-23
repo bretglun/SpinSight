@@ -918,7 +918,7 @@ class MRIsimulator(param.Parameterized):
         }
         
         node_specs['full_k_matrix'] = {
-            'func': nodes.full_k_space_matrix_func, 
+            'func': nodes.full_k_matrix_func, 
             'parents': ['full_kspace']
         }
         
