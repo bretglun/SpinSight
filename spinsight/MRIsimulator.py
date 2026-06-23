@@ -371,14 +371,14 @@ class MRIsimulator(param.Parameterized):
             'parents': ['do_apodize']
         }
 
-        node_specs['phantom'] = {
-            'func': nodes.phantom_func,
+        node_specs['phantom_object'] = {
+            'func': nodes.phantom_object_func,
             'parents': ['object', 'min_voxel_size']
         }
         
         node_specs['tissues'] = {
             'func': nodes.tissues_func,
-            'parents': ['phantom']
+            'parents': ['phantom_object']
         }
 
         node_specs['is_radial'] = {
@@ -648,7 +648,7 @@ class MRIsimulator(param.Parameterized):
 
         node_specs['k_read_axis'] = {
             'func': nodes.k_read_axis_func,
-            'parents': ['freq_dir', 'FOV', 'matrix', 'is_radial', 'phantom', 'radial_FOV_oversampling']
+            'parents': ['freq_dir', 'FOV', 'matrix', 'is_radial', 'phantom_object', 'radial_FOV_oversampling']
         }
         
         node_specs['min_TE'] = {
@@ -834,7 +834,7 @@ class MRIsimulator(param.Parameterized):
         
         node_specs['k_grid_axes'] = {
             'func': nodes.k_grid_axes_func,
-            'parents': ['is_radial', 'k_axes', 'FOV', 'matrix', 'phantom']
+            'parents': ['is_radial', 'k_axes', 'FOV', 'matrix', 'phantom_object']
         }
         
         node_specs['k_samples'] = {
@@ -844,7 +844,7 @@ class MRIsimulator(param.Parameterized):
         
         node_specs['plain_kspace_comps'] = {
             'func': nodes.plain_kspace_comps_func,
-            'parents': ['is_radial', 'phantom', 'k_grid_axes', 'k_samples']
+            'parents': ['is_radial', 'phantom_object', 'k_grid_axes', 'k_samples']
         }
         
         node_specs['thick_kspace_comps'] = {

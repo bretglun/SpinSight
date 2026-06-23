@@ -41,10 +41,10 @@ def crop(arr, shape):
     return arr
 
 
-def resample_kspace_Cartesian(phantom, k_axes, shape=None):
-    kspace = phantom['kspace'].copy()
+def resample_kspace_Cartesian(phantom_object, k_axes, shape=None):
+    kspace = phantom_object['kspace'].copy()
     for dim in range(len(k_axes)):
-        sinc = np.sinc((np.tile(k_axes[dim], (len(phantom['k_axes'][dim]), 1)) - np.tile(phantom['k_axes'][dim][:, np.newaxis], (1, len(k_axes[dim])))) * phantom['support'][dim])
+        sinc = np.sinc((np.tile(k_axes[dim], (len(phantom_object['k_axes'][dim]), 1)) - np.tile(phantom_object['k_axes'][dim][:, np.newaxis], (1, len(k_axes[dim])))) * phantom_object['support'][dim])
         for tissue in kspace:
             kspace[tissue] = np.moveaxis(np.tensordot(kspace[tissue], sinc, axes=(dim, 0)), -1, dim)
     if shape is not None:
@@ -53,13 +53,13 @@ def resample_kspace_Cartesian(phantom, k_axes, shape=None):
     return kspace
 
 
-def resample_kspace(phantom, k_samples):
-    samples = np.array(k_samples * phantom['support'] / phantom['matrix'], dtype='float32')
+def resample_kspace(phantom_object, k_samples):
+    samples = np.array(k_samples * phantom_object['support'] / phantom_object['matrix'], dtype='float32')
     kspace = {}
-    gridder = get_gridder(samples, phantom['matrix'])
-    norm_factor = np.sqrt(4 * np.prod(phantom['matrix'])) # for mrinufft
-    for tissue in phantom['kspace']:
-        kspace[tissue] = ungrid(phantom['kspace'][tissue], gridder=gridder, shape=samples.shape[:-1]) * norm_factor
+    gridder = get_gridder(samples, phantom_object['matrix'])
+    norm_factor = np.sqrt(4 * np.prod(phantom_object['matrix'])) # for mrinufft
+    for tissue in phantom_object['kspace']:
+        kspace[tissue] = ungrid(phantom_object['kspace'][tissue], gridder=gridder, shape=samples.shape[:-1]) * norm_factor
     return kspace
 
 

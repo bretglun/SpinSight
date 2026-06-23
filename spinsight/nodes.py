@@ -156,12 +156,12 @@ def flatten_dicts(list_of_dicts_and_lists):
 ### Node functions ###
 
 
-def phantom_func(object, min_voxel_size):
+def phantom_object_func(object, min_voxel_size):
     return phantom.load(object, min_voxel_size)
 
 
-def tissues_func(phantom):
-    return list(phantom['shapes'].keys())
+def tissues_func(phantom_object):
+    return list(phantom_object['shapes'].keys())
 
 
 def is_radial_func(trajectory):
@@ -398,15 +398,15 @@ def num_measured_lines_func(turbo_factor, EPI_factor, num_shots, is_radial):
     return turbo_factor * EPI_factor * (num_shots if not is_radial else 1)
 
 
-def k_read_axis_func(freq_dir, FOV, matrix, is_radial, fantom, radial_FOV_oversampling):
+def k_read_axis_func(freq_dir, FOV, matrix, is_radial, phantom_object, radial_FOV_oversampling):
     voxel_size = FOV[freq_dir] / matrix[freq_dir]
     if not is_radial:
         num_samples = matrix[freq_dir]
         # at least Nyquist sampling wrt phantom if loaded
-        if FOV[freq_dir] < fantom['support'][freq_dir]:
-            num_samples = int(np.ceil(fantom['support'][freq_dir] / voxel_size))
+        if FOV[freq_dir] < phantom_object['support'][freq_dir]:
+            num_samples = int(np.ceil(phantom_object['support'][freq_dir] / voxel_size))
     else:
-        maxFOV = max(max(fantom['support']), max(FOV))
+        maxFOV = max(max(phantom_object['support']), max(FOV))
         num_samples = int(np.ceil(maxFOV / voxel_size * radial_FOV_oversampling))
     return recon.get_k_axis(num_samples, voxel_size)
 
@@ -484,21 +484,21 @@ def k_samples_func(k_axes, k_angles):
     return np.einsum('ijk,klm->ijml', k_samples, rotmat) # shape=(Nx, Ny, Nangles, 2)
 
 
-def k_grid_axes_func(is_radial, k_axes, FOV, matrix, fantom):
+def k_grid_axes_func(is_radial, k_axes, FOV, matrix, phantom_object):
     if not is_radial:
         return copy.deepcopy(k_axes)
     k_grid_axes = [None, None]
     for dim in range(2):
         voxel_size = FOV[dim] / matrix[dim]
-        matrix_dim = int(np.ceil(max(FOV[dim], fantom['support'][dim]) / voxel_size))
+        matrix_dim = int(np.ceil(max(FOV[dim], phantom_object['support'][dim]) / voxel_size))
         k_grid_axes[dim] = recon.get_k_axis(matrix_dim, voxel_size)
     return k_grid_axes
 
 
-def plain_kspace_comps_func(is_radial, fantom, k_grid_axes, k_samples):
+def plain_kspace_comps_func(is_radial, phantom_object, k_grid_axes, k_samples):
     if not is_radial:
-        return recon.resample_kspace_Cartesian(fantom, k_grid_axes, shape=k_samples.shape[:-1])
-    return recon.resample_kspace(fantom, k_samples)
+        return recon.resample_kspace_Cartesian(phantom_object, k_grid_axes, shape=k_samples.shape[:-1])
+    return recon.resample_kspace(phantom_object, k_samples)
 
 
 def thick_kspace_comps_func(slice_thickness, k_samples, plain_kspace_comps):

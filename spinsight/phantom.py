@@ -203,21 +203,21 @@ def get_kspace(kgrid, shapes, path, matrix, center):
 
 def load(name, min_voxel_size):
     path = Path(__file__).parent.resolve() / 'phantoms' / name
-    phantom = {'name': name, 'path': path}
+    phantom_object = {'name': name, 'path': path}
     for suffix in ['.toml', '.svg']:
         file = Path(path / name).with_suffix(suffix)
         if file.is_file():
-            phantom['file'] = file
-    if 'file' not in phantom:
+            phantom_object['file'] = file
+    if 'file' not in phantom_object:
         raise ValueError(f'Phantom {name}.svg/toml not found at {path}')
-    phantom['shapes'] = load_shapes(phantom['file'])
-    phantom['support'], phantom['center'] = get_support(phantom['shapes'])
-    phantom['matrix'] = tuple(int(fov/min_voxel_size/2)*2+1 for fov in phantom['support']) # assert odd to sample k-space center
+    phantom_object['shapes'] = load_shapes(phantom_object['file'])
+    phantom_object['support'], phantom_object['center'] = get_support(phantom_object['shapes'])
+    phantom_object['matrix'] = tuple(int(fov/min_voxel_size/2)*2+1 for fov in phantom_object['support']) # assert odd to sample k-space center
 
     print(f'Preparing k-space for "{name}" phantom (might take a few minutes on first use)')
-    phantom['k_axes'], kgrid = get_k_axes(phantom['matrix'], phantom['support'])
-    phantom['kspace'] = get_kspace(kgrid, phantom['shapes'], path, phantom['matrix'], phantom['center'])
-    return phantom
+    phantom_object['k_axes'], kgrid = get_k_axes(phantom_object['matrix'], phantom_object['support'])
+    phantom_object['kspace'] = get_kspace(kgrid, phantom_object['shapes'], path, phantom_object['matrix'], phantom_object['center'])
+    return phantom_object
 
 
 def get_phantom_names():
