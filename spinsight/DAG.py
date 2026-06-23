@@ -30,16 +30,22 @@ class Node:
     
     def __init__(self, name, parents=None, func=None):
         self.name = name
-        self.parents = parents or []
         self.func = func
+        
+        self.parents = []
+        for parent in parents or []:
+            self.attach(parent)
+        
+        self.children = []
 
-        self._valid = False
+        self._valid = False # parent nodes may have changed
         self._cache = None
         self.version = 0
-        self.parent_versions = None
-        self.children = []
-        for parent in self.parents:
-            parent.children.append(self)
+        self.parent_versions = ()
+    
+    def attach(self, parent):
+        self.parents.append(parent)
+        parent.children.append(self)
     
     def invalidate(self):
         if not self._valid:
@@ -53,14 +59,17 @@ class Node:
         if not self._valid:
             inputs = [parent.value for parent in self.parents]
             current_versions = tuple(p.version for p in self.parents)
-            if current_versions != self.parent_versions:
-                new = self.func(*inputs)
-                if not equal(self._cache, new):
-                    self.version += 1
-                    self._cache = new
-                self.parent_versions = current_versions if self.parents else None
+            if current_versions != self.parent_versions or not self.parents:
+                self.recompute(inputs)
+                self.parent_versions = current_versions
             self._valid = True
         return self._cache
+    
+    def recompute(self, inputs):
+        new = self.func(*inputs)
+        if not equal(self._cache, new):
+            self.version += 1
+            self._cache = new
 
 
 class Graph:
