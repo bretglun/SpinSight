@@ -1,5 +1,5 @@
 import xarray as xr
-from spinsight import constants, formatting, sequence, recon, phantom
+from spinsight import constants, convert, formatting, sequence, recon, phantom
 from spinsight.DAG import Graph
 from functools import partial
 import numpy as np
@@ -335,7 +335,7 @@ def pixel_bandwidth_bounds(matrix_F, FOV_F, is_gradient_echo, RF_refocusing, tur
     k0_echo_indices = k0_echo_indices_linear_order if reverse_linear_order else k0_echo_indices_reverse_linear_order
     
     pixel_bandwidth_values = []
-    for pixel_bandwidth in constants.PARAM_VALUES['pixel_bandwidth'].values():
+    for pixel_bandwidth in constants.PARAM_VALUES['pixel_bandwidth_param'].values():
         
         read_duration = 1e3 / pixel_bandwidth
         
@@ -401,6 +401,15 @@ def matrix_is_input(parameter_style):
 @Graph.node()
 def voxel_size_is_input(parameter_style):
     return 'VOXEL SIZE' in parameter_style.upper()
+
+
+@Graph.node()
+def pixel_bandwidth(FOV_BW_is_input, FOV_bandwidth, matrix_F, FW_shift_is_input, FW_shift, field_strength, pixel_bandwidth_param):
+    if FOV_BW_is_input:
+        return convert.FOV_BW_to_pixel_BW(FOV_bandwidth, matrix_F)
+    elif FW_shift_is_input:
+        return convert.shift_to_pixel_BW(FW_shift, field_strength)
+    return pixel_bandwidth_param
 
 
 @Graph.node()
