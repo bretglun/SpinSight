@@ -2,6 +2,7 @@ from graphlib import TopologicalSorter
 import numpy as np
 from functools import partial
 import inspect
+from collections import OrderedDict
 
 
 def equal(a, b):
@@ -82,14 +83,14 @@ class Graph:
     node_specs = {}
 
     @classmethod
-    def node(cls, action=False, simulator=False):
+    def node(cls, action_precedence=False, simulator=False):
         def decorator(func):
             func_params = [p.name for p in inspect.signature(func).parameters.values()]
             cls.node_specs[func.__name__] = {
                 'func': func,
                 'parents': [p for p in func_params if p != 'self'],
                 'simulator': simulator, # is func a method of MRIsimulator?
-                'action': action # action node to be flushed?
+                'action_precedence': action_precedence # order for action node to be flushed
             }
             return func
         return decorator
@@ -111,14 +112,16 @@ class Graph:
         return specs
     
     def build_nodes(self, specs):
-        nodes, action_nodes = {}, []
+        nodes, action_nodes = {}, {}
         for name in topological_order(specs):
             nodes[name] = self.make_node(name, specs[name].get('func', None), specs[name].get('simulator', False))
             for parent in specs[name].get('parents', []):
                 nodes[name].attach(nodes[parent])
-            if specs[name].get('action', False):
-                action_nodes.append(nodes[name])
-        
+            if specs[name].get('action_precedence', False):
+                precedence = specs[name].get('action_precedence')
+                if precedence not in action_nodes:
+                    action_nodes[precedence] = []
+                action_nodes[precedence].append(nodes[name])
         return nodes, action_nodes
 
     def make_node(self, name, func, simulator):
@@ -139,8 +142,9 @@ class Graph:
         return [node for node in self.nodes.values() if (node.name in self.simulator.param) and (node.name not in self.simulator.derived_params)]
     
     def flush_actions(self):
-        for node in self.action_nodes:
-            node.value
+        for precedence in sorted(self.action_nodes):
+            for node in self.action_nodes[precedence]:
+                node.value
 
 
 def print_dependency_chains(source, sink, chain=''):
