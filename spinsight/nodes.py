@@ -6,10 +6,12 @@ import numpy as np
 import warnings
 import copy
 import holoviews as hv
+from collections import namedtuple
 
+
+MinMax = namedtuple('MinMax', ['min', 'max'])
 
 ### Helper functions ###
-
 
 def hline(time_dim, amp_dim):
     return hv.HLine(0.0, kdims=[time_dim, amp_dim]).opts(tools=['xwheel_zoom', 'xpan', 'reset'], default_tools=[], active_tools=['xwheel_zoom', 'xpan'])
@@ -316,6 +318,124 @@ def min_refocusing_time(is_gradient_echo, RF_excitation, RF_refocusing_floating,
         slice_select_excitation['risetime_f'] + slice_select_rephaser['dur_f'] + (slice_select_refocusing_floating[0]['risetime_f'])
         )
 
+@Graph.node()
+def pixel_bandwidth_bounds(matrix_F, FOV_F, is_gradient_echo, RF_refocusing, turbo_factor, EPI_factor, TE, RF_excitation, refocusing_time, readtrain_spacing, TR, sequence_start, spoiler, k0_echo_indices_linear_order, k0_echo_indices_reverse_linear_order, reverse_linear_order, read_prephaser, phaser_duration, slice_select_excitation, slice_select_rephaser, max_blip_dur, slice_select_refocusing):
+    readout_area = 1e3 * matrix_F / (FOV_F * constants.GYRO)
+    # min limit imposed by maximum gradient amplitude:
+    min_read_duration = readout_area / constants.MAX_AMP
+
+    first_readtrain_ref = TE if (turbo_factor == 1) else readtrain_spacing
+    last_readtrain_ref = TE if (turbo_factor == 1) else readtrain_spacing * turbo_factor
+    last_read_end = TR + sequence_start - spoiler['dur_f']
+    max_dur_ref_to_read_end = last_read_end - last_readtrain_ref
+    
+    slice_select_rewind_dur = slice_select_excitation['risetime_f'] + slice_select_rephaser['dur_f'] if is_gradient_echo else slice_select_refocusing[0]['risetime_f']
+
+    k0_echo_indices = k0_echo_indices_linear_order if reverse_linear_order else k0_echo_indices_reverse_linear_order
+    
+    pixel_bandwidth_values = []
+    for pixel_bandwidth in constants.PARAM_VALUES['pixel_bandwidth'].values():
+        
+        read_duration = 1e3 / pixel_bandwidth
+        
+        if read_duration < min_read_duration:
+            continue
+        
+        readout_risetime = readout_area / read_duration / constants.MAX_SLEW
+        readout_gap = max(max_blip_dur, 2 * readout_risetime)
+        
+        for (gr_echo, _) in k0_echo_indices:
+            num_blips_before_ref = gr_echo if (turbo_factor == 1) else (EPI_factor-1) / 2
+            num_blips_after_ref = EPI_factor - 1 - num_blips_before_ref
+            
+            dur_ref_to_read_end = read_duration * (num_blips_after_ref + 1/2) + readout_gap * num_blips_after_ref
+            if dur_ref_to_read_end > max_dur_ref_to_read_end:
+                continue
+            
+            if is_gradient_echo:
+                first_read_start = RF_excitation['dur_f']/2 + max(
+                    read_prephaser['dur_f'] + readout_risetime,
+                    phaser_duration,
+                    slice_select_rewind_dur
+                    )
+            else: # spin echo
+                refocusing_dur = RF_refocusing[0]['dur_f']
+                first_read_start = refocusing_time[0] + refocusing_dur / 2 + max(
+                    readout_risetime,
+                    phaser_duration,
+                    slice_select_rewind_dur
+                    )
+            
+            max_dur_read_start_to_ref = first_readtrain_ref - first_read_start
+            dur_read_start_to_ref = read_duration * (num_blips_before_ref + 1/2) + readout_gap * num_blips_before_ref
+            
+            if dur_read_start_to_ref > max_dur_read_start_to_ref:
+                continue
+
+            pixel_bandwidth_values.append(pixel_bandwidth)
+
+    return MinMax(min(pixel_bandwidth_values, default=np.inf), max(pixel_bandwidth_values, default=-np.inf))
+
+@Graph.node()
+def matrix_F_bounds(max_readout_area, FOV_F, parameter_style, FOV_bandwidth, pixel_bandwidth_bounds):
+    min_matrix_F = [constants.PARAM_VALUES['matrix_F'][0]]
+    max_matrix_F = [constants.PARAM_VALUES['matrix_F'][-1]]
+    max_matrix_F.append(max_readout_area * 1e-3 * FOV_F * constants.GYRO)
+    if parameter_style == 'Matrix and FOV BW': # constant FOV BW puts contraints on matrix_F
+        min_matrix_F.append(FOV_bandwidth * 2e3 / pixel_bandwidth_bounds.max)
+        max_matrix_F.append(FOV_bandwidth * 2e3 / pixel_bandwidth_bounds.min)
+    return MinMax(max(min_matrix_F), min(max_matrix_F))
+
+@Graph.node()
+def matrix_P_bounds(max_phaser_area, FOV_P):
+    min_matrix_P = [constants.PARAM_VALUES['matrix_P'][0]]
+    max_matrix_P = [constants.PARAM_VALUES['matrix_P'][-1]]
+    max_matrix_P.append(int(max_phaser_area * 2e-3 * FOV_P * constants.GYRO) + 1)
+    return MinMax(max(min_matrix_P), min(max_matrix_P))
+
+@Graph.node()
+def recon_matrix_F_bounds(matrix_F):
+    min_recon_matrix_F = [constants.PARAM_VALUES['recon_matrix_F'][0]]
+    max_recon_matrix_F = [constants.PARAM_VALUES['recon_matrix_F'][-1]]
+    min_recon_matrix_F.append(matrix_F)
+    return MinMax(max(min_recon_matrix_F), min(max_recon_matrix_F))
+
+@Graph.node()
+def recon_matrix_P_bounds(matrix_P):
+    min_recon_matrix_P = [constants.PARAM_VALUES['recon_matrix_P'][0]]
+    max_recon_matrix_P = [constants.PARAM_VALUES['recon_matrix_P'][-1]]
+    min_recon_matrix_P.append(matrix_P)
+    return MinMax(max(min_recon_matrix_P), min(max_recon_matrix_P))
+
+@Graph.node()
+def FOV_F_bounds(matrix_F, max_readout_area, parameter_style, voxel_F, matrix_F_bounds, recon_voxel_F, recon_matrix_F_bounds):
+    min_FOV_F = [list(constants.PARAM_VALUES['FOV_F'].values())[0]]
+    max_FOV_F = [list(constants.PARAM_VALUES['FOV_F'].values())[-1]]
+    min_FOV_F.append(1e3 * matrix_F / (max_readout_area * constants.GYRO) if max_readout_area > 0 else np.inf)
+    if parameter_style == 'Voxel size and Fat/water shift': # constant voxel size puts constraints on FOV
+        min_FOV_F.append(voxel_F * matrix_F_bounds.min)
+        min_FOV_F.append(recon_voxel_F * recon_matrix_F_bounds.min)
+        max_FOV_F.append(voxel_F * matrix_F_bounds.max)
+        max_FOV_F.append(recon_voxel_F * recon_matrix_F_bounds.max)
+    return MinMax(max(min_FOV_F), min(max_FOV_F))
+
+@Graph.node()
+def FOV_P_bounds(matrix_P, max_phaser_area, parameter_style, matrix_P_bounds, voxel_P, recon_voxel_P, recon_matrix_P_bounds):
+    min_FOV_P = [list(constants.PARAM_VALUES['FOV_P'].values())[0]]
+    max_FOV_P = [list(constants.PARAM_VALUES['FOV_P'].values())[-1]]
+    min_FOV_P.append((matrix_P - 1) / (max_phaser_area * constants.GYRO * 2e-3))
+    if parameter_style == 'Voxel size and Fat/water shift': # constant voxel size puts constraints on FOV
+        min_FOV_P.append(voxel_P * matrix_P_bounds.min)
+        min_FOV_P.append(recon_voxel_P * recon_matrix_P_bounds.min)
+        max_FOV_P.append(voxel_P * matrix_P_bounds.max)
+        max_FOV_P.append(recon_voxel_P * recon_matrix_P_bounds.max)
+    return MinMax(max(min_FOV_P), min(max_FOV_P))
+
+@Graph.node()
+def voxel_F_bounds(FOV_F, matrix_F_bounds):
+    min_voxel_F = [FOV_F / matrix_F_bounds.max]
+    max_voxel_F = [FOV_F / matrix_F_bounds.min]
+    return MinMax(max(min_voxel_F), min(max_voxel_F))
 
 @Graph.node()
 def min_RF_to_readtrain_center(is_gradient_echo, RF_excitation, read_prephaser_floating, slice_select_excitation, slice_select_rephaser, RF_refocusing_floating, slice_select_refocusing_floating, gre_echo_train_dur, readout_risetime, phaser_duration):

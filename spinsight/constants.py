@@ -46,6 +46,8 @@ TRAJECTORIES = ['Cartesian', 'Radial', 'PROPELLER']
 
 OPERATORS = {'Magnitude': np.abs, 'Phase': np.angle, 'Real': np.real, 'Imaginary': np.imag}
 
+PARAMETER_STYLES = ['Matrix and Pixel BW', 'Voxel size and Fat/water shift', 'Matrix and FOV BW']
+
 PARAM_VALUES = {
     'TR': {tr + ' msec': float(tr) for tr in [formatting.format_float(tr, 2) for tr in 10.**np.linspace(0, 4, 500)]},
     'TE': {te + ' msec': float(te) for te in [formatting.format_float(te, 2) for te in 10.**np.linspace(0, 3, 500)]},

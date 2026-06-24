@@ -129,16 +129,16 @@ class MRIsimulator(param.Parameterized):
         hv.opts.defaults(hv.opts.Curve(line_width=5, line_color=constants.BOARD_COLORS['ADC']))
         hv.opts.defaults(hv.opts.Points(line_color=None, color=constants.BOARD_COLORS['ADC'], size=15))
 
+        self.derived_params = {'FOV_bandwidth', 'FW_shift', 'SNR', 'name', 'num_shots', 'recon_voxel_F', 'recon_voxel_P', 'reference_SNR', 'relative_SNR', 'scantime', 'spoke_angle', 'voxel_F', 'voxel_P', 'shot_label'}
+
         self.graph = Graph(self)
 
         self.set_reference_SNR()
 
-        self.derived_params = ['FOV_bandwidth', 'FW_shift', 'SNR', 'name', 'num_shots', 'recon_voxel_F', 'recon_voxel_P', 'reference_SNR', 'relative_SNR', 'scantime', 'spoke_angle', 'voxel_F', 'voxel_P', 'shot_label']
-
     def init_bounds(self):
         self.param.object.objects = phantom.get_phantom_names()
         self.param.field_strength.objects=[1.5, 3.0]
-        self.param.parameter_style.objects=['Matrix and Pixel BW', 'Voxel_size and Fat/water shift', 'Matrix and FOV BW']
+        self.param.parameter_style.objects=constants.PARAMETER_STYLES
         self.param.frequency_direction.objects=constants.DIRECTIONS.keys()
         self.param.trajectory.objects=constants.TRAJECTORIES[:2]
         self.param.radial_factor.bounds=(0.1, 4.)
@@ -205,95 +205,35 @@ class MRIsimulator(param.Parameterized):
             return self.handle_outbound(par.name)
         par.bounds = (minval, maxval)
 
-    def _watch_FOV_F(self):
-        with param.parameterized.batch_call_watchers(self):
-            if self.parameter_style=='Voxel_size and Fat/water shift' or self.is_radial:
-                self.set_closest(self.param.matrix_F, self.FOV_F/self.voxel_F)
-                self.set_closest(self.param.recon_matrix_F, self.FOV_F/self.recon_voxel_F)
-            self.update_FOV_bandwidth_objects()
-            self.update_voxel_F_objects()
-            self.update_recon_voxel_F_objects()
-            self.set_closest(self.param.voxel_F, self.FOV_F/self.matrix_F)
-            self.set_closest(self.param.recon_voxel_F, self.FOV_F/self.recon_matrix_F)
-            self.param.trigger('voxel_F', 'recon_voxel_F')
-
-    def _watch_FOV_P(self):
-        with param.parameterized.batch_call_watchers(self):
-            if self.parameter_style=='Voxel_size and Fat/water shift' or self.is_radial:
-                self.set_closest(self.param.matrix_P, self.FOV_P/self.voxel_P)
-                self.set_closest(self.param.recon_matrix_P, self.FOV_P/self.recon_voxel_P)
-            self.update_voxel_P_objects()
-            self.update_recon_voxel_P_objects()
-            self.set_closest(self.param.voxel_P, self.FOV_P/self.matrix_P)
-            self.set_closest(self.param.recon_voxel_P, self.FOV_P/self.recon_matrix_P)
-            self.param.trigger('voxel_P', 'recon_voxel_P')
-
-    def _watch_matrix_F(self):
-        with param.parameterized.batch_call_watchers(self):
-            self.update_FOV_bandwidth_objects()
-            if self.parameter_style == 'Matrix and FOV BW':
-                self.set_closest(self.param.pixel_bandwidth, FOV_BW_to_pixel_BW(self.FOV_bandwidth, self.matrix_F))
-            else:
-                self.set_closest(self.param.FOV_bandwidth, pixel_BW_to_FOV_BW(self.pixel_bandwidth, self.matrix_F))
-                self.param.trigger('FOV_bandwidth')
-            self.update_voxel_F_objects()
-            self.set_closest(self.param.voxel_F, self.FOV_F / self.matrix_F)
-            self.update_recon_voxel_F_objects()
-            self.set_closest(self.param.recon_matrix_F, self.matrix_F * self.rec_acq_ratio_F)
-            self.param.trigger('voxel_F', 'recon_voxel_F')
-            if self.is_radial:
-                self.set_closest(self.param.matrix_P, self.matrix_F * self.FOV_P / self.FOV_F)
-
-    def _watch_matrix_P(self):
-        with param.parameterized.batch_call_watchers(self):
-            self.update_voxel_P_objects()
-            self.set_closest(self.param.voxel_P, self.FOV_P / self.matrix_P)
-            self.update_recon_voxel_P_objects()
-            self.set_closest(self.param.recon_matrix_P, self.matrix_P * self.rec_acq_ratio_P)
-            self.param.trigger('voxel_P', 'recon_voxel_P')
-            if self.is_radial:
-                self.set_closest(self.param.matrix_F, self.matrix_P * self.FOV_F / self.FOV_P)
-
+    @param.depends('voxel_F', watch=True)
     def _watch_voxel_F(self):
         if self.param.voxel_F.precedence > 0:
-            self.set_closest(self.param.matrix_F, self.FOV_F / self.voxel_F)
+            self.set_param(self.param.matrix_F, value=self.FOV_F / self.voxel_F)
 
+    @param.depends('voxel_P', watch=True)
     def _watch_voxel_P(self):
         if self.param.voxel_P.precedence > 0:
-            self.set_closest(self.param.matrix_P, self.FOV_P / self.voxel_P)
+            self.set_param(self.param.matrix_P, value=self.FOV_P / self.voxel_P)
 
+    @param.depends('recon_voxel_F', watch=True)
     def _watch_recon_voxel_F(self):
         if self.param.recon_voxel_F.precedence > 0:
-            self.set_closest(self.param.recon_matrix_F, self.FOV_F / self.recon_voxel_F)
+            self.set_param(self.param.recon_matrix_F, value=self.FOV_F / self.recon_voxel_F)
 
+    @param.depends('recon_voxel_P', watch=True)
     def _watch_recon_voxel_P(self):
         if self.param.recon_voxel_P.precedence > 0:
-            self.set_closest(self.param.recon_matrix_P, self.FOV_P / self.recon_voxel_P)
+            self.set_param(self.param.recon_matrix_P, value=self.FOV_P / self.recon_voxel_P)
 
-    def _watch_field_strength(self):
-        with param.parameterized.batch_call_watchers(self):
-            self.update_FW_shift_objects()
-            self.set_closest(self.param.FW_shift, pixel_BW_to_shift(self.pixel_bandwidth, self.field_strength))
-            self.param.trigger('FW_shift')
-
-    def _watch_pixel_bandwidth(self):
-        with param.parameterized.batch_call_watchers(self):
-            self.set_closest(self.param.FW_shift, pixel_BW_to_shift(self.pixel_bandwidth, self.field_strength))
-            self.set_closest(self.param.FOV_bandwidth, pixel_BW_to_FOV_BW(self.pixel_bandwidth, self.matrix_F))
-
+    @param.depends('FW_shift', watch=True)
     def _watch_FW_shift(self):
         if self.param.FW_shift.precedence > 0:
-            self.set_closest(self.param.pixel_bandwidth, shift_to_pixel_BW(self.FW_shift, self.field_strength))
+            self.set_param(self.param.pixel_bandwidth, value=shift_to_pixel_BW(self.FW_shift, self.field_strength))
 
+    @param.depends('FOV_bandwidth', watch=True)
     def _watch_FOV_bandwidth(self):
         if self.param.FOV_bandwidth.precedence > 0:
-            self.set_closest(self.param.pixel_bandwidth, FOV_BW_to_pixel_BW(self.FOV_bandwidth, self.matrix_F))
-
-    def _watch_recon_matrix_F(self):
-        self.set_closest(self.param.recon_voxel_F, self.FOV_F / self.recon_matrix_F)
-
-    def _watch_recon_matrix_P(self):
-        self.set_closest(self.param.recon_voxel_P, self.FOV_P / self.recon_matrix_P)
+            self.set_param(self.param.pixel_bandwidth, value=FOV_BW_to_pixel_BW(self.FOV_bandwidth, self.matrix_F))
 
     def set_visibility(self, par_name, visible):
         precedence = abs(self.param[par_name].precedence)
@@ -414,135 +354,73 @@ class MRIsimulator(param.Parameterized):
         self.param.trajectory.objects = [t for t in constants.TRAJECTORIES if t != invalid]
 
     @Graph.node(action=True, simulator=True)
-    def set_pixel_bandwidth_bounds(self, matrix_F, FOV_F, is_gradient_echo, RF_refocusing, turbo_factor, EPI_factor, TE, RF_excitation, refocusing_time, readtrain_spacing, TR, sequence_start, spoiler, k0_echo_indices_linear_order, k0_echo_indices_reverse_linear_order, reverse_linear_order, read_prephaser, phaser_duration, slice_select_excitation, slice_select_rephaser, max_blip_dur, slice_select_refocusing):
-        readout_area = 1e3 * matrix_F / (FOV_F * constants.GYRO)
-        # min limit imposed by maximum gradient amplitude:
-        min_read_duration = readout_area / constants.MAX_AMP
-
-        first_readtrain_ref = TE if (turbo_factor == 1) else readtrain_spacing
-        last_readtrain_ref = TE if (turbo_factor == 1) else readtrain_spacing * turbo_factor
-        last_read_end = TR + sequence_start - spoiler['dur_f']
-        max_dur_ref_to_read_end = last_read_end - last_readtrain_ref
-        
-        slice_select_rewind_dur = slice_select_excitation['risetime_f'] + slice_select_rephaser['dur_f'] if is_gradient_echo else slice_select_refocusing[0]['risetime_f']
-
-        k0_echo_indices = k0_echo_indices_linear_order if reverse_linear_order else k0_echo_indices_reverse_linear_order
-        
-        pixel_bandwidth_values = []
-        for pixel_bandwidth in constants.PARAM_VALUES['pixel_bandwidth'].values():
-            
-            read_duration = 1e3 / pixel_bandwidth
-            
-            if read_duration < min_read_duration:
-                continue
-            
-            readout_risetime = readout_area / read_duration / constants.MAX_SLEW
-            readout_gap = max(max_blip_dur, 2 * readout_risetime)
-            
-            for (gr_echo, _) in k0_echo_indices:
-                num_blips_before_ref = gr_echo if (turbo_factor == 1) else (EPI_factor-1) / 2
-                num_blips_after_ref = EPI_factor - 1 - num_blips_before_ref
-                
-                dur_ref_to_read_end = read_duration * (num_blips_after_ref + 1/2) + readout_gap * num_blips_after_ref
-                if dur_ref_to_read_end > max_dur_ref_to_read_end:
-                    continue
-                
-                if is_gradient_echo:
-                    first_read_start = RF_excitation['dur_f']/2 + max(
-                        read_prephaser['dur_f'] + readout_risetime,
-                        phaser_duration,
-                        slice_select_rewind_dur
-                        )
-                else: # spin echo
-                    refocusing_dur = RF_refocusing[0]['dur_f']
-                    first_read_start = refocusing_time[0] + refocusing_dur / 2 + max(
-                        readout_risetime,
-                        phaser_duration,
-                        slice_select_rewind_dur
-                        )
-                
-                max_dur_read_start_to_ref = first_readtrain_ref - first_read_start
-                dur_read_start_to_ref = read_duration * (num_blips_before_ref + 1/2) + readout_gap * num_blips_before_ref
-                
-                if dur_read_start_to_ref > max_dur_read_start_to_ref:
-                    continue
-
-                pixel_bandwidth_values.append(pixel_bandwidth)
-
-        min_pixel_bandwidth = min(pixel_bandwidth_values, default=np.inf)
-        max_pixel_bandwidth = max(pixel_bandwidth_values, default=-np.inf)
-        self.set_param_bounds(self.param.pixel_bandwidth, minval=min_pixel_bandwidth, maxval=max_pixel_bandwidth)
+    def set_pixel_bandwidth_bounds(self, parameter_style, pixel_bandwidth_bounds):
+        if parameter_style == 'Matrix and Pixel BW':
+            self.set_param_bounds(self.param.pixel_bandwidth, minval=pixel_bandwidth_bounds.min, maxval=pixel_bandwidth_bounds.max)
 
     @Graph.node(action=True, simulator=True)
-    def set_matrix_F_bounds(self, max_readout_area, FOV_F, parameter_style, FOV_bandwidth):
-        min_matrix_F = []
-        max_matrix_F = [max_readout_area * 1e-3 * FOV_F * constants.GYRO]
+    def set_FOV_bandwidth_objects(self, parameter_style, pixel_bandwidth_bounds, matrix_F):
         if parameter_style == 'Matrix and FOV BW':
-            # TODO: this could be solved better
-            min_matrix_F.append(FOV_bandwidth / list(self.param.pixel_bandwidth.objects.values())[-1])
-            max_matrix_F.append(FOV_bandwidth / list(self.param.pixel_bandwidth.objects.values())[0])
-        self.set_param_bounds(self.param.matrix_F, minval=min_matrix_F, maxval=max_matrix_F)
+            pixel_bandwidth_values = [v for v in constants.PARAM_VALUES['pixel_bandwidth'].values() if pixel_bandwidth_bounds.min <= v <= pixel_bandwidth_bounds.max]
+            self.param.FOV_bandwidth.objects = {f'±{formatting.format_float(bw, 3)} kHz': bw for bw in [pixel_BW_to_FOV_BW(pBW, matrix_F) for pBW in pixel_bandwidth_values]}
+    
+    @Graph.node(action=True, simulator=True)
+    def set_FW_shift_objects(self, parameter_style, pixel_bandwidth_bounds, field_strength):
+        if parameter_style == 'Voxel size and Fat/water shift':
+            pixel_bandwidth_values = [v for v in constants.PARAM_VALUES['pixel_bandwidth'].values() if pixel_bandwidth_bounds.min <= v <= pixel_bandwidth_bounds.max]
+            self.param.FW_shift.objects = {f'{formatting.format_float(shift, 2)} pixels': shift for shift in [pixel_BW_to_shift(pBW, field_strength) for pBW in pixel_bandwidth_values[::-1]]}
 
     @Graph.node(action=True, simulator=True)
-    def set_matrix_P_bounds(self, max_phaser_area, FOV_P):
-        max_matrix_P = int(max_phaser_area * 2e-3 * FOV_P * constants.GYRO) + 1
-        self.set_param_bounds(self.param.matrix_P, maxval=max_matrix_P)
+    def set_matrix_F_bounds(self, parameter_style, matrix_F_bounds):
+        if 'Matrix' in parameter_style:
+            self.set_param_bounds(self.param.matrix_F, minval=matrix_F_bounds.min, maxval=matrix_F_bounds.max)
 
     @Graph.node(action=True, simulator=True)
-    def set_recon_matrix_F_bounds(self, matrix_F):
-        self.set_param_bounds(self.param['recon_matrix_F'], minval=matrix_F)
+    def set_matrix_P_bounds(self, parameter_style, matrix_P_bounds):
+        if 'Matrix' in parameter_style:
+            self.set_param_bounds(self.param.matrix_P, minval=matrix_P_bounds.min, maxval=matrix_P_bounds.max)
 
     @Graph.node(action=True, simulator=True)
-    def set_recon_matrix_P_bounds(self, matrix_P):
-        self.set_param_bounds(self.param['recon_matrix_P'], minval=matrix_P)
+    def set_recon_matrix_F_bounds(self, parameter_style, recon_matrix_F_bounds):
+        if 'Matrix' in parameter_style:
+            self.set_param_bounds(self.param['recon_matrix_F'], minval=recon_matrix_F_bounds.min, maxval=recon_matrix_F_bounds.max)
 
     @Graph.node(action=True, simulator=True)
-    def set_FOV_F_bounds(self, matrix_F, max_readout_area, parameter_style, voxel_F, recon_voxel_F):
-        min_FOV = [1e3 * matrix_F / (max_readout_area * constants.GYRO) if max_readout_area > 0 else np.inf]
-        max_FOV = []
-        if parameter_style == 'Voxel_size and Fat/water shift':
-            # TODO: this could be solved better
-            min_FOV.append(voxel_F * self.param.matrix_F.objects[0])
-            min_FOV.append(recon_voxel_F * self.param.recon_matrix_F.objects[0])
-            max_FOV.append(voxel_F * self.param.matrix_F.objects[-1])
-            max_FOV.append(recon_voxel_F * self.param.recon_matrix_F.objects[-1])
-        self.set_param_bounds(self.param.FOV_F, minval=min_FOV, maxval=max_FOV)
+    def set_recon_matrix_P_bounds(self, parameter_style, recon_matrix_P_bounds):
+        if 'Matrix' in parameter_style:
+            self.set_param_bounds(self.param['recon_matrix_F'], minval=recon_matrix_P_bounds.min, maxval=recon_matrix_P_bounds.max)
 
     @Graph.node(action=True, simulator=True)
-    def set_FOV_P_bounds(self, matrix_P, max_phaser_area, parameter_style, voxel_P, recon_voxel_P):
-        min_FOV = [(matrix_P - 1) / (max_phaser_area * constants.GYRO * 2e-3)]
-        max_FOV = []
-        if parameter_style == 'Voxel_size and Fat/water shift':
-            # TODO: this could be solved better
-            min_FOV.append(voxel_P * self.param.matrix_P.objects[0])
-            min_FOV.append(recon_voxel_P * self.param.recon_matrix_P.objects[0])
-            max_FOV.append(voxel_P * self.param.matrix_P.objects[-1])
-            max_FOV.append(recon_voxel_P * self.param.recon_matrix_P.objects[-1])
-        self.set_param_bounds(self.param.FOV_P, minval=min_FOV, maxval=max_FOV)
+    def set_FOV_F_bounds(self, FOV_F_bounds):
+        self.set_param_bounds(self.param.FOV_F, minval=FOV_F_bounds.min, maxval=FOV_F_bounds.max)
 
     @Graph.node(action=True, simulator=True)
-    def set_FW_shift_objects(self, field_strength):
-        self.param.FW_shift.objects = {f'{formatting.format_float(shift, 2)} pixels': shift for shift in [pixel_BW_to_shift(pBW, field_strength) for pBW in list(self.param.pixel_bandwidth.objects.values())[::-1]]}
+    def set_FOV_P_bounds(self, FOV_P_bounds):
+        self.set_param_bounds(self.param.FOV_P, minval=FOV_P_bounds.min, maxval=FOV_P_bounds.max)
 
     @Graph.node(action=True, simulator=True)
-    def set_FOV_bandwidth_objects(self, matrix_F):
-        self.param.FOV_bandwidth.objects = {f'±{formatting.format_float(bw, 3)} kHz': bw for bw in [pixel_BW_to_FOV_BW(pBW, matrix_F) for pBW in self.param.pixel_bandwidth.objects.values()]}
+    def set_voxel_F_objects(self, parameter_style, FOV_F, matrix_F_bounds):
+        if 'Voxel' in parameter_style:
+            values = [FOV_F / matrix for matrix in constants.PARAM_VALUES['matrix_F'][::-1] if matrix_F_bounds.min <= matrix <= matrix_F_bounds.max]
+            self.param.voxel_F.objects = {f'{formatting.format_float(voxel, 3)} mm': voxel for voxel in values}
 
     @Graph.node(action=True, simulator=True)
-    def set_voxel_F_objects(self, FOV_F):
-        self.param.voxel_F.objects = {f'{formatting.format_float(voxel, 3)} mm': voxel for voxel in [FOV_F / matrix for matrix in self.param.matrix_F.objects[::-1]]}
+    def set_voxel_P_objects(self, parameter_style, FOV_P, matrix_P_bounds):
+        if 'Voxel' in parameter_style:
+            values = [FOV_P / matrix for matrix in constants.PARAM_VALUES['matrix_P'][::-1] if matrix_P_bounds.min <= matrix <= matrix_P_bounds.max]
+            self.param.voxel_P.objects = {f'{formatting.format_float(voxel, 3)} mm': voxel for voxel in values}
 
     @Graph.node(action=True, simulator=True)
-    def set_voxel_P_objects(self, FOV_P):
-        self.param.voxel_P.objects = {f'{formatting.format_float(voxel, 3)} mm': voxel for voxel in [FOV_P / matrix for matrix in self.param.matrix_P.objects[::-1]]}
+    def set_recon_voxel_F_objects(self, parameter_style, FOV_F, recon_matrix_F_bounds):
+        if 'Voxel' in parameter_style:
+            values = [FOV_F / matrix for matrix in constants.PARAM_VALUES['matrix_F'][::-1] if recon_matrix_F_bounds.min <= matrix <= recon_matrix_F_bounds.max]
+            self.param.recon_voxel_F.objects = {f'{formatting.format_float(voxel, 3)} mm': voxel for voxel in values}
 
     @Graph.node(action=True, simulator=True)
-    def set_recon_voxel_F_objects(self, FOV_F):
-        self.param.recon_voxel_F.objects = {f'{formatting.format_float(voxel, 3)} mm': voxel for voxel in [FOV_F / matrix for matrix in self.param.recon_matrix_F.objects[::-1]]}
-
-    @Graph.node(action=True, simulator=True)
-    def set_recon_voxel_P_objects(self, FOV_P):
-        self.param.recon_voxel_P.objects = {f'{formatting.format_float(voxel, 3)} mm': voxel for voxel in [FOV_P / matrix for matrix in self.param.recon_matrix_P.objects[::-1]]}
+    def set_recon_voxel_P_objects(self, parameter_style, FOV_P, recon_matrix_P_bounds):
+        if 'Voxel' in parameter_style:
+            values = [FOV_P / matrix for matrix in constants.PARAM_VALUES['matrix_P'][::-1] if recon_matrix_P_bounds.min <= matrix <= recon_matrix_P_bounds.max]
+            self.param.recon_voxel_P.objects = {f'{formatting.format_float(voxel, 3)} mm': voxel for voxel in values}
 
     @Graph.node(action=True, simulator=True)
     def set_slice_thickness_bounds(self, RF_excitation, is_gradient_echo, RF_refocusing, sequence_type, RF_inversion, TR, spoiler, sampling_windows):
@@ -614,11 +492,11 @@ class MRIsimulator(param.Parameterized):
     def set_parameter_style_visibility(self, parameter_style):
         self.set_visibility('pixel_bandwidth', parameter_style == 'Matrix and Pixel BW')
         self.set_visibility('FOV_bandwidth', parameter_style == 'Matrix and FOV BW')
-        self.set_visibility('FW_shift', parameter_style == 'Voxel_size and Fat/water shift')
+        self.set_visibility('FW_shift', parameter_style == 'Voxel size and Fat/water shift')
         for voxel_size_param in ['voxel_F', 'voxel_P', 'recon_voxel_F', 'recon_voxel_P']:
-            self.set_visibility(voxel_size_param, parameter_style == 'Voxel_size and Fat/water shift')
+            self.set_visibility(voxel_size_param, parameter_style == 'Voxel size and Fat/water shift')
         for matrix_param in ['matrix_F', 'matrix_P']:
-            self.set_visibility(matrix_param, parameter_style != 'Voxel_size and Fat/water shift')
+            self.set_visibility(matrix_param, parameter_style != 'Voxel size and Fat/water shift')
 
     @Graph.node(action=True, simulator=True)
     def set_partial_Fourier_visibility(self, is_radial):
