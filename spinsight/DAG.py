@@ -106,8 +106,8 @@ class Graph:
     def build_node_specs(self):
         # get node specs from decorators
         specs = dict(type(self).node_specs)
-        # add specs for input nodes
-        specs.update({par: {'params': True} for par in self.simulator.param if par != 'name' and par not in specs})
+        # add specs for remaining simulator param nodes
+        specs.update({par: {} for par in self.simulator.param if par != 'name' and par not in specs})
         return specs
     
     def build_nodes(self, specs):
