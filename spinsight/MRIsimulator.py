@@ -386,38 +386,38 @@ class MRIsimulator(param.Parameterized):
         self.param.trajectory.objects = [t for t in constants.TRAJECTORIES if t != invalid]
 
     @Graph.node(action_precedence=1, simulator=True)
-    def set_pixel_bandwidth_bounds(self, parameter_style, pixel_bandwidth_bounds):
-        if parameter_style == 'Matrix and Pixel BW':
+    def set_pixel_bandwidth_bounds(self, pixel_BW_is_input, pixel_bandwidth_bounds):
+        if pixel_BW_is_input:
             self.set_param_bounds(self.param.pixel_bandwidth, minval=pixel_bandwidth_bounds.min, maxval=pixel_bandwidth_bounds.max)
 
     @Graph.node(action_precedence=1, simulator=True)
-    def set_FOV_bandwidth_bounds(self, parameter_style, pixel_bandwidth_bounds, matrix_F):
-        if parameter_style == 'Matrix and FOV BW':
+    def set_FOV_bandwidth_bounds(self, FOV_BW_is_input, pixel_bandwidth_bounds, matrix_F):
+        if FOV_BW_is_input:
             self.set_param_bounds(self.param.FOV_bandwidth, minval=pixel_BW_to_FOV_BW(pixel_bandwidth_bounds.min, matrix_F), maxval=pixel_BW_to_FOV_BW(pixel_bandwidth_bounds.max, matrix_F))
     
     @Graph.node(action_precedence=1, simulator=True)
-    def set_FW_shift_bounds(self, parameter_style, pixel_bandwidth_bounds, field_strength):
-        if parameter_style == 'Voxel size and Fat/water shift':
+    def set_FW_shift_bounds(self, FW_shift_is_input, pixel_bandwidth_bounds, field_strength):
+        if FW_shift_is_input:
             self.set_param_bounds(self.param.FW_shift, minval=pixel_BW_to_shift(pixel_bandwidth_bounds.max, field_strength), maxval=pixel_BW_to_shift(pixel_bandwidth_bounds.min, field_strength))
 
     @Graph.node(action_precedence=1, simulator=True)
-    def set_matrix_F_bounds(self, parameter_style, matrix_F_bounds):
-        if 'Matrix' in parameter_style:
+    def set_matrix_F_bounds(self, matrix_is_input, matrix_F_bounds):
+        if matrix_is_input:
             self.set_param_bounds(self.param.matrix_F, minval=matrix_F_bounds.min, maxval=matrix_F_bounds.max)
 
     @Graph.node(action_precedence=1, simulator=True)
-    def set_matrix_P_bounds(self, parameter_style, matrix_P_bounds):
-        if 'Matrix' in parameter_style:
+    def set_matrix_P_bounds(self, matrix_is_input, matrix_P_bounds):
+        if matrix_is_input:
             self.set_param_bounds(self.param.matrix_P, minval=matrix_P_bounds.min, maxval=matrix_P_bounds.max)
 
     @Graph.node(action_precedence=1, simulator=True)
-    def set_recon_matrix_F_bounds(self, parameter_style, recon_matrix_F_bounds):
-        if 'Matrix' in parameter_style:
+    def set_recon_matrix_F_bounds(self, matrix_is_input, recon_matrix_F_bounds):
+        if matrix_is_input:
             self.set_param_bounds(self.param['recon_matrix_F'], minval=recon_matrix_F_bounds.min, maxval=recon_matrix_F_bounds.max)
 
     @Graph.node(action_precedence=1, simulator=True)
-    def set_recon_matrix_P_bounds(self, parameter_style, recon_matrix_P_bounds):
-        if 'Matrix' in parameter_style:
+    def set_recon_matrix_P_bounds(self, matrix_is_input, recon_matrix_P_bounds):
+        if matrix_is_input:
             self.set_param_bounds(self.param['recon_matrix_P'], minval=recon_matrix_P_bounds.min, maxval=recon_matrix_P_bounds.max)
 
     @Graph.node(action_precedence=1, simulator=True)
@@ -429,23 +429,23 @@ class MRIsimulator(param.Parameterized):
         self.set_param_bounds(self.param.FOV_P, minval=FOV_P_bounds.min, maxval=FOV_P_bounds.max)
 
     @Graph.node(action_precedence=1, simulator=True)
-    def set_voxel_F_bounds(self, parameter_style, FOV_F, matrix_F_bounds):
-        if 'Voxel' in parameter_style:
+    def set_voxel_F_bounds(self, voxel_size_is_input, FOV_F, matrix_F_bounds):
+        if voxel_size_is_input:
             self.set_param_bounds(self.param.voxel_F, minval=FOV_F/matrix_F_bounds.max, maxval=FOV_F/matrix_F_bounds.min)
 
     @Graph.node(action_precedence=1, simulator=True)
-    def set_voxel_P_bounds(self, parameter_style, FOV_P, matrix_P_bounds):
-        if 'Voxel' in parameter_style:
+    def set_voxel_P_bounds(self, voxel_size_is_input, FOV_P, matrix_P_bounds):
+        if voxel_size_is_input:
             self.set_param_bounds(self.param.voxel_P, minval=FOV_P/matrix_P_bounds.max, maxval=FOV_P/matrix_P_bounds.min)
     
     @Graph.node(action_precedence=1, simulator=True)
-    def set_recon_voxel_F_bounds(self, parameter_style, FOV_F, recon_matrix_F_bounds):
-        if 'Voxel' in parameter_style:
+    def set_recon_voxel_F_bounds(self, voxel_size_is_input, FOV_F, recon_matrix_F_bounds):
+        if voxel_size_is_input:
             self.set_param_bounds(self.param.voxel_F, minval=FOV_F/recon_matrix_F_bounds.max, maxval=FOV_F/recon_matrix_F_bounds.min)
 
     @Graph.node(action_precedence=1, simulator=True)
-    def set_recon_voxel_P_bounds(self, parameter_style, FOV_P, recon_matrix_P_bounds):
-        if 'Voxel' in parameter_style:
+    def set_recon_voxel_P_bounds(self, voxel_size_is_input, FOV_P, recon_matrix_P_bounds):
+        if voxel_size_is_input:
             self.set_param_bounds(self.param.voxel_P, minval=FOV_P/recon_matrix_P_bounds.max, maxval=FOV_P/recon_matrix_P_bounds.min)
 
     @Graph.node(action_precedence=1, simulator=True)
@@ -515,14 +515,26 @@ class MRIsimulator(param.Parameterized):
         self.shot = min(self.shot, num_shots)
 
     @Graph.node(action_precedence=1, simulator=True)
-    def set_parameter_style_visibility(self, parameter_style):
-        self.set_visibility('pixel_bandwidth', parameter_style == 'Matrix and Pixel BW')
-        self.set_visibility('FOV_bandwidth', parameter_style == 'Matrix and FOV BW')
-        self.set_visibility('FW_shift', parameter_style == 'Voxel size and Fat/water shift')
+    def set_pixel_bandwidth_visibility(self, pixel_BW_is_input):
+        self.set_visibility('pixel_bandwidth', pixel_BW_is_input)
+    
+    @Graph.node(action_precedence=1, simulator=True)
+    def set_FOV_bandwidth_visibility(self, FOV_BW_is_input):
+        self.set_visibility('FOV_bandwidth', FOV_BW_is_input)
+
+    @Graph.node(action_precedence=1, simulator=True)
+    def set_FW_shift_visibility(self, FW_shift_is_input):
+        self.set_visibility('FW_shift', FW_shift_is_input)
+
+    @Graph.node(action_precedence=1, simulator=True)
+    def set_voxel_size_visibility(self, voxel_size_is_input):
         for voxel_size_param in ['voxel_F', 'voxel_P', 'recon_voxel_F', 'recon_voxel_P']:
-            self.set_visibility(voxel_size_param, parameter_style == 'Voxel size and Fat/water shift')
+            self.set_visibility(voxel_size_param, voxel_size_is_input)
+
+    @Graph.node(action_precedence=1, simulator=True)
+    def set_matrix_visibility(self, matrix_is_input):
         for matrix_param in ['matrix_F', 'matrix_P']:
-            self.set_visibility(matrix_param, parameter_style != 'Voxel size and Fat/water shift')
+            self.set_visibility(matrix_param, matrix_is_input)
 
     @Graph.node(action_precedence=1, simulator=True)
     def set_partial_Fourier_visibility(self, is_radial):
