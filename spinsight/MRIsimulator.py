@@ -162,8 +162,32 @@ class MRIsimulator(param.Parameterized):
         self.init_bounds()
         self.param.update(settings)
 
+    def get_param_values(self, param):
+        if param in constants.PARAM_VALUES:
+            return constants.PARAM_VALUES[param]
+        match(param):
+            case 'FOV_bandwidth':
+                FOV_bandwidth_values = [pixel_BW_to_FOV_BW(pBW, self.matrix_F) for pBW in constants.PARAM_VALUES['pixel_bandwidth'].values()]
+                return {f'±{formatting.format_float(bw, 3)} kHz': bw for bw in FOV_bandwidth_values}
+            case 'FW_shift':
+                FW_shift_values = [pixel_BW_to_shift(pBW, self.field_strength) for pBW in list(constants.PARAM_VALUES['pixel_bandwidth'].values())[::-1]]
+                return {f'{formatting.format_float(shift, 2)} pixels': shift for shift in FW_shift_values}
+            case 'voxel_F':
+                voxel_values = [self.FOV_F / matrix for matrix in constants.PARAM_VALUES['matrix_F'][::-1]]
+                return {f'{formatting.format_float(voxel, 3)} mm': voxel for voxel in voxel_values}
+            case 'voxel_P':
+                voxel_values = [self.FOV_P / matrix for matrix in constants.PARAM_VALUES['matrix_P'][::-1]]
+                return {f'{formatting.format_float(voxel, 3)} mm': voxel for voxel in voxel_values}
+            case 'recon_voxel_F':
+                voxel_values = [self.FOV_F / matrix for matrix in constants.PARAM_VALUES['recon_matrix_F'][::-1]]
+                return {f'{formatting.format_float(voxel, 3)} mm': voxel for voxel in voxel_values}
+            case 'recon_voxel_P':
+                voxel_values = [self.FOV_P / matrix for matrix in constants.PARAM_VALUES['recon_matrix_P'][::-1]]
+                return {f'{formatting.format_float(voxel, 3)} mm': voxel for voxel in voxel_values}
+        raise NotImplementedError(f'Param values not defined for param {param}')
+
     def set_param_discrete_bounds(self, par, curval, minval=None, maxval=None):
-        values = constants.PARAM_VALUES[par.name]
+        values = self.get_param_values(par.name)
         vals = values.values() if isinstance(values, dict) else values
         if minval is None:
             minval = -np.inf
@@ -359,16 +383,14 @@ class MRIsimulator(param.Parameterized):
             self.set_param_bounds(self.param.pixel_bandwidth, minval=pixel_bandwidth_bounds.min, maxval=pixel_bandwidth_bounds.max)
 
     @Graph.node(action=True, simulator=True)
-    def set_FOV_bandwidth_objects(self, parameter_style, pixel_bandwidth_bounds, matrix_F):
+    def set_FOV_bandwidth_bounds(self, parameter_style, pixel_bandwidth_bounds, matrix_F):
         if parameter_style == 'Matrix and FOV BW':
-            pixel_bandwidth_values = [v for v in constants.PARAM_VALUES['pixel_bandwidth'].values() if pixel_bandwidth_bounds.min <= v <= pixel_bandwidth_bounds.max]
-            self.param.FOV_bandwidth.objects = {f'±{formatting.format_float(bw, 3)} kHz': bw for bw in [pixel_BW_to_FOV_BW(pBW, matrix_F) for pBW in pixel_bandwidth_values]}
+            self.set_param_bounds(self.param.FOV_bandwidth, minval=pixel_BW_to_FOV_BW(pixel_bandwidth_bounds.min, matrix_F), maxval=pixel_BW_to_FOV_BW(pixel_bandwidth_bounds.max, matrix_F))
     
     @Graph.node(action=True, simulator=True)
-    def set_FW_shift_objects(self, parameter_style, pixel_bandwidth_bounds, field_strength):
+    def set_FW_shift_bounds(self, parameter_style, pixel_bandwidth_bounds, field_strength):
         if parameter_style == 'Voxel size and Fat/water shift':
-            pixel_bandwidth_values = [v for v in constants.PARAM_VALUES['pixel_bandwidth'].values() if pixel_bandwidth_bounds.min <= v <= pixel_bandwidth_bounds.max]
-            self.param.FW_shift.objects = {f'{formatting.format_float(shift, 2)} pixels': shift for shift in [pixel_BW_to_shift(pBW, field_strength) for pBW in pixel_bandwidth_values[::-1]]}
+            self.set_param_bounds(self.param.FW_shift, minval=pixel_BW_to_shift(pixel_bandwidth_bounds.max, field_strength), maxval=pixel_BW_to_shift(pixel_bandwidth_bounds.min, field_strength))
 
     @Graph.node(action=True, simulator=True)
     def set_matrix_F_bounds(self, parameter_style, matrix_F_bounds):
@@ -388,7 +410,7 @@ class MRIsimulator(param.Parameterized):
     @Graph.node(action=True, simulator=True)
     def set_recon_matrix_P_bounds(self, parameter_style, recon_matrix_P_bounds):
         if 'Matrix' in parameter_style:
-            self.set_param_bounds(self.param['recon_matrix_F'], minval=recon_matrix_P_bounds.min, maxval=recon_matrix_P_bounds.max)
+            self.set_param_bounds(self.param['recon_matrix_P'], minval=recon_matrix_P_bounds.min, maxval=recon_matrix_P_bounds.max)
 
     @Graph.node(action=True, simulator=True)
     def set_FOV_F_bounds(self, FOV_F_bounds):
@@ -399,28 +421,24 @@ class MRIsimulator(param.Parameterized):
         self.set_param_bounds(self.param.FOV_P, minval=FOV_P_bounds.min, maxval=FOV_P_bounds.max)
 
     @Graph.node(action=True, simulator=True)
-    def set_voxel_F_objects(self, parameter_style, FOV_F, matrix_F_bounds):
+    def set_voxel_F_bounds(self, parameter_style, FOV_F, matrix_F_bounds):
         if 'Voxel' in parameter_style:
-            values = [FOV_F / matrix for matrix in constants.PARAM_VALUES['matrix_F'][::-1] if matrix_F_bounds.min <= matrix <= matrix_F_bounds.max]
-            self.param.voxel_F.objects = {f'{formatting.format_float(voxel, 3)} mm': voxel for voxel in values}
+            self.set_param_bounds(self.param.voxel_F, minval=FOV_F/matrix_F_bounds.max, maxval=FOV_F/matrix_F_bounds.min)
 
     @Graph.node(action=True, simulator=True)
-    def set_voxel_P_objects(self, parameter_style, FOV_P, matrix_P_bounds):
+    def set_voxel_P_bounds(self, parameter_style, FOV_P, matrix_P_bounds):
         if 'Voxel' in parameter_style:
-            values = [FOV_P / matrix for matrix in constants.PARAM_VALUES['matrix_P'][::-1] if matrix_P_bounds.min <= matrix <= matrix_P_bounds.max]
-            self.param.voxel_P.objects = {f'{formatting.format_float(voxel, 3)} mm': voxel for voxel in values}
+            self.set_param_bounds(self.param.voxel_P, minval=FOV_P/matrix_P_bounds.max, maxval=FOV_P/matrix_P_bounds.min)
+    
+    @Graph.node(action=True, simulator=True)
+    def set_recon_voxel_F_bounds(self, parameter_style, FOV_F, recon_matrix_F_bounds):
+        if 'Voxel' in parameter_style:
+            self.set_param_bounds(self.param.voxel_F, minval=FOV_F/recon_matrix_F_bounds.max, maxval=FOV_F/recon_matrix_F_bounds.min)
 
     @Graph.node(action=True, simulator=True)
-    def set_recon_voxel_F_objects(self, parameter_style, FOV_F, recon_matrix_F_bounds):
+    def set_recon_voxel_P_bounds(self, parameter_style, FOV_P, recon_matrix_P_bounds):
         if 'Voxel' in parameter_style:
-            values = [FOV_F / matrix for matrix in constants.PARAM_VALUES['matrix_F'][::-1] if recon_matrix_F_bounds.min <= matrix <= recon_matrix_F_bounds.max]
-            self.param.recon_voxel_F.objects = {f'{formatting.format_float(voxel, 3)} mm': voxel for voxel in values}
-
-    @Graph.node(action=True, simulator=True)
-    def set_recon_voxel_P_objects(self, parameter_style, FOV_P, recon_matrix_P_bounds):
-        if 'Voxel' in parameter_style:
-            values = [FOV_P / matrix for matrix in constants.PARAM_VALUES['matrix_P'][::-1] if recon_matrix_P_bounds.min <= matrix <= recon_matrix_P_bounds.max]
-            self.param.recon_voxel_P.objects = {f'{formatting.format_float(voxel, 3)} mm': voxel for voxel in values}
+            self.set_param_bounds(self.param.voxel_P, minval=FOV_P/recon_matrix_P_bounds.max, maxval=FOV_P/recon_matrix_P_bounds.min)
 
     @Graph.node(action=True, simulator=True)
     def set_slice_thickness_bounds(self, RF_excitation, is_gradient_echo, RF_refocusing, sequence_type, RF_inversion, TR, spoiler, sampling_windows):
