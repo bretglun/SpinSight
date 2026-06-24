@@ -9,7 +9,6 @@ from spinsight import nodes # needed to initialize graph node decorators
 from spinsight.DAG import Graph
 from bokeh.models import HoverTool, CustomJS, ColumnDataSource
 import warnings
-from functools import partial
 
 hv.extension('bokeh')
 
@@ -207,6 +206,15 @@ class MRIsimulator(param.Parameterized):
             return self.handle_outbound(par.name)
         
         objects = {k: v for k, v in values.items() if minval <= v <= maxval} if isinstance(values, dict) else [v for v in values if minval <= v <= maxval]
+        vals = objects.values() if isinstance(objects, dict) else objects
+
+        if curval not in vals:
+            if isinstance(objects, dict):
+                cur_label = next((k for k, v in par.names.items() if v==curval), str(curval))
+                objects[cur_label] = curval
+                objects = dict(sorted(objects.items()))
+            else:
+                objects = sorted(objects.append(curval))
         par.objects = objects
 
     def set_param_bounds(self, par, minval=None, maxval=None):
