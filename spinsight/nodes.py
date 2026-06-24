@@ -413,29 +413,66 @@ def pixel_bandwidth(FOV_BW_is_input, FOV_bandwidth, matrix_F, FW_shift_is_input,
 
 
 @Graph.node()
+def matrix_F(voxel_size_is_input, FOV_F, voxel_F, matrix_F_param):
+    if voxel_size_is_input:
+        return int(np.round(FOV_F / voxel_F))
+    return matrix_F_param
+
+
+@Graph.node()
+def matrix_P(voxel_size_is_input, FOV_P, voxel_P, matrix_P_param):
+    if voxel_size_is_input:
+        return int(np.round(FOV_P / voxel_P))
+    return matrix_P_param
+
+
+@Graph.node()
+def recon_matrix_F(voxel_size_is_input, FOV_F, recon_voxel_F, recon_matrix_F_param):
+    if voxel_size_is_input:
+        return int(np.round(FOV_F / recon_voxel_F))
+    return recon_matrix_F_param
+
+
+@Graph.node()
+def recon_matrix_P(voxel_size_is_input, FOV_P, recon_voxel_P, recon_matrix_P_param):
+    if voxel_size_is_input:
+        return int(np.round(FOV_P / recon_voxel_P))
+    return recon_matrix_P_param
+
+
+@Graph.node()
 def matrix_F_bounds(max_readout_area, FOV_F, FOV_BW_is_input, FOV_bandwidth, pixel_bandwidth_bounds):
-    min_matrix_F = []
-    max_matrix_F = [max_readout_area * 1e-3 * FOV_F * constants.GYRO]
+    min_matrix_F = [constants.MIN_MATRIX]
+    max_matrix_F = [constants.MAX_MATRIX]
+    max_matrix_F.append(max_readout_area * 1e-3 * FOV_F * constants.GYRO)
     if FOV_BW_is_input: # constant FOV BW puts contraints on matrix_F
         min_matrix_F.append(FOV_bandwidth * 2e3 / pixel_bandwidth_bounds.max)
         max_matrix_F.append(FOV_bandwidth * 2e3 / pixel_bandwidth_bounds.min)
-    return MinMax(max(min_matrix_F, default=-np.inf), min(max_matrix_F))
+    return MinMax(max(min_matrix_F), min(max_matrix_F))
 
 
 @Graph.node()
 def matrix_P_bounds(max_phaser_area, FOV_P):
-    max_matrix_P = int(max_phaser_area * 2e-3 * FOV_P * constants.GYRO) + 1
-    return MinMax(-np.inf, max_matrix_P)
+    min_matrix_P = [constants.MIN_MATRIX]
+    max_matrix_P = [constants.MAX_MATRIX]
+    max_matrix_P.append(int(max_phaser_area * 2e-3 * FOV_P * constants.GYRO))
+    return MinMax(max(min_matrix_P), min(max_matrix_P))
 
 
 @Graph.node()
 def recon_matrix_F_bounds(matrix_F):
-    return MinMax(matrix_F, np.inf)
+    min_recon_matrix_F = [constants.MIN_RECON_MATRIX]
+    max_recon_matrix_F = [constants.MAX_RECON_MATRIX]
+    min_recon_matrix_F.append(matrix_F)
+    return MinMax(max(min_recon_matrix_F),min(max_recon_matrix_F))
 
 
 @Graph.node()
 def recon_matrix_P_bounds(matrix_P):
-    return MinMax(matrix_P, np.inf)
+    min_recon_matrix_P = [constants.MIN_RECON_MATRIX]
+    max_recon_matrix_P = [constants.MAX_RECON_MATRIX]
+    min_recon_matrix_P.append(matrix_P)
+    return MinMax(max(min_recon_matrix_P),min(max_recon_matrix_P))
 
 
 @Graph.node()

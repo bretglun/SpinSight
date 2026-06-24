@@ -50,6 +50,11 @@ PARAMETER_STYLES = ['Matrix and Pixel BW', 'Voxel size and Fat/water shift', 'Ma
 
 bw_vals = np.exp(np.linspace(np.log(125), np.log(2000), 500))
 
+MIN_MATRIX = 16
+MAX_MATRIX = 600
+MIN_RECON_MATRIX = 16
+MAX_RECON_MATRIX = 1200
+
 PARAM_VALUES = {
     'TR': {tr + ' msec': float(tr) for tr in [formatting.format_float(tr, 2) for tr in 10.**np.linspace(0, 4, 500)]},
     'TE': {te + ' msec': float(te) for te in [formatting.format_float(te, 2) for te in 10.**np.linspace(0, 3, 500)]},
@@ -61,14 +66,14 @@ PARAM_VALUES = {
     'pixel_bandwidth_param': {bw + ' Hz': float(bw) for bw in [formatting.format_float(bw, 3) for bw in bw_vals]},
     'FOV_bandwidth': {f'±{formatting.format_float(fovbw, 3)} kHz': fovbw for fovbw in [convert.pixel_BW_to_FOV_BW(bw, 180) for bw in bw_vals]},
     'FW_shift': {f'{formatting.format_float(shift, 3)} pixels': shift for shift in [convert.pixel_BW_to_shift(pBW, 1.5) for pBW in bw_vals[::-1]]},
-    'matrix_P': list(range(16, 600+1)),
-    'matrix_F': list(range(16, 600+1)),
-    'voxel_P': {f'{formatting.format_float(voxel, 3)} mm': voxel for voxel in [240 / matrix for matrix in list(range(16, 600+1))[::-1]]},
-    'voxel_F': {f'{formatting.format_float(voxel, 3)} mm': voxel for voxel in [240 / matrix for matrix in list(range(16, 600+1))[::-1]]},
-    'recon_matrix_P': list(range(16, 1200+1)),
-    'recon_matrix_F': list(range(16, 1200+1)),
-    'recon_voxel_P': {f'{formatting.format_float(voxel, 3)} mm': voxel for voxel in [240 / matrix for matrix in list(range(16, 1200+1))[::-1]]},
-    'recon_voxel_F': {f'{formatting.format_float(voxel, 3)} mm': voxel for voxel in [240 / matrix for matrix in list(range(16, 1200+1))[::-1]]},
+    'matrix_P_param': list(range(MIN_MATRIX, MAX_MATRIX+1)),
+    'matrix_F_param': list(range(MIN_MATRIX, MAX_MATRIX+1)),
+    'voxel_P': {f'{formatting.format_float(voxel, 3)} mm': voxel for voxel in [240 / matrix for matrix in list(range(MIN_MATRIX, MAX_MATRIX+1))[::-1]]},
+    'voxel_F': {f'{formatting.format_float(voxel, 3)} mm': voxel for voxel in [240 / matrix for matrix in list(range(MIN_MATRIX, MAX_MATRIX+1))[::-1]]},
+    'recon_matrix_P_param': list(range(MIN_RECON_MATRIX, MAX_RECON_MATRIX+1)),
+    'recon_matrix_F_param': list(range(MIN_RECON_MATRIX, MAX_RECON_MATRIX+1)),
+    'recon_voxel_P': {f'{formatting.format_float(voxel, 3)} mm': voxel for voxel in [240 / matrix for matrix in list(range(MIN_RECON_MATRIX, MAX_RECON_MATRIX+1))[::-1]]},
+    'recon_voxel_F': {f'{formatting.format_float(voxel, 3)} mm': voxel for voxel in [240 / matrix for matrix in list(range(MIN_RECON_MATRIX, MAX_RECON_MATRIX+1))[::-1]]},
     'slice_thickness': {thk + ' mm': float(thk) for thk in [formatting.format_float(thk, 2) for thk in np.linspace(0.5, 10, 96)]},
     'EPI_factor': list(range(1, 64+1)),
 }

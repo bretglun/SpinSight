@@ -53,11 +53,11 @@ def get_app(dark_mode=True, settings_filestem='', start_time=datetime.now(), laz
     except (FileNotFoundError, KeyError):
         version = ''
     
-    discrete_slider_params = ['TR', 'TE', 'FA', 'TI', 'FOV_F', 'FOV_P', 'phase_oversampling', 'matrix_F', 'matrix_P', 'recon_matrix_F', 'recon_matrix_P', 'voxel_F', 'voxel_P', 'recon_voxel_F', 'recon_voxel_P', 'slice_thickness', 'pixel_bandwidth_param', 'FOV_bandwidth', 'FW_shift', 'EPI_factor']
+    discrete_slider_params = ['TR', 'TE', 'FA', 'TI', 'FOV_F', 'FOV_P', 'phase_oversampling', 'matrix_F_param', 'matrix_P_param', 'recon_matrix_F_param', 'recon_matrix_P_param', 'voxel_F', 'voxel_P', 'recon_voxel_F', 'recon_voxel_P', 'slice_thickness', 'pixel_bandwidth_param', 'FOV_bandwidth', 'FW_shift', 'EPI_factor']
     param_panels = {name: pn.panel(simulator.param, parameters=params, widgets={p: pn.widgets.DiscreteSlider for p in params if p in discrete_slider_params}, name=name) for name, params in [
         ('Settings', ['object', 'field_strength', 'parameter_style']),
         ('Contrast', ['FatSat', 'TR', 'TE', 'FA', 'TI']),
-        ('Geometry', ['trajectory', 'frequency_direction', 'FOV_F', 'FOV_P', 'phase_oversampling', 'radial_factor', 'voxel_F', 'voxel_P', 'matrix_F', 'matrix_P', 'recon_voxel_F', 'recon_voxel_P', 'recon_matrix_F', 'recon_matrix_P', 'slice_thickness']),
+        ('Geometry', ['trajectory', 'frequency_direction', 'FOV_F', 'FOV_P', 'phase_oversampling', 'radial_factor', 'voxel_F', 'voxel_P', 'matrix_F_param', 'matrix_P_param', 'recon_voxel_F', 'recon_voxel_P', 'recon_matrix_F_param', 'recon_matrix_P_param', 'slice_thickness']),
         ('Sequence', ['sequence_type', 'pixel_bandwidth_param', 'FOV_bandwidth', 'FW_shift', 'NSA', 'partial_Fourier', 'turbo_factor', 'EPI_factor']),
         ('Post-processing', ['homodyne', 'do_apodize', 'apodization_alpha', 'do_zerofill']),
     ]}
