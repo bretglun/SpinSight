@@ -54,14 +54,16 @@ MIN_MATRIX = 16
 MAX_MATRIX = 600
 MIN_RECON_MATRIX = 16
 MAX_RECON_MATRIX = 1200
+MIN_FOV = 100
+MAX_FOV = 600
 
 PARAM_VALUES = {
     'TR': {tr + ' msec': float(tr) for tr in [formatting.format_float(tr, 2) for tr in 10.**np.linspace(0, 4, 500)]},
     'TE': {te + ' msec': float(te) for te in [formatting.format_float(te, 2) for te in 10.**np.linspace(0, 3, 500)]},
     'FA': {str(int(fa)) + '°': float(fa) for fa in range(1, 91)},
     'TI': {ti + ' msec': float(ti) for ti in [formatting.format_float(ti, 2) for ti in 10.**np.linspace(1.6, 4, 500)]},
-    'FOV_P': {str(int(fov)) + ' mm': float(fov) for fov in range(100, 601)},
-    'FOV_F': {str(int(fov)) + ' mm': float(fov) for fov in range(100, 601)},
+    'FOV_P': {str(int(fov)) + ' mm': float(fov) for fov in range(MIN_FOV, MAX_FOV + 1)},
+    'FOV_F': {str(int(fov)) + ' mm': float(fov) for fov in range(MIN_FOV, MAX_FOV + 1)},
     'phase_oversampling': {str(int(po)) + '%': float(po) for po in range(0, 101)},
     'pixel_bandwidth_param': {bw + ' Hz': float(bw) for bw in [formatting.format_float(bw, 3) for bw in bw_vals]},
     'FOV_bandwidth': {f'±{formatting.format_float(fovbw, 3)} kHz': fovbw for fovbw in [convert.pixel_BW_to_FOV_BW(bw, 180) for bw in bw_vals]},
