@@ -441,10 +441,21 @@ def recon_matrix_P(voxel_size_is_input, FOV_P, recon_voxel_P, recon_matrix_P_par
 
 
 @Graph.node()
-def matrix_F_bounds(max_readout_area, FOV_F, FOV_BW_is_input, FOV_bandwidth, pixel_bandwidth_bounds):
+def min_voxel_F(max_readout_area):
+    return 1e3 / (max_readout_area * constants.GYRO)
+
+
+@Graph.node()
+def min_voxel_P(max_phaser_area):
+    return 1e3 / (2 * max_phaser_area * constants.GYRO)
+
+
+@Graph.node()
+def matrix_F_bounds(voxel_size_is_input, min_voxel_F, FOV_F, FOV_BW_is_input, FOV_bandwidth, pixel_bandwidth_bounds):
     min_matrix_F = [constants.MIN_MATRIX]
     max_matrix_F = [constants.MAX_MATRIX]
-    max_matrix_F.append(max_readout_area * 1e-3 * FOV_F * constants.GYRO)
+    if not voxel_size_is_input:
+        max_matrix_F.append(FOV_F / min_voxel_F)
     if FOV_BW_is_input: # constant FOV BW puts contraints on matrix_F
         min_matrix_F.append(FOV_bandwidth * 2e3 / pixel_bandwidth_bounds.max)
         max_matrix_F.append(FOV_bandwidth * 2e3 / pixel_bandwidth_bounds.min)
@@ -452,10 +463,11 @@ def matrix_F_bounds(max_readout_area, FOV_F, FOV_BW_is_input, FOV_bandwidth, pix
 
 
 @Graph.node()
-def matrix_P_bounds(max_phaser_area, FOV_P):
+def matrix_P_bounds(voxel_size_is_input, min_voxel_P, FOV_P):
     min_matrix_P = [constants.MIN_MATRIX]
     max_matrix_P = [constants.MAX_MATRIX]
-    max_matrix_P.append(int(max_phaser_area * 2e-3 * FOV_P * constants.GYRO))
+    if not voxel_size_is_input:
+        max_matrix_P.append(FOV_P / min_voxel_P)
     return MinMax(max(min_matrix_P), min(max_matrix_P))
 
 
@@ -476,28 +488,26 @@ def recon_matrix_P_bounds(matrix_P):
 
 
 @Graph.node()
-def FOV_F_bounds(matrix_F, max_readout_area, voxel_size_is_input, voxel_F, matrix_F_bounds, recon_voxel_F, recon_matrix_F_bounds):
+def FOV_F_bounds(matrix_F, min_voxel_F, voxel_size_is_input, voxel_F, matrix_F_bounds, recon_voxel_F, recon_matrix_F_bounds):
     min_FOV_F = [constants.MIN_FOV]
     max_FOV_F = [constants.MAX_FOV]
-    min_FOV_F.append(1e3 * matrix_F / (max_readout_area * constants.GYRO) if max_readout_area > 0 else np.inf)
     if voxel_size_is_input: # constant voxel size puts constraints on FOV
         min_FOV_F.append(voxel_F * matrix_F_bounds.min)
-        min_FOV_F.append(recon_voxel_F * recon_matrix_F_bounds.min)
         max_FOV_F.append(voxel_F * matrix_F_bounds.max)
-        max_FOV_F.append(recon_voxel_F * recon_matrix_F_bounds.max)
+    else:
+        min_FOV_F.append(min_voxel_F * matrix_F)
     return MinMax(max(min_FOV_F), min(max_FOV_F))
 
 
 @Graph.node()
-def FOV_P_bounds(matrix_P, max_phaser_area, voxel_size_is_input, matrix_P_bounds, voxel_P, recon_voxel_P, recon_matrix_P_bounds):
+def FOV_P_bounds(matrix_P, min_voxel_P, voxel_size_is_input, matrix_P_bounds, voxel_P, recon_voxel_P, recon_matrix_P_bounds):
     min_FOV_P = [constants.MIN_FOV]
     max_FOV_P = [constants.MAX_FOV]
-    min_FOV_P.append(matrix_P / (max_phaser_area * constants.GYRO * 2e-3))
     if voxel_size_is_input: # constant voxel size puts constraints on FOV
         min_FOV_P.append(voxel_P * matrix_P_bounds.min)
-        min_FOV_P.append(recon_voxel_P * recon_matrix_P_bounds.min)
         max_FOV_P.append(voxel_P * matrix_P_bounds.max)
-        max_FOV_P.append(recon_voxel_P * recon_matrix_P_bounds.max)
+    else:
+        min_FOV_P.append(min_voxel_P * matrix_P)
     return MinMax(max(min_FOV_P), min(max_FOV_P))
 
 
