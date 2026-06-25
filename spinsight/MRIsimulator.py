@@ -50,6 +50,9 @@ class MRIsimulator(param.Parameterized):
     recon_matrix_F_ui = param.Selector(default=360, precedence=5, label='Reconstruction matrix y')
     slice_thickness = param.Selector(default=3, precedence=6, label='Slice thickness')
     radial_FOV_oversampling = param.Number(default=2, step=0.01, precedence=9, label='Radial FOV oversampling factor')
+    rec_acq_ratio_P = param.Number(default=2, label='Reconstructed / acquired matrix_P ratio')
+    rec_acq_ratio_F = param.Number(default=2, label='Reconstructed / acquired matrix_F ratio')
+    keep_rec_acq_ratio = param.Boolean(default=False, label='Keep rec / acq matrix ratio constant')
     
     sequence_type = param.ObjectSelector(default=constants.SEQUENCES[0], precedence=1, label='Pulse sequence')
     pixel_bandwidth_ui = param.Selector(default=480, precedence=2, label='Pixel bandwidth')
@@ -329,13 +332,13 @@ class MRIsimulator(param.Parameterized):
             self.set_param(self.param.matrix_P_ui, matrix_P)
 
     @Graph.node(action_precedence=1, simulator=True)
-    def set_recon_matrix_F(self, matrix_is_input, recon_matrix_F):
-        if not matrix_is_input:
+    def set_recon_matrix_F(self, matrix_is_input, keep_rec_acq_ratio, recon_matrix_F):
+        if not matrix_is_input or keep_rec_acq_ratio:
             self.set_param(self.param.recon_matrix_F_ui, recon_matrix_F)
 
     @Graph.node(action_precedence=1, simulator=True)
-    def set_recon_matrix_P(self, matrix_is_input, recon_matrix_P):
-        if not matrix_is_input:
+    def set_recon_matrix_P(self, matrix_is_input, keep_rec_acq_ratio, recon_matrix_P):
+        if not matrix_is_input or keep_rec_acq_ratio:
             self.set_param(self.param.recon_matrix_P_ui, recon_matrix_P)
 
     @Graph.node(action_precedence=1, simulator=True)
@@ -349,14 +352,22 @@ class MRIsimulator(param.Parameterized):
             self.set_param(self.param.voxel_P, FOV_P / matrix_P)
 
     @Graph.node(action_precedence=1, simulator=True)
-    def set_recon_voxel_F(self, voxel_size_is_input, FOV_F, recon_matrix_F):
-        if not voxel_size_is_input:
+    def set_recon_voxel_F(self, voxel_size_is_input, keep_rec_acq_ratio, FOV_F, recon_matrix_F):
+        if not voxel_size_is_input or keep_rec_acq_ratio:
             self.set_param(self.param.recon_voxel_F, FOV_F / recon_matrix_F)
 
     @Graph.node(action_precedence=1, simulator=True)
-    def set_recon_voxel_P(self, voxel_size_is_input, FOV_P, recon_matrix_P):
-        if not voxel_size_is_input:
+    def set_recon_voxel_P(self, voxel_size_is_input, keep_rec_acq_ratio, FOV_P, recon_matrix_P):
+        if not voxel_size_is_input or keep_rec_acq_ratio:
             self.set_param(self.param.recon_voxel_P, FOV_P / recon_matrix_P)
+    
+    @Graph.node(action_precedence=1, simulator=True)
+    def set_rec_acq_ratio_F(self, recon_matrix_F, matrix_F):
+        self.set_param(self.param.rec_acq_ratio_F, recon_matrix_F / matrix_F)
+
+    @Graph.node(action_precedence=1, simulator=True)
+    def set_rec_acq_ratio_P(self, recon_matrix_P, matrix_P):
+        self.set_param(self.param.rec_acq_ratio_P, recon_matrix_P / matrix_P)
 
     @Graph.node(action_precedence=1, simulator=True)
     def set_trajectory_objects(self, EPI_factor, turbo_factor):

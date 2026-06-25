@@ -205,16 +205,6 @@ def recon_matrix(recon_matrix_P, recon_matrix_F, freq_dir, do_zerofill, matrix):
 
 
 @Graph.node()
-def rec_acq_ratio_F(recon_matrix_F, matrix_F):
-    return recon_matrix_F / matrix_F
-
-
-@Graph.node()
-def rec_acq_ratio_P(recon_matrix_P, matrix_P):
-    return recon_matrix_P / matrix_P
-
-
-@Graph.node()
 def min_TE(k0_echo_indices_linear_order, k0_echo_indices_reverse_linear_order, min_refocusing_time, min_RF_to_readtrain_center, gr_echo_spacing, EPI_factor, is_gradient_echo, turbo_factor):
     if EPI_factor == 1:
         gr_index, rf_index = 0, 0
@@ -427,14 +417,18 @@ def matrix_P(voxel_size_is_input, FOV_P, voxel_P, matrix_P_ui):
 
 
 @Graph.node()
-def recon_matrix_F(voxel_size_is_input, FOV_F, recon_voxel_F, recon_matrix_F_ui):
+def recon_matrix_F(keep_rec_acq_ratio, matrix_F, rec_acq_ratio_F, voxel_size_is_input, FOV_F, recon_voxel_F, recon_matrix_F_ui):
+    if keep_rec_acq_ratio:
+        return int(matrix_F * rec_acq_ratio_F)
     if voxel_size_is_input:
         return int(np.round(FOV_F / recon_voxel_F))
     return recon_matrix_F_ui
 
 
 @Graph.node()
-def recon_matrix_P(voxel_size_is_input, FOV_P, recon_voxel_P, recon_matrix_P_ui):
+def recon_matrix_P(keep_rec_acq_ratio, matrix_P, rec_acq_ratio_P, voxel_size_is_input, FOV_P, recon_voxel_P, recon_matrix_P_ui):
+    if keep_rec_acq_ratio:
+        return int(matrix_P * rec_acq_ratio_P)
     if voxel_size_is_input:
         return int(np.round(FOV_P / recon_voxel_P))
     return recon_matrix_P_ui
