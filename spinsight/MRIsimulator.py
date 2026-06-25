@@ -52,7 +52,6 @@ class MRIsimulator(param.Parameterized):
     radial_FOV_oversampling = param.Number(default=2, step=0.01, precedence=9, label='Radial FOV oversampling factor')
     rec_acq_ratio_P = param.Number(default=2, label='Reconstructed / acquired matrix_P ratio')
     rec_acq_ratio_F = param.Number(default=2, label='Reconstructed / acquired matrix_F ratio')
-    keep_rec_acq_ratio = param.Boolean(default=False, label='Keep rec / acq matrix ratio constant')
     
     sequence_type = param.ObjectSelector(default=constants.SEQUENCES[0], precedence=1, label='Pulse sequence')
     pixel_bandwidth_ui = param.Selector(default=480, precedence=2, label='Pixel bandwidth')

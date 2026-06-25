@@ -417,6 +417,11 @@ def matrix_P(voxel_size_is_input, FOV_P, voxel_P, matrix_P_ui):
 
 
 @Graph.node()
+def keep_rec_acq_ratio(trigger_node):
+    return trigger_node not in ['recon_voxel_P', 'recon_voxel_F', 'recon_matrix_P_ui', 'recon_matrix_F_ui']
+
+
+@Graph.node()
 def recon_matrix_F(keep_rec_acq_ratio, matrix_F, rec_acq_ratio_F, voxel_size_is_input, FOV_F, recon_voxel_F, recon_matrix_F_ui):
     if keep_rec_acq_ratio:
         return int(matrix_F * rec_acq_ratio_F)
