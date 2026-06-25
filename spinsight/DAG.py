@@ -83,13 +83,13 @@ class Graph:
     node_specs = {}
 
     @classmethod
-    def node(cls, action_precedence=False, simulator=False):
+    def node(cls, action_precedence=False, simulator_method=False):
         def decorator(func):
             func_params = [p.name for p in inspect.signature(func).parameters.values()]
             cls.node_specs[func.__name__] = {
                 'func': func,
                 'parents': [p for p in func_params if p != 'self'],
-                'simulator': simulator, # is func a method of MRIsimulator?
+                'simulator_method': simulator_method, # is func a method of MRIsimulator?
                 'action_precedence': action_precedence # order for action node to be flushed
             }
             return func
@@ -101,20 +101,24 @@ class Graph:
         specs = self.build_node_specs()
         self.nodes, self.action_nodes = self.build_nodes(specs)
 
+        self.processing = False
+
         self.flush_actions()
         self.add_input_watchers()
     
     def build_node_specs(self):
         # get node specs from decorators
         specs = dict(type(self).node_specs)
+        # special node to track which input node was trigger
+        specs['trigger_node'] = {'func': lambda: 'None'}
         # add specs for remaining simulator param nodes
-        specs.update({par: {} for par in self.simulator.param if par != 'name' and par not in specs})
+        specs.update({par: {'func': partial(getattr, self.simulator, par)} for par in self.simulator.param if par != 'name' and par not in specs})
         return specs
     
     def build_nodes(self, specs):
         nodes, action_nodes = {}, {}
         for name in topological_order(specs):
-            nodes[name] = self.make_node(name, specs[name].get('func', None), specs[name].get('simulator', False))
+            nodes[name] = self.make_node(name, specs[name].get('func', None), specs[name].get('simulator_method', False))
             for parent in specs[name].get('parents', []):
                 nodes[name].attach(nodes[parent])
             if specs[name].get('action_precedence', False):
@@ -124,22 +128,26 @@ class Graph:
                 action_nodes[precedence].append(nodes[name])
         return nodes, action_nodes
 
-    def make_node(self, name, func, simulator):
-        if func is None: # input node
-            func = partial(getattr, self.simulator, name)
-        elif simulator:
+    def make_node(self, name, func, simulator_method):
+        if simulator_method:
             func = partial(func, self.simulator)
         return Node(name, func=func)
     
     def add_input_watchers(self):
         for node in self.input_nodes():
             def on_change(node, graph, event):
+                if not graph.processing:
+                    graph.nodes['trigger_node'].func = lambda: node.name
+                    graph.nodes['trigger_node'].invalidate()
+                was_processing = graph.processing
+                graph.processing = True
                 node.invalidate()
                 graph.flush_actions()
+                graph.processing = was_processing
             self.simulator.param.watch(partial(on_change, node, self), node.name)
     
     def input_nodes(self):
-        return [node for node in self.nodes.values() if (node.name in self.simulator.param)]
+        return [node for node in self.nodes.values() if (node.name in self.simulator.param) and not node.parents]
     
     def flush_actions(self):
         for precedence in sorted(self.action_nodes):
