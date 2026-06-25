@@ -148,10 +148,11 @@ class Graph:
 
 
 def print_dependency_chains(source, sink, chain=''):
-    if not hasattr(sink, 'parents'):
-        if sink.name == source.name:
-            print(sink.name, chain)
+    if sink.name == source.name:
+        print(sink.name, chain)
         return
-    chain = f'-> {sink.func.__name__} {chain}'
+    elif not sink.parents:
+        return
+    chain = f'-> {sink.name} {chain}'
     for parent in sink.parents:
         print_dependency_chains(source, parent, chain)
