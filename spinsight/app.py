@@ -53,19 +53,19 @@ def get_app(dark_mode=True, settings_filestem='', start_time=datetime.now(), laz
     except (FileNotFoundError, KeyError):
         version = ''
     
-    discrete_slider_params = ['TR', 'TE', 'FA', 'TI', 'FOV_F', 'FOV_P', 'phase_oversampling', 'matrix_F_param', 'matrix_P_param', 'recon_matrix_F_param', 'recon_matrix_P_param', 'voxel_F', 'voxel_P', 'recon_voxel_F', 'recon_voxel_P', 'slice_thickness', 'pixel_bandwidth_param', 'FOV_bandwidth', 'FW_shift', 'EPI_factor']
+    discrete_slider_params = ['TR', 'TE', 'FA', 'TI', 'FOV_F', 'FOV_P', 'phase_oversampling', 'matrix_F_ui', 'matrix_P_ui', 'recon_matrix_F_ui', 'recon_matrix_P_ui', 'voxel_F', 'voxel_P', 'recon_voxel_F', 'recon_voxel_P', 'slice_thickness', 'pixel_bandwidth_ui', 'FOV_bandwidth', 'FW_shift', 'EPI_factor']
     param_panels = {name: pn.panel(simulator.param, parameters=params, widgets={p: pn.widgets.DiscreteSlider for p in params if p in discrete_slider_params}, name=name) for name, params in [
         ('Settings', ['object', 'field_strength', 'parameter_style']),
         ('Contrast', ['FatSat', 'TR', 'TE', 'FA', 'TI']),
-        ('Geometry', ['trajectory', 'frequency_direction', 'FOV_F', 'FOV_P', 'phase_oversampling', 'radial_factor', 'voxel_F', 'voxel_P', 'matrix_F_param', 'matrix_P_param', 'recon_voxel_F', 'recon_voxel_P', 'recon_matrix_F_param', 'recon_matrix_P_param', 'slice_thickness']),
-        ('Sequence', ['sequence_type', 'pixel_bandwidth_param', 'FOV_bandwidth', 'FW_shift', 'NSA', 'partial_Fourier', 'turbo_factor', 'EPI_factor']),
+        ('Geometry', ['trajectory', 'frequency_direction', 'FOV_F', 'FOV_P', 'phase_oversampling', 'radial_factor', 'voxel_F', 'voxel_P', 'matrix_F_ui', 'matrix_P_ui', 'recon_voxel_F', 'recon_voxel_P', 'recon_matrix_F_ui', 'recon_matrix_P_ui', 'slice_thickness']),
+        ('Sequence', ['sequence_type', 'pixel_bandwidth_ui', 'FOV_bandwidth', 'FW_shift', 'NSA', 'partial_Fourier', 'turbo_factor', 'EPI_factor']),
         ('Post-processing', ['homodyne', 'do_apodize', 'apodization_alpha', 'do_zerofill']),
     ]}
 
     info_pane = pn.Row(info_number(name='Relative SNR', format='{value:.0f}%', value=simulator.param.relative_SNR, text_color=text_color),
                       info_string(name='Scan time', value=simulator.param.scantime, text_color=text_color),
                       info_number(name='Fat/water shift', format='{value:.2f} pixels', value=simulator.param.FW_shift, text_color=text_color),
-                      info_number(name='Bandwidth', format='{value:.0f} Hz/pixel', value=simulator.param.pixel_bandwidth_param, text_color=text_color))
+                      info_number(name='Bandwidth', format='{value:.0f} Hz/pixel', value=simulator.param.pixel_bandwidth_ui, text_color=text_color))
     shot_angle_info = info_number(name='Angle', format='{value:.0f}°', value=simulator.param.spoke_angle, text_color=text_color) 
     num_shots_info = info_number(name='# shots', format='{value:.0f}', value=simulator.param.num_shots, text_color=text_color)
     def update_num_shots_label(event): 

@@ -335,7 +335,7 @@ def pixel_bandwidth_bounds(matrix_F, FOV_F, is_gradient_echo, RF_refocusing, tur
     k0_echo_indices = k0_echo_indices_linear_order if reverse_linear_order else k0_echo_indices_reverse_linear_order
     
     pixel_bandwidth_values = []
-    for pixel_bandwidth in constants.PARAM_VALUES['pixel_bandwidth_param'].values():
+    for pixel_bandwidth in constants.PARAM_VALUES['pixel_bandwidth_ui'].values():
         
         read_duration = 1e3 / pixel_bandwidth
         
@@ -404,40 +404,40 @@ def voxel_size_is_input(parameter_style):
 
 
 @Graph.node()
-def pixel_bandwidth(FOV_BW_is_input, FOV_bandwidth, matrix_F, FW_shift_is_input, FW_shift, field_strength, pixel_bandwidth_param):
+def pixel_bandwidth(FOV_BW_is_input, FOV_bandwidth, matrix_F, FW_shift_is_input, FW_shift, field_strength, pixel_bandwidth_ui):
     if FOV_BW_is_input:
         return convert.FOV_BW_to_pixel_BW(FOV_bandwidth, matrix_F)
     elif FW_shift_is_input:
         return convert.shift_to_pixel_BW(FW_shift, field_strength)
-    return pixel_bandwidth_param
+    return pixel_bandwidth_ui
 
 
 @Graph.node()
-def matrix_F(voxel_size_is_input, FOV_F, voxel_F, matrix_F_param):
+def matrix_F(voxel_size_is_input, FOV_F, voxel_F, matrix_F_ui):
     if voxel_size_is_input:
         return int(np.round(FOV_F / voxel_F))
-    return matrix_F_param
+    return matrix_F_ui
 
 
 @Graph.node()
-def matrix_P(voxel_size_is_input, FOV_P, voxel_P, matrix_P_param):
+def matrix_P(voxel_size_is_input, FOV_P, voxel_P, matrix_P_ui):
     if voxel_size_is_input:
         return int(np.round(FOV_P / voxel_P))
-    return matrix_P_param
+    return matrix_P_ui
 
 
 @Graph.node()
-def recon_matrix_F(voxel_size_is_input, FOV_F, recon_voxel_F, recon_matrix_F_param):
+def recon_matrix_F(voxel_size_is_input, FOV_F, recon_voxel_F, recon_matrix_F_ui):
     if voxel_size_is_input:
         return int(np.round(FOV_F / recon_voxel_F))
-    return recon_matrix_F_param
+    return recon_matrix_F_ui
 
 
 @Graph.node()
-def recon_matrix_P(voxel_size_is_input, FOV_P, recon_voxel_P, recon_matrix_P_param):
+def recon_matrix_P(voxel_size_is_input, FOV_P, recon_voxel_P, recon_matrix_P_ui):
     if voxel_size_is_input:
         return int(np.round(FOV_P / recon_voxel_P))
-    return recon_matrix_P_param
+    return recon_matrix_P_ui
 
 
 @Graph.node()
