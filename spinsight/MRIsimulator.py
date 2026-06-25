@@ -515,7 +515,7 @@ class MRIsimulator(param.Parameterized):
 
     @Graph.node(action_precedence=1, simulator=True)
     def set_matrix_visibility(self, matrix_is_input):
-        for matrix_param in ['matrix_F_param', 'matrix_P_param']:
+        for matrix_param in ['matrix_F_param', 'matrix_P_param', 'recon_matrix_F_param', 'recon_matrix_P_param']:
             self.set_visibility(matrix_param, matrix_is_input)
 
     @Graph.node(action_precedence=1, simulator=True)
