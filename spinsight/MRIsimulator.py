@@ -231,7 +231,6 @@ class MRIsimulator(param.Parameterized):
 
     def handle_outbound(self, par_name):
         bounds_func = f'set_{par_name}_bounds'
-        self.graph.nodes[bounds_func]._queued = False
         self.graph.nodes[bounds_func].invalidate()
         min_TE = self.graph.nodes['min_TE'].value
         if self.TE < min_TE:
@@ -253,22 +252,6 @@ class MRIsimulator(param.Parameterized):
                 self.set_param(self.param.matrix_P, matrix_F * FOV_P / FOV_F, mode='round')
             else:
                 self.set_param(self.param.matrix_F, matrix_P * FOV_F / FOV_P, mode='round')
-
-    @Graph.node(action_precedence=1, simulator_method=True)
-    def set_TR_bounds(self, min_TR):
-        self.set_param_bounds(self.param.TR, minval=min_TR)
-
-    @Graph.node(action_precedence=1, simulator_method=True)
-    def set_TE_bounds(self, min_TE, max_TE):
-        self.set_param_bounds(self.param.TE, minval=min_TE, maxval=max_TE)
-
-    @Graph.node(action_precedence=1, simulator_method=True)
-    def set_TI_bounds(self, sequence_type, TR, spoiler, slice_select_inversion_floating):
-        if sequence_type != 'Inversion Recovery':
-            return
-        max_TI = TR - spoiler['time'][-1] - slice_select_inversion_floating['dur_f'] / 2
-        max_TI = max([v for v in constants.PARAM_VALUES['TI'].values() if v <= max_TI])
-        self.set_param_bounds(self.param.TI, maxval=max_TI)
 
     @Graph.node(action_precedence=1, simulator_method=True)
     def set_x_y_labels(self, frequency_direction):
@@ -367,15 +350,28 @@ class MRIsimulator(param.Parameterized):
     @Graph.node(action_precedence=1, simulator_method=True)
     def set_rec_acq_ratio_P(self, recon_matrix_P, matrix_P):
         self.set_param(self.param.rec_acq_ratio_P, recon_matrix_P / matrix_P)
+    
+    @Graph.node(action_precedence=1, simulator_method=True)
+    def set_shot(self, num_shots):
+        if self.shot > num_shots:
+            self.shot = min(self.shot, num_shots)
 
     @Graph.node(action_precedence=1, simulator_method=True)
-    def set_trajectory_objects(self, EPI_factor, turbo_factor):
-        # Label radial trajectory 'Radial' or 'PROPELLER' depending on nLines per shot
-        self.param.trajectory.objects = constants.TRAJECTORIES
-        invalid, updated = ('PROPELLER', 'Radial') if (EPI_factor * turbo_factor == 1) else ('Radial', 'PROPELLER')
-        if self.trajectory == invalid:
-            self.trajectory = updated
-        self.param.trajectory.objects = [t for t in constants.TRAJECTORIES if t != invalid]
+    def set_TR_bounds(self, min_TR):
+        self.set_param_bounds(self.param.TR, minval=min_TR)
+
+    @Graph.node(action_precedence=1, simulator_method=True)
+    def set_TE_bounds(self, min_TE, max_TE):
+        self.set_param_bounds(self.param.TE, minval=min_TE, maxval=max_TE)
+
+    @Graph.node(action_precedence=1, simulator_method=True)
+    def set_TI_bounds(self, sequence_type, max_TI):
+        if sequence_type == 'Inversion Recovery':
+            self.set_param_bounds(self.param.TI, maxval=max_TI)
+
+    @Graph.node(action_precedence=1, simulator_method=True)
+    def set_slice_thickness_bounds(self, min_slice_thickness):
+        self.set_param_bounds(self.param.slice_thickness, minval=min_slice_thickness)
 
     @Graph.node(action_precedence=1, simulator_method=True)
     def set_pixel_bandwidth_bounds(self, pixel_BW_is_input, pixel_bandwidth_bounds):
@@ -441,56 +437,21 @@ class MRIsimulator(param.Parameterized):
             self.set_param_bounds(self.param.recon_voxel_P, minval=FOV_P/recon_matrix_P_bounds.max, maxval=FOV_P/recon_matrix_P_bounds.min)
 
     @Graph.node(action_precedence=1, simulator_method=True)
-    def set_slice_thickness_bounds(self, RF_excitation, is_gradient_echo, RF_refocusing, sequence_type, RF_inversion, TR, spoiler, sampling_windows):
-        min_thks = [RF_excitation['FWHM_f'] / (constants.MAX_AMP * constants.GYRO)]
-        if not is_gradient_echo:
-            min_thks.append(RF_refocusing[0]['FWHM_f'] / (constants.MAX_AMP * constants.GYRO))
-        if sequence_type == 'Inversion Recovery':
-            min_thks.append(RF_inversion['FWHM_f'] / (constants.MAX_AMP * constants.GYRO) * constants.INVERSION_THK_FACTOR)
-        
-        # Constraint due to TR: 
-        if sequence_type == 'Inversion Recovery':
-            max_risetime = TR - (spoiler['time'][-1] - RF_inversion['time'][0])
-            max_amp = constants.MAX_SLEW * max_risetime
-            min_thks.append(RF_inversion['FWHM_f'] / (max_amp * constants.GYRO))
-        else:
-            max_risetime = TR - (spoiler['time'][-1] - RF_excitation['time'][0])
-            max_amp = constants.MAX_SLEW * max_risetime
-            min_thks.append(RF_excitation['FWHM_f'] / (max_amp * constants.GYRO))
-        
-        # See paramBounds.tex for formulae
-        s = constants.MAX_SLEW
-        d = RF_excitation['dur_f']
-        if is_gradient_echo: # Constraint due to slice rephaser
-            t = sampling_windows[0][0]['time'][0]
-            h = s * (t - np.sqrt(t**2/2 + d**2/8))
-            h = min(h, constants.MAX_AMP)
-            A = d * (np.sqrt((d*s+2*h)**2 - 8*h*(h-s*(t-d/2))) - d*s - 2*h) / 2
-        else: # Spin echo: Constraint due to slice rephaser and refocusing slice select rampup
-            t = RF_refocusing[0]['time'][0]
-            h = s * (np.sqrt(2*(d + 2*t)**2 - 4*d**2) - d - 2*t) / 4
-            h = min(h, constants.MAX_AMP)
-            A = (np.sqrt((d*(d*s + 4*h))**2 - 4*d**2*h*(d*s + 2*h - 2*s*t)) - d*(d*s + 4*h)) / 2
-        Be = RF_excitation['FWHM_f']
-        min_thks.append(Be * d / (constants.GYRO * A)) # mm
-        
-        self.set_param_bounds(self.param.slice_thickness, minval=min_thks)
-
-    @Graph.node(action_precedence=1, simulator_method=True)
-    def set_turbo_factor_bounds(self, matrix, phase_dir, partial_Fourier, EPI_factor):
+    def set_turbo_factor_bounds(self, max_turbo_factor):
         # turbo_factor must equal 1 when the EPI_factor is even
         if not self.EPI_factor%2:
             self.param.turbo_factor.bounds = (1, 1)
             self.param.turbo_factor.constant = True
             return
-        max_turbo_factor = int(np.floor(matrix[phase_dir] * partial_Fourier / EPI_factor * 2)) # let's limit phase oversampling to 2
-        max_turbo_factor = min(max_turbo_factor, 64)
-        self.param.turbo_factor.bounds = (1, max_turbo_factor)
+        self.param.turbo_factor.bounds = (1, min(max_turbo_factor, constants.MAX_TURBO_FACTOR))
         self.param.turbo_factor.constant = False
 
     @Graph.node(action_precedence=1, simulator_method=True)
-    def set_EPI_factor_objects(self, matrix, phase_dir, partial_Fourier, turbo_factor):
-        max_EPI_factor = int(np.floor(matrix[phase_dir] * partial_Fourier / turbo_factor * 2)) # let's limit phase oversampling to 2
+    def set_shot_bounds(self, num_shots):
+        self.param.shot.bounds = (1, num_shots)
+    
+    @Graph.node(action_precedence=1, simulator_method=True)
+    def set_EPI_factor_objects(self, max_EPI_factor):
         self.set_param_bounds(self.param.EPI_factor, maxval=max_EPI_factor)
         # EPI_factor must be odd for turbo spin echo (GRASE)
         if self.turbo_factor > 1:
@@ -502,9 +463,13 @@ class MRIsimulator(param.Parameterized):
         self.reference_tissue = tissues[0]
 
     @Graph.node(action_precedence=1, simulator_method=True)
-    def set_shot_bounds(self, num_shots):
-        self.param.shot.bounds = (1, num_shots)
-        self.shot = min(self.shot, num_shots)
+    def set_trajectory_objects(self, EPI_factor, turbo_factor):
+        # Label radial trajectory 'Radial' or 'PROPELLER' depending on nLines per shot
+        self.param.trajectory.objects = constants.TRAJECTORIES
+        invalid, updated = ('PROPELLER', 'Radial') if (EPI_factor * turbo_factor == 1) else ('Radial', 'PROPELLER')
+        if self.trajectory == invalid:
+            self.trajectory = updated
+        self.param.trajectory.objects = [t for t in constants.TRAJECTORIES if t != invalid]
 
     @Graph.node(action_precedence=1, simulator_method=True)
     def set_pixel_bandwidth_visibility(self, pixel_BW_is_input):

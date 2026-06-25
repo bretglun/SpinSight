@@ -205,43 +205,6 @@ def recon_matrix(recon_matrix_P, recon_matrix_F, freq_dir, do_zerofill, matrix):
 
 
 @Graph.node()
-def min_TE(k0_echo_indices_linear_order, k0_echo_indices_reverse_linear_order, min_refocusing_time, min_RF_to_readtrain_center, gr_echo_spacing, EPI_factor, is_gradient_echo, turbo_factor):
-    if EPI_factor == 1:
-        gr_index, rf_index = 0, 0
-        min_TE = min_TE_from_k0_echo_indices(gr_echo_spacing, gr_index, EPI_factor, is_gradient_echo, min_RF_to_readtrain_center, turbo_factor, min_refocusing_time, rf_index)
-    else:
-        min_TE_cands = []
-        for indices in [k0_echo_indices_linear_order, k0_echo_indices_reverse_linear_order]:
-            for (gr_index, rf_index) in indices:
-                min_TE_cands.append(min_TE_from_k0_echo_indices(gr_echo_spacing, gr_index, EPI_factor, is_gradient_echo, min_RF_to_readtrain_center, turbo_factor, min_refocusing_time, rf_index))
-        min_TE = min(min_TE_cands)
-    return min([v for v in constants.PARAM_VALUES['TE'].values() if v >= min_TE])
-
-
-@Graph.node()
-def min_TR(spoiler, sequence_start):
-    min_TR = spoiler['time'][-1] - sequence_start
-    return min([v for v in constants.PARAM_VALUES['TR'].values() if v >= min_TR])
-
-
-@Graph.node()
-def max_TE(TR, sequence_start, spoiler_floating, readout_risetime, gre_echo_train_dur, EPI_factor, turbo_factor, k0_echo_indices_linear_order, k0_echo_indices_reverse_linear_order, gr_echo_spacing):
-    last_readtrain_center = TR + sequence_start - spoiler_floating['dur_f'] + readout_risetime - gre_echo_train_dur / 2
-    if EPI_factor == 1:
-        max_TE = last_readtrain_center
-    else:
-        readtrain_spacing = last_readtrain_center / turbo_factor
-        max_TE_cands = []
-        for indices in [k0_echo_indices_linear_order, k0_echo_indices_reverse_linear_order]:
-            for (gr_index, rf_index) in indices:
-                readtrain_center = readtrain_spacing * (rf_index + 1)
-                TE = readtrain_center + readtrain_shift(gr_echo_spacing, gr_index, EPI_factor)
-                max_TE_cands.append(TE)
-        max_TE = max(max_TE_cands)
-    return max([v for v in constants.PARAM_VALUES['TE'].values() if v <= max_TE])
-
-
-@Graph.node()
 def max_readout_area(pixel_bandwidth, is_gradient_echo, k0_gr_echo_index, TE, RF_excitation, phaser_duration, slice_select_excitation, slice_select_rephaser, max_blip_dur, readtrain_spacing, refocusing_time, RF_refocusing_floating, EPI_factor):
     max_readout_areas = []
     # See paramBounds.tex for formulae
@@ -307,6 +270,83 @@ def min_refocusing_time(is_gradient_echo, RF_excitation, RF_refocusing_floating,
         read_prephaser_floating['dur_f'], 
         slice_select_excitation['risetime_f'] + slice_select_rephaser['dur_f'] + (slice_select_refocusing_floating[0]['risetime_f'])
         )
+
+
+@Graph.node()
+def min_TR(spoiler, sequence_start):
+    return spoiler['time'][-1] - sequence_start
+
+
+@Graph.node()
+def min_TE(k0_echo_indices_linear_order, k0_echo_indices_reverse_linear_order, min_refocusing_time, min_RF_to_readtrain_center, gr_echo_spacing, EPI_factor, is_gradient_echo, turbo_factor):
+    if EPI_factor == 1:
+        gr_index, rf_index = 0, 0
+        return min_TE_from_k0_echo_indices(gr_echo_spacing, gr_index, EPI_factor, is_gradient_echo, min_RF_to_readtrain_center, turbo_factor, min_refocusing_time, rf_index)
+    
+    min_TE_cands = []
+    for indices in [k0_echo_indices_linear_order, k0_echo_indices_reverse_linear_order]:
+        for (gr_index, rf_index) in indices:
+            min_TE_cands.append(min_TE_from_k0_echo_indices(gr_echo_spacing, gr_index, EPI_factor, is_gradient_echo, min_RF_to_readtrain_center, turbo_factor, min_refocusing_time, rf_index))
+    return min(min_TE_cands)
+
+
+@Graph.node()
+def max_TE(TR, sequence_start, spoiler_floating, readout_risetime, gre_echo_train_dur, EPI_factor, turbo_factor, k0_echo_indices_linear_order, k0_echo_indices_reverse_linear_order, gr_echo_spacing):
+    last_readtrain_center = TR + sequence_start - spoiler_floating['dur_f'] + readout_risetime - gre_echo_train_dur / 2
+    if EPI_factor == 1:
+        return last_readtrain_center
+    
+    readtrain_spacing = last_readtrain_center / turbo_factor
+    max_TE_cands = []
+    for indices in [k0_echo_indices_linear_order, k0_echo_indices_reverse_linear_order]:
+        for (gr_index, rf_index) in indices:
+            readtrain_center = readtrain_spacing * (rf_index + 1)
+            TE = readtrain_center + readtrain_shift(gr_echo_spacing, gr_index, EPI_factor)
+            max_TE_cands.append(TE)
+    return max(max_TE_cands)
+
+
+@Graph.node()
+def max_TI(TR, spoiler, slice_select_inversion_floating):
+    if slice_select_inversion_floating is None:
+        return None
+    return TR - spoiler['time'][-1] - slice_select_inversion_floating['dur_f'] / 2
+
+
+@Graph.node()
+def min_slice_thickness(RF_excitation, is_gradient_echo, RF_refocusing, sequence_type, RF_inversion, TR, spoiler, sampling_windows):
+    min_thks = [RF_excitation['FWHM_f'] / (constants.MAX_AMP * constants.GYRO)]
+    if not is_gradient_echo:
+        min_thks.append(RF_refocusing[0]['FWHM_f'] / (constants.MAX_AMP * constants.GYRO))
+    if sequence_type == 'Inversion Recovery':
+        min_thks.append(RF_inversion['FWHM_f'] / (constants.MAX_AMP * constants.GYRO) * constants.INVERSION_THK_FACTOR)
+    
+    # Constraint due to TR: 
+    if sequence_type == 'Inversion Recovery':
+        max_risetime = TR - (spoiler['time'][-1] - RF_inversion['time'][0])
+        max_amp = constants.MAX_SLEW * max_risetime
+        min_thks.append(RF_inversion['FWHM_f'] / (max_amp * constants.GYRO))
+    else:
+        max_risetime = TR - (spoiler['time'][-1] - RF_excitation['time'][0])
+        max_amp = constants.MAX_SLEW * max_risetime
+        min_thks.append(RF_excitation['FWHM_f'] / (max_amp * constants.GYRO))
+    
+    # See paramBounds.tex for formulae
+    s = constants.MAX_SLEW
+    d = RF_excitation['dur_f']
+    if is_gradient_echo: # Constraint due to slice rephaser
+        t = sampling_windows[0][0]['time'][0]
+        h = s * (t - np.sqrt(t**2/2 + d**2/8))
+        h = min(h, constants.MAX_AMP)
+        A = d * (np.sqrt((d*s+2*h)**2 - 8*h*(h-s*(t-d/2))) - d*s - 2*h) / 2
+    else: # Spin echo: Constraint due to slice rephaser and refocusing slice select rampup
+        t = RF_refocusing[0]['time'][0]
+        h = s * (np.sqrt(2*(d + 2*t)**2 - 4*d**2) - d - 2*t) / 4
+        h = min(h, constants.MAX_AMP)
+        A = (np.sqrt((d*(d*s + 4*h))**2 - 4*d**2*h*(d*s + 2*h - 2*s*t)) - d*(d*s + 4*h)) / 2
+    Be = RF_excitation['FWHM_f']
+    min_thks.append(Be * d / (constants.GYRO * A)) # mm
+    return max(min_thks)
 
 
 @Graph.node()
@@ -508,6 +548,16 @@ def FOV_P_bounds(matrix_P, min_voxel_P, voxel_size_is_input, matrix_P_bounds, vo
     else:
         min_FOV_P.append(min_voxel_P * matrix_P)
     return MinMax(max(min_FOV_P), min(max_FOV_P))
+
+
+@Graph.node()
+def max_turbo_factor(matrix, phase_dir, partial_Fourier, EPI_factor):
+    return int(np.floor(matrix[phase_dir] * partial_Fourier / EPI_factor * constants.MAX_PHASE_OVERSAMPLING_FACTOR))
+
+
+@Graph.node()
+def max_EPI_factor(matrix, phase_dir, partial_Fourier, turbo_factor):
+    return int(np.floor(matrix[phase_dir] * partial_Fourier / turbo_factor * constants.MAX_PHASE_OVERSAMPLING_FACTOR))
 
 
 @Graph.node()
