@@ -50,6 +50,9 @@ def flip_angle(fa):
 def FOV(fov):
     return f'{int(np.round(fov))} mm'
 
+def phase_oversampling(factor):
+    return f'{int(np.round(factor * 100))}%'
+
 
 def voxel_size(voxel):
     return f'{format_float(voxel, 3)} mm'

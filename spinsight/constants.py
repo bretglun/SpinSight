@@ -39,8 +39,6 @@ FAT_RESONANCES = {'Fat1': {'shift': 0.9 - 4.7, 'ratio': .087, 'ratio_with_FatSat
 
 OPERATORS = {'Magnitude': np.abs, 'Phase': np.angle, 'Real': np.real, 'Imaginary': np.imag}
 
-MAX_PHASE_OVERSAMPLING_FACTOR = 2
-
 MAX_AMP = 25. # mT/m
 MAX_SLEW = 80. # T/m/s
 INVERSION_THK_FACTOR = 1.1 # make inversion slice 10% thicker

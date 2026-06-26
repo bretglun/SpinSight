@@ -194,7 +194,7 @@ PARAMS = {
 
     'phase_oversampling': ParamSpec(
         label = 'Phase oversampling',
-        objects = {str(int(po)) + '%': float(po) for po in range(0, (constants.MAX_PHASE_OVERSAMPLING_FACTOR - 1) * 100 + 1)},
+        objects = {formatting.phase_oversampling(factor): factor for factor in np.linspace(1, 2, 101)},
         default = 0,
         precedence = 3,
     ),

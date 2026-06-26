@@ -10,6 +10,9 @@ import holoviews as hv
 from collections import namedtuple
 
 
+MAX_PHASE_OVERSAMPLING_FACTOR = list(PARAMS['phase_oversampling'].objects.values())[-1]
+
+
 MinMax = namedtuple('MinMax', ['min', 'max'])
 
 ### Helper functions ###
@@ -553,12 +556,12 @@ def FOV_P_bounds(matrix_P, min_voxel_P, voxel_size_is_input, matrix_P_bounds, vo
 
 @Graph.node()
 def max_turbo_factor(matrix, phase_dir, partial_Fourier, EPI_factor):
-    return int(np.floor(matrix[phase_dir] * partial_Fourier / EPI_factor * constants.MAX_PHASE_OVERSAMPLING_FACTOR))
+    return int(np.floor(matrix[phase_dir] * partial_Fourier / EPI_factor * MAX_PHASE_OVERSAMPLING_FACTOR))
 
 
 @Graph.node()
 def max_EPI_factor(matrix, phase_dir, partial_Fourier, turbo_factor):
-    return int(np.floor(matrix[phase_dir] * partial_Fourier / turbo_factor * constants.MAX_PHASE_OVERSAMPLING_FACTOR))
+    return int(np.floor(matrix[phase_dir] * partial_Fourier / turbo_factor * MAX_PHASE_OVERSAMPLING_FACTOR))
 
 
 @Graph.node()
@@ -660,7 +663,7 @@ def spoke_angle(k_angles, shot):
 
 @Graph.node()
 def num_shots(matrix_P, phase_oversampling, partial_Fourier, turbo_factor, EPI_factor, is_radial, num_blades):
-    return int(np.ceil(matrix_P * (1 + phase_oversampling / 100) * partial_Fourier / turbo_factor / EPI_factor)) if not is_radial else num_blades
+    return int(np.ceil(matrix_P * phase_oversampling * partial_Fourier / turbo_factor / EPI_factor)) if not is_radial else num_blades
 
 
 @Graph.node()
@@ -692,7 +695,7 @@ def k_read_axis(freq_dir, FOV, matrix, is_radial, phantom_object, radial_FOV_ove
 def k_phase_axis(is_radial, num_measured_lines, matrix, phase_dir, phase_oversampling, FOV):
     if not is_radial:
         # oversampling may be higher than prescribed since num_shots must be integer:
-        num_lines = max(num_measured_lines, int(np.ceil(matrix[phase_dir] * (1 + phase_oversampling / 100))))
+        num_lines = max(num_measured_lines, int(np.ceil(matrix[phase_dir] * phase_oversampling)))
         voxel_size = FOV[phase_dir] / matrix[phase_dir]
     else:
         num_lines = num_measured_lines # future: take undersampling into account
