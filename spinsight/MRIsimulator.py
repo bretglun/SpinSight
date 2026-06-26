@@ -123,14 +123,12 @@ class MRIsimulator(param.Parameterized):
         hv.opts.defaults(hv.opts.Curve(line_width=5, line_color=constants.BOARD_COLORS['ADC']))
         hv.opts.defaults(hv.opts.Points(line_color=None, color=constants.BOARD_COLORS['ADC'], size=15))
 
-        self.derived_params = {'FOV_bandwidth', 'FW_shift', 'SNR', 'name', 'num_shots', 'recon_voxel_F', 'recon_voxel_P', 'relative_SNR', 'scantime', 'spoke_angle', 'voxel_F', 'voxel_P', 'shot_label'}
-
         self.graph = Graph(self)
 
         self.set_reference_SNR()
 
     def get_params(self):
-        return {param: self.__getattribute__(param) for param in self.param.values().keys() if param not in self.derived_params}
+        return {param: self.__getattribute__(param) for param in self.param.values().keys() if param != 'name' and not PARAMS[param].derived}
 
     def set_params(self, settings):
         self.init_bounds()
@@ -174,7 +172,7 @@ class MRIsimulator(param.Parameterized):
         if isinstance(maxval, list):
             maxval = min(maxval) if maxval else None
         curval = getattr(self, par.name)
-        if type(par) is param.parameters.Selector:
+        if PARAMS[par.name].objects is not None:
             return self.set_param_discrete_bounds(par, curval, minval, maxval)
         
         outbound = False

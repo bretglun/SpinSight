@@ -93,12 +93,14 @@ PARAMS = {
         label = 'FOV bandwidth',
         objects = {formatting.FOV_bandwidth(fovbw): fovbw for fovbw in fov_bw_vals},
         precedence = 2,
+        derived = True,
     ),
 
     'FW_shift': ParamSpec(
         label = 'Fat/water shift',
         objects = {formatting.format_float(shift): shift for shift in FW_shift_vals},
         precedence = 2,
+        derived = True,
     ),
 
     'NSA': ParamSpec(
@@ -209,6 +211,7 @@ PARAMS = {
     'num_shots': ParamSpec(
         label = 'Number of shots',
         precedence = 3,
+        derived = True,
     ),
 
     'matrix_P_ui': ParamSpec(
@@ -229,12 +232,14 @@ PARAMS = {
         label = 'Voxel size x',
         objects =  {formatting.voxel_size(voxel): voxel for voxel in voxel_vals},
         precedence = 4,
+        derived = True,
     ),
 
     'voxel_F': ParamSpec(
         label = 'Voxel size y',
         objects =  {formatting.voxel_size(voxel): voxel for voxel in voxel_vals},
         precedence = 4,
+        derived = True,
     ),
 
     'recon_matrix_P_ui': ParamSpec(
@@ -255,12 +260,14 @@ PARAMS = {
         label = 'Reconstructed voxel size x',
         objects =  {formatting.voxel_size(voxel): voxel for voxel in recon_voxel_vals},
         precedence = 5,
+        derived = True,
     ),
 
     'recon_voxel_F': ParamSpec(
         label = 'Reconstructed voxel size y',
         objects =  {formatting.voxel_size(voxel): voxel for voxel in recon_voxel_vals},
         precedence = 5,
+        derived = True,
     ),
 
     'slice_thickness': ParamSpec(
@@ -273,6 +280,7 @@ PARAMS = {
     'shot_label': ParamSpec(
         label = 'shot/spoke/blade label',
         default = 'shot',
+        derived = True,
     ),
 
     'radial_FOV_oversampling': ParamSpec(
@@ -285,11 +293,13 @@ PARAMS = {
     'rec_acq_ratio_P': ParamSpec(
         label = 'Reconstructed / acquired matrix_P ratio',
         default = 2.0,
+        derived = True,
     ),
 
     'rec_acq_ratio_F': ParamSpec(
         label = 'Reconstructed / acquired matrix_F ratio',
         default = 2.0,
+        derived = True,
     ),
 
     'show_FOV': ParamSpec(
@@ -311,6 +321,7 @@ PARAMS = {
 
     'SNR': ParamSpec(
         label = 'SNR',
+        derived = True,
     ),
 
     'reference_SNR': ParamSpec(
@@ -320,10 +331,12 @@ PARAMS = {
 
     'relative_SNR': ParamSpec(
         label = 'Relative SNR [%]',
+        derived = True,
     ),
 
     'scantime': ParamSpec(
         label = 'Scan time',
+        derived = True,
     ),
 
     'show_processed_kspace': ParamSpec(
@@ -381,6 +394,7 @@ PARAMS = {
     'spoke_angle': ParamSpec(
         label = 'Spoke angle [°]',
         precedence = 2,
+        derived = True,
     ),
 
 }
