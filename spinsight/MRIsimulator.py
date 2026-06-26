@@ -144,15 +144,12 @@ class MRIsimulator(param.Parameterized):
         minval = min([v for v in vals if v >= minval], default=minval)
         maxval = max([v for v in vals if v <= maxval], default=maxval)
 
-        outbound = False
         if curval < minval:
             warnings.warn(f'trying to set {par.name} min bound above current value ({minval} > {curval})')
-            outbound = True
+            return
         if curval > maxval:
             warnings.warn(f'trying to set {par.name} max bound below current value ({maxval} < {curval})')
-            outbound = True
-        if outbound:
-            return self.handle_outbound(par.name)
+            return
         
         objects = {k: v for k, v in values.items() if minval <= v <= maxval} if isinstance(values, dict) else [v for v in values if minval <= v <= maxval]
         vals = objects.values() if isinstance(objects, dict) else objects
@@ -219,21 +216,14 @@ class MRIsimulator(param.Parameterized):
             new = value
         if new != current:
             setattr(self, par.name, new)
-
-    def handle_outbound(self, par_name):
-        bounds_func = f'set_{par_name}_bounds'
-        self.graph.nodes[bounds_func].invalidate()
-        min_TE = self.graph.nodes['min_TE'].value
-        if self.TE < min_TE:
-            print(f'Increasing TE from {self.TE} to {min_TE} to resolve conflict')
-            self.set_param(self.param.TE, min_TE, values=PARAMS['TE'].objects, mode='ceil')
-            return
-        min_TR =  self.graph.nodes['min_TR'].value
-        if self.TR < min_TR:
-            print(f'Increasing TR from {self.TR} to {min_TR} to resolve conflict')
+    
+    @Graph.node(action_precedence=0.5, simulator_method=True)
+    def resolve_conflicts(self, min_TE, TE, min_TR, TR):
+        if min_TE > TE:
+            self.set_param_bounds(self.param.TE) # loosen bound
+            self.set_param(self.param.TE, min_TE, mode='ceil')
+        elif min_TR > TR:
             self.set_param(self.param.TR, min_TR, mode='ceil')
-            return
-        raise NotImplementedError(f'Could not resolve conflict for outbound parameter {par_name}')
     
     @Graph.node(action_precedence=1, simulator_method=True)
     def set_isotropic_voxel_size(self, is_radial, FOV_F, matrix_F, FOV_P, matrix_P):
@@ -350,7 +340,7 @@ class MRIsimulator(param.Parameterized):
     @Graph.node(action_precedence=1, simulator_method=True)
     def set_TR_bounds(self, min_TR):
         self.set_param_bounds(self.param.TR, minval=min_TR)
-
+        
     @Graph.node(action_precedence=1, simulator_method=True)
     def set_TE_bounds(self, min_TE, max_TE):
         self.set_param_bounds(self.param.TE, minval=min_TE, maxval=max_TE)

@@ -2,7 +2,6 @@ from graphlib import TopologicalSorter
 import numpy as np
 from functools import partial
 import inspect
-from collections import OrderedDict
 
 
 def equal(a, b):
