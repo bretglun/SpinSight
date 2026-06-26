@@ -490,7 +490,7 @@ class MRIsimulator(param.Parameterized):
         visible = not is_radial
         self.set_visibility('phase_oversampling', visible)
         if not visible:
-            self.set_param(self.param.phase_oversampling, 0)
+            self.set_param(self.param.phase_oversampling, 1)
 
     @Graph.node(action_precedence=1, simulator_method=True)
     def set_radial_factor_visibility(self, is_radial):
