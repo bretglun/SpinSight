@@ -7,6 +7,7 @@ from pathlib import Path
 from spinsight import constants, convert, phantom
 from spinsight import nodes # needed to initialize graph node decorators
 from spinsight.DAG import Graph
+from spinsight.params import PARAMS
 from bokeh.models import HoverTool, CustomJS, ColumnDataSource
 import warnings
 
@@ -21,71 +22,83 @@ def get_k_on_interval(interval, k_trajectory):
 
 
 class MRIsimulator(param.Parameterized):
-    object = param.ObjectSelector(default='brain', label='Phantom object')
-    field_strength = param.ObjectSelector(default=1.5, label='B0 field strength [T]')
-    parameter_style = param.ObjectSelector(default='Matrix and Pixel BW', label='Parameter Style')
-    min_voxel_size = param.Number(default=0.5) # [mm] limit on phantom resolution (to limit computation time)
-    
-    FatSat = param.Boolean(default=False, label='Fat saturation')
-    TR = param.Selector(default=10000, label='TR')
-    TE = param.Selector(default=10, label='TE')
-    FA = param.Selector(default=90, precedence=-1, label='Flip angle')
-    TI = param.Selector(default=40, precedence=-1, label='TI')
-    
-    trajectory = param.ObjectSelector(default=constants.TRAJECTORIES[0], precedence=1, label='k-space trajectory')
-    frequency_direction = param.ObjectSelector(default=list(constants.DIRECTIONS.keys())[0], precedence=1, label='Frequency encoding direction')
-    FOV_P = param.Selector(default=240, precedence=2, label='FOV x')
-    FOV_F = param.Selector(default=240, precedence=2, label='FOV y')
-    phase_oversampling = param.Selector(default=0, precedence=3, label='Phase oversampling')
-    radial_factor = param.Number(default=1., precedence=-3, label='Spoke sampling factor')
-    num_shots = param.Integer(precedence=-3)
-    shot_label = param.String('shot')
-    voxel_P = param.Selector(default=1.333, precedence=-4, label='Voxel size x')
-    voxel_F = param.Selector(default=1.333, precedence=-4, label='Voxel size y')
-    matrix_P_ui = param.Selector(default=180, precedence=4, label='Acquisition matrix x')
-    matrix_F_ui = param.Selector(default=180, precedence=4, label='Acquisition matrix y')
-    recon_voxel_P = param.Selector(default=0.666, precedence=-5, label='Reconstructed voxel size x')
-    recon_voxel_F = param.Selector(default=0.666, precedence=-5, label='Reconstructed voxel size y')
-    recon_matrix_P_ui = param.Selector(default=360, precedence=5, label='Reconstruction matrix x')
-    recon_matrix_F_ui = param.Selector(default=360, precedence=5, label='Reconstruction matrix y')
-    slice_thickness = param.Selector(default=3, precedence=6, label='Slice thickness')
-    radial_FOV_oversampling = param.Number(default=2, step=0.01, precedence=9, label='Radial FOV oversampling factor')
-    rec_acq_ratio_P = param.Number(default=2, label='Reconstructed / acquired matrix_P ratio')
-    rec_acq_ratio_F = param.Number(default=2, label='Reconstructed / acquired matrix_F ratio')
-    
-    sequence_type = param.ObjectSelector(default=constants.SEQUENCES[0], precedence=1, label='Pulse sequence')
-    pixel_bandwidth_ui = param.Selector(default=480, precedence=2, label='Pixel bandwidth')
-    FOV_bandwidth = param.Selector(default=convert.pixel_BW_to_FOV_BW(480, 180), precedence=-2, label='FOV bandwidth')
-    FW_shift = param.Selector(default=convert.pixel_BW_to_shift(480), precedence=-2, label='Fat/water shift')
-    NSA = param.Integer(default=1, precedence=3, label='NSA')
-    partial_Fourier = param.Number(default=1, step=0.01, precedence=5, label='Partial Fourier factor')
-    turbo_factor = param.Integer(default=1, precedence=6, label='Turbo factor')
-    EPI_factor = param.Selector(default=1, precedence=7, label='EPI factor')
-    shot = param.Integer(default=1, label='Displayed shot')
 
-    image_type = param.ObjectSelector(default='Magnitude', label='Image type')
-    show_FOV = param.Boolean(default=False, label='Show FOV')
-    noise_gain = param.Number(default=3.)
-    reference_tissue = param.ObjectSelector(label='Reference tissue')
-    SNR = param.Number(label='SNR')
-    reference_SNR = param.Number(default=1, label='Reference SNR')
-    relative_SNR = param.Number(label='Relative SNR [%]')
-    scantime = param.String(label='Scan time')
-    spoke_angle = param.Number(label='Spoke angle [°]')
+    # Settings
+    object = param.ObjectSelector(**PARAMS['object'].param_kwargs)
+    field_strength = param.ObjectSelector(**PARAMS['field_strength'].param_kwargs)
+    parameter_style = param.ObjectSelector(**PARAMS['parameter_style'].param_kwargs)
 
-    kspace_type = param.ObjectSelector(default='Magnitude', label='k-space type')
-    show_processed_kspace = param.Boolean(default=False, label='Show processed k-space')
-    kspace_exponent = param.Number(default=0.2, step=.01, label='k-space exponent')
-    homodyne = param.Boolean(default=True, precedence=1, label='Homodyne')
-    do_apodize = param.Boolean(default=True, precedence=2, label='Apodization')
-    apodization_alpha = param.Number(default=0.25, step=.01, precedence=3, label='Apodization alpha')
-    do_zerofill = param.Boolean(default=True, precedence=4, label='Zerofill')
+    min_voxel_size = param.Number(**PARAMS['min_voxel_size'].param_kwargs)
+    noise_gain = param.Number(**PARAMS['noise_gain'].param_kwargs)
+
+    # Sequence
+    sequence_type = param.ObjectSelector(**PARAMS['sequence_type'].param_kwargs)
+    pixel_bandwidth_ui = param.Selector(**PARAMS['pixel_bandwidth_ui'].param_kwargs)
+    FOV_bandwidth = param.Selector(**PARAMS['FOV_bandwidth'].param_kwargs)
+    FW_shift = param.Selector(**PARAMS['FW_shift'].param_kwargs)
+    NSA = param.Integer(**PARAMS['NSA'].param_kwargs)
+    partial_Fourier = param.Number(**PARAMS['partial_Fourier'].param_kwargs)
+    turbo_factor = param.Integer(**PARAMS['turbo_factor'].param_kwargs)
+    EPI_factor = param.Selector(**PARAMS['EPI_factor'].param_kwargs)
+
+    # Contrast
+    FatSat = param.Boolean(**PARAMS['FatSat'].param_kwargs)
+    TR = param.Selector(**PARAMS['TR'].param_kwargs)
+    TE = param.Selector(**PARAMS['TE'].param_kwargs)
+    TI = param.Selector(**PARAMS['TI'].param_kwargs)
+    FA = param.Selector(**PARAMS['FA'].param_kwargs)
+    
+    # Geometry
+    trajectory = param.ObjectSelector(**PARAMS['trajectory'].param_kwargs)
+    frequency_direction = param.ObjectSelector(**PARAMS['frequency_direction'].param_kwargs)
+    FOV_P = param.Selector(**PARAMS['FOV_P'].param_kwargs)
+    FOV_F = param.Selector(**PARAMS['FOV_F'].param_kwargs)
+    phase_oversampling = param.Selector(**PARAMS['phase_oversampling'].param_kwargs)
+    radial_factor = param.Number(**PARAMS['radial_factor'].param_kwargs)
+    num_shots = param.Integer(**PARAMS['num_shots'].param_kwargs)
+    matrix_P_ui = param.Selector(**PARAMS['matrix_P_ui'].param_kwargs)
+    matrix_F_ui = param.Selector(**PARAMS['matrix_F_ui'].param_kwargs)
+    voxel_P = param.Selector(**PARAMS['voxel_P'].param_kwargs)
+    voxel_F = param.Selector(**PARAMS['voxel_F'].param_kwargs)
+    recon_matrix_P_ui = param.Selector(**PARAMS['recon_matrix_P_ui'].param_kwargs)
+    recon_matrix_F_ui = param.Selector(**PARAMS['recon_matrix_F_ui'].param_kwargs)
+    recon_voxel_P = param.Selector(**PARAMS['recon_voxel_P'].param_kwargs)
+    recon_voxel_F = param.Selector(**PARAMS['recon_voxel_F'].param_kwargs)
+    slice_thickness = param.Selector(**PARAMS['slice_thickness'].param_kwargs)
+    
+    shot_label = param.String(**PARAMS['shot_label'].param_kwargs)
+    radial_FOV_oversampling = param.Number(**PARAMS['radial_FOV_oversampling'].param_kwargs)
+    rec_acq_ratio_P = param.Number(**PARAMS['rec_acq_ratio_P'].param_kwargs)
+    rec_acq_ratio_F = param.Number(**PARAMS['rec_acq_ratio_F'].param_kwargs)
+    
+    # MR image
+    show_FOV = param.Boolean(**PARAMS['show_FOV'].param_kwargs)
+    reference_tissue = param.ObjectSelector(**PARAMS['reference_tissue'].param_kwargs)
+
+    image_type = param.ObjectSelector(**PARAMS['image_type'].param_kwargs)
+    SNR = param.Number(**PARAMS['SNR'].param_kwargs)
+    reference_SNR = param.Number(**PARAMS['reference_SNR'].param_kwargs)
+    relative_SNR = param.Number(**PARAMS['relative_SNR'].param_kwargs)
+    scantime = param.String(**PARAMS['scantime'].param_kwargs)
+
+    # k-space
+    show_processed_kspace = param.Boolean(**PARAMS['show_processed_kspace'].param_kwargs)
+    kspace_exponent = param.Number(**PARAMS['kspace_exponent'].param_kwargs)
+    kspace_type = param.ObjectSelector(**PARAMS['kspace_type'].param_kwargs)
+
+    # Post-processing
+    homodyne = param.Boolean(**PARAMS['homodyne'].param_kwargs)
+    do_apodize = param.Boolean(**PARAMS['do_apodize'].param_kwargs)
+    apodization_alpha = param.Number(**PARAMS['apodization_alpha'].param_kwargs)
+    do_zerofill = param.Boolean(**PARAMS['do_zerofill'].param_kwargs)
+    
+    # Sequence plot
+    shot = param.Integer(**PARAMS['shot'].param_kwargs)
+    spoke_angle = param.Number(**PARAMS['spoke_angle'].param_kwargs)
 
     def __init__(self, **params):
         
         super().__init__(**params)
-
-        self.init_bounds()
 
         def arrow(coords):
             angle = 0
@@ -116,26 +129,6 @@ class MRIsimulator(param.Parameterized):
 
         self.set_reference_SNR()
 
-    def init_bounds(self):
-        self.param.object.objects = phantom.get_phantom_names()
-        self.param.field_strength.objects=[1.5, 3.0]
-        self.param.parameter_style.objects=constants.PARAMETER_STYLES
-        self.param.frequency_direction.objects=constants.DIRECTIONS.keys()
-        self.param.trajectory.objects=constants.TRAJECTORIES[:2]
-        self.param.radial_factor.bounds=(0.1, 4.)
-        self.param.radial_FOV_oversampling.bounds=(1, 2)
-        self.param.sequence_type.objects=constants.SEQUENCES
-        self.param.NSA.bounds=(1, 16)
-        self.param.partial_Fourier.bounds=(.6, 1)
-        self.param.turbo_factor.bounds=(1, 64)
-        self.param.shot.bounds=(1, 1)
-        self.param.image_type.objects=constants.OPERATORS.keys()
-        self.param.kspace_type.objects=constants.OPERATORS.keys()
-        self.param.kspace_exponent.bounds=(0.1, 1)
-        self.param.apodization_alpha.bounds=(.01, 1)
-        for par, values in constants.PARAM_VALUES.items():
-            self.param[par].objects=values
-
     def get_params(self):
         return {param: self.__getattribute__(param) for param in self.param.values().keys() if param not in self.derived_params}
 
@@ -144,7 +137,7 @@ class MRIsimulator(param.Parameterized):
         self.param.update(settings)
 
     def set_param_discrete_bounds(self, par, curval, minval=None, maxval=None):
-        values = constants.PARAM_VALUES[par.name]
+        values = PARAMS[par.name].objects
         vals = values.values() if isinstance(values, dict) else values
         if minval is None:
             minval = -np.inf
@@ -235,7 +228,7 @@ class MRIsimulator(param.Parameterized):
         min_TE = self.graph.nodes['min_TE'].value
         if self.TE < min_TE:
             print(f'Increasing TE from {self.TE} to {min_TE} to resolve conflict')
-            self.set_param(self.param.TE, min_TE, values=constants.PARAM_VALUES['TE'], mode='ceil')
+            self.set_param(self.param.TE, min_TE, values=PARAMS['TE'].objects, mode='ceil')
             return
         min_TR =  self.graph.nodes['min_TR'].value
         if self.TR < min_TR:
@@ -443,7 +436,7 @@ class MRIsimulator(param.Parameterized):
             self.param.turbo_factor.bounds = (1, 1)
             self.param.turbo_factor.constant = True
             return
-        self.param.turbo_factor.bounds = (1, min(max_turbo_factor, constants.MAX_TURBO_FACTOR))
+        self.param.turbo_factor.bounds = (1, min(max_turbo_factor, PARAMS['turbo_factor'].bounds[-1]))
         self.param.turbo_factor.constant = False
 
     @Graph.node(action_precedence=1, simulator_method=True)
@@ -465,11 +458,11 @@ class MRIsimulator(param.Parameterized):
     @Graph.node(action_precedence=1, simulator_method=True)
     def set_trajectory_objects(self, EPI_factor, turbo_factor):
         # Label radial trajectory 'Radial' or 'PROPELLER' depending on nLines per shot
-        self.param.trajectory.objects = constants.TRAJECTORIES
+        self.param.trajectory.objects = PARAMS['trajectory'].objects
         invalid, updated = ('PROPELLER', 'Radial') if (EPI_factor * turbo_factor == 1) else ('Radial', 'PROPELLER')
         if self.trajectory == invalid:
             self.trajectory = updated
-        self.param.trajectory.objects = [t for t in constants.TRAJECTORIES if t != invalid]
+        self.param.trajectory.objects = [t for t in PARAMS['trajectory'].objects if t != invalid]
 
     @Graph.node(action_precedence=1, simulator_method=True)
     def set_pixel_bandwidth_visibility(self, pixel_BW_is_input):
