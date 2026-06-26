@@ -14,6 +14,46 @@ import warnings
 hv.extension('bokeh')
 
 
+def snap(value, values, mode='nearest'):
+    match mode:
+        case 'nearest':
+            return min(values, key=lambda x: abs(x-value), default=None)
+        case 'ceil':
+            return min([v for v in values if v >= value], default=None)
+        case 'floor':
+            return max([v for v in values if v <= value], default=None)
+        case _:
+            raise ValueError(f'Invalid mode {mode}')
+
+
+def filter_objects(objects, minval=None, maxval=None):
+    if isinstance(objects, dict):
+        return {k: v for k, v in objects.items() if (minval or -np.inf) <= v <= (maxval or np.inf)}
+    return [v for v in objects if (minval or -np.inf) <= v <= (maxval or np.inf)]
+
+
+def value_in_objects(value, objects):
+    if isinstance(objects, dict):
+        return value in objects.values()
+    return value in objects
+
+
+def insert_value_in_list_sorted(value, list_):
+    list_.append(value)
+    return sorted(list_)
+
+
+def insert_value_in_dict_sorted(key, value, dict_):
+    dict_[key] = value
+    return dict(sorted(dict_.items()))
+
+
+def get_object_values(objects):
+    if callable(getattr(objects, 'values', False)):
+        return objects.values()
+    return objects
+
+
 def get_k_on_interval(interval, k_trajectory):
     t = np.arange(*interval[[0, -1]], k_trajectory['dt'])
     kx = np.interp(t, k_trajectory['t'], k_trajectory['kx'])
@@ -133,41 +173,19 @@ class MRIsimulator(param.Parameterized):
     def set_params(self, settings):
         self.init_bounds()
         self.param.update(settings)
-
+    
     def set_param_discrete_bounds(self, par, curval, minval=None, maxval=None):
-        values = PARAMS[par.name].objects
-        vals = values.values() if isinstance(values, dict) else values
-        if minval is None:
-            minval = -np.inf
-        if maxval is None:
-            maxval = np.inf
-        minval = min([v for v in vals if v >= minval], default=minval)
-        maxval = max([v for v in vals if v <= maxval], default=maxval)
-
-        if curval < minval:
-            warnings.warn(f'trying to set {par.name} min bound above current value ({minval} > {curval})')
-            return
-        if curval > maxval:
-            warnings.warn(f'trying to set {par.name} max bound below current value ({maxval} < {curval})')
-            return
-        
-        objects = {k: v for k, v in values.items() if minval <= v <= maxval} if isinstance(values, dict) else [v for v in values if minval <= v <= maxval]
-        vals = objects.values() if isinstance(objects, dict) else objects
-
-        if curval not in vals:
+        objects = filter_objects(PARAMS[par.name].objects, minval, maxval)
+        if not value_in_objects(curval, objects):
+            warnings.warn(f'Trying to set {par.name} bound [{minval}, {maxval}] outside current value: {curval})')
             if isinstance(objects, dict):
                 cur_label = next((k for k, v in par.names.items() if v==curval), str(curval))
-                objects[cur_label] = curval
-                objects = dict(sorted(objects.items()))
+                insert_value_in_dict_sorted(cur_label, curval, objects)
             else:
-                objects = sorted(objects.append(curval))
+                insert_value_in_list_sorted(curval, objects)
         par.objects = objects
 
     def set_param_bounds(self, par, minval=None, maxval=None):
-        if isinstance(minval, list):
-            minval = max(minval) if minval else None
-        if isinstance(maxval, list):
-            maxval = min(maxval) if maxval else None
         curval = getattr(self, par.name)
         if PARAMS[par.name].objects is not None:
             return self.set_param_discrete_bounds(par, curval, minval, maxval)
@@ -179,9 +197,8 @@ class MRIsimulator(param.Parameterized):
         if curval > maxval:
             warnings.warn(f'trying to set {par.name} max bound below current value ({maxval} < {curval})')
             outbound = True
-        if outbound:
-            return self.handle_outbound(par.name)
-        par.bounds = (minval, maxval)
+        if not outbound:
+            par.bounds = (minval, maxval)
 
     def set_visibility(self, par_name, visible):
         precedence = abs(self.param[par_name].precedence)
@@ -189,38 +206,33 @@ class MRIsimulator(param.Parameterized):
             precedence *= -1
         self.param[par_name].precedence = precedence
     
-    def set_param(self, par, value=None, values=None, mode='round'):
-        # par.objects could be dict or param.ListProxy
-        if not values:
-            if hasattr(par, 'objects'):
-                values = par.objects
-                if not values:
-                    warnings.warn(f'Could not set {par.name} since no allowed values')
-                    return
-        if callable(getattr(values, 'values', False)):
-            values = values.values()
-        current = getattr(self, par.name)
-        if value is None:
-            value = current
-        if values:
-            match mode:
-                case 'round':
-                    new = min(values, key=lambda x: abs(x-value))
-                case 'ceil':
-                    new = min([v for v in values if v >= value])
-                case 'floor':
-                    new = max([v for v in values if v <= value])
-                case _:
-                    raise ValueError(f'Invalid mode {mode}')
-        else:
-            new = value
-        if new != current:
+    def set_param(self, par, value, mode='nearest'):
+        objects = getattr(par, 'objects', None) # par.objects could be dict or param.ListProxy
+        values = get_object_values(objects)
+        new = snap(value, values, mode) if values else value
+
+        insert_value = False
+        if values and new is None:
+            default_objects = PARAMS[par.name].objects 
+            default_values = get_object_values(default_objects)
+            new = snap(value, default_values, mode)
+            if new is None:
+                raise ValueError(f'Value {value} is not supported by current or default objects for param {par.name} (mode={mode})')
+            insert_value = True
+            if isinstance(objects, dict):
+                new_label = next((k for k, v in default_objects.items() if v==new), str(new))
+                insert_value_in_dict_sorted(new_label, new, objects)
+            else:
+                insert_value_in_list_sorted(new, objects)
+        
+        if new != getattr(self, par.name):
+            if insert_value:
+                par.objects = objects
             setattr(self, par.name, new)
     
     @Graph.node(action_precedence=0.5, simulator_method=True)
     def resolve_conflicts(self, min_TE, TE, min_TR, TR):
         if min_TE > TE:
-            self.set_param_bounds(self.param.TE) # loosen bound
             self.set_param(self.param.TE, min_TE, mode='ceil')
         elif min_TR > TR:
             self.set_param(self.param.TR, min_TR, mode='ceil')
@@ -230,9 +242,9 @@ class MRIsimulator(param.Parameterized):
         # TODO: needs repair, for instance set param according to param_style
         if is_radial:
             if (FOV_F / matrix_F < FOV_P / matrix_P):
-                self.set_param(self.param.matrix_P, matrix_F * FOV_P / FOV_F, mode='round')
+                self.set_param(self.param.matrix_P, matrix_F * FOV_P / FOV_F, mode='nearest')
             else:
-                self.set_param(self.param.matrix_F, matrix_P * FOV_F / FOV_P, mode='round')
+                self.set_param(self.param.matrix_F, matrix_P * FOV_F / FOV_P, mode='nearest')
 
     @Graph.node(action_precedence=1, simulator_method=True)
     def set_x_y_labels(self, frequency_direction):
