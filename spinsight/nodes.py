@@ -1606,3 +1606,8 @@ def image(image_type, recon_matrix, FOV, image_array):
     )
     img.x.attrs['units'] = img.y.attrs['units'] = 'mm'
     return hv.Overlay([hv.Image(img, vdims=['magnitude'])])
+
+
+@Graph.node()
+def annotated_image(image, FOV_box):
+    return image * FOV_box

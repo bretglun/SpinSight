@@ -123,6 +123,9 @@ class MRIsimulator(param.Parameterized):
     # Sequence plot
     shot_ui = param.Integer(**PARAMS['shot_ui'].param_kwargs)
     spoke_angle = param.Number(**PARAMS['spoke_angle'].param_kwargs)
+    
+    # Dynamic map triggers
+    image_version = param.Integer(default=0)
 
     def __init__(self, **params):
         
@@ -548,7 +551,12 @@ class MRIsimulator(param.Parameterized):
     @param.depends('object', 'field_strength', 'sequence_type', 'FatSat', 'TR_ui', 'TE_ui', 'FA', 'TI', 'FOV_F', 'FOV_P', 'phase_oversampling', 'num_shots', 'matrix_F_ui', 'matrix_P_ui', 'voxel_F', 'voxel_P', 'recon_matrix_F_ui', 'recon_matrix_P_ui', 'recon_voxel_F', 'recon_voxel_P', 'slice_thickness', 'trajectory', 'frequency_direction', 'pixel_bandwidth_ui', 'FOV_bandwidth', 'FW_shift', 'NSA', 'partial_Fourier', 'turbo_factor', 'EPI_factor', 'kspace_type', 'show_processed_kspace', 'kspace_exponent', 'homodyne', 'do_apodize', 'apodization_alpha', 'do_zerofill', 'radial_FOV_oversampling')
     def display_kspace(self):
         return self.graph.nodes['kspace'].value
-
-    @param.depends('object', 'field_strength', 'sequence_type', 'FatSat', 'TR_ui', 'TE_ui', 'FA', 'TI', 'FOV_F', 'FOV_P', 'phase_oversampling', 'num_shots', 'matrix_F_ui', 'matrix_P_ui', 'voxel_F', 'voxel_P', 'recon_matrix_F_ui', 'recon_matrix_P_ui', 'recon_voxel_F', 'recon_voxel_P', 'slice_thickness', 'trajectory', 'frequency_direction', 'pixel_bandwidth_ui', 'FOV_bandwidth', 'FW_shift', 'NSA', 'partial_Fourier', 'turbo_factor', 'EPI_factor', 'image_type', 'show_FOV', 'homodyne', 'do_apodize', 'apodization_alpha', 'do_zerofill', 'radial_FOV_oversampling')
+    
+    @Graph.node(action_precedence=1, simulator_method=True)
+    def set_image_version(self, annotated_image):
+        if hasattr(self, 'graph'):
+            self.image_version = self.graph.nodes['annotated_image'].version
+    
+    @param.depends('image_version')
     def display_image(self):
-        return self.graph.nodes['image'].value * self.graph.nodes['FOV_box'].value
+        return self.graph.nodes['annotated_image'].value
