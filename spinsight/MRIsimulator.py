@@ -126,6 +126,8 @@ class MRIsimulator(param.Parameterized):
     
     # Dynamic map triggers
     image_version = param.Integer(default=0)
+    kspace_version = param.Integer(default=0)
+    seqplot_version = param.Integer(default=0)
 
     def __init__(self, **params):
         
@@ -544,11 +546,21 @@ class MRIsimulator(param.Parameterized):
     def set_reference_SNR(self, event=None):
         self.reference_SNR = self.graph.nodes['SNR'].value
     
-    @param.depends('sequence_type', 'FatSat', 'TR_ui', 'TE_ui', 'FA', 'TI', 'FOV_F', 'FOV_P', 'phase_oversampling', 'num_shots', 'matrix_F_ui', 'matrix_P_ui', 'voxel_F', 'voxel_P', 'slice_thickness', 'trajectory', 'frequency_direction', 'pixel_bandwidth_ui', 'FOV_bandwidth', 'FW_shift', 'partial_Fourier', 'turbo_factor', 'EPI_factor', 'shot_ui')
+    @Graph.node(action_precedence=1, simulator_method=True)
+    def set_seqplot_version(self, sequence_plot):
+        if hasattr(self, 'graph'):
+            self.seqplot_version = self.graph.nodes['sequence_plot'].version
+    
+    @param.depends('seqplot_version')
     def display_sequence_plot(self):
         return self.graph.nodes['sequence_plot'].value
     
-    @param.depends('object', 'field_strength', 'sequence_type', 'FatSat', 'TR_ui', 'TE_ui', 'FA', 'TI', 'FOV_F', 'FOV_P', 'phase_oversampling', 'num_shots', 'matrix_F_ui', 'matrix_P_ui', 'voxel_F', 'voxel_P', 'recon_matrix_F_ui', 'recon_matrix_P_ui', 'recon_voxel_F', 'recon_voxel_P', 'slice_thickness', 'trajectory', 'frequency_direction', 'pixel_bandwidth_ui', 'FOV_bandwidth', 'FW_shift', 'NSA', 'partial_Fourier', 'turbo_factor', 'EPI_factor', 'kspace_type', 'show_processed_kspace', 'kspace_exponent', 'homodyne', 'do_apodize', 'apodization_alpha', 'do_zerofill', 'radial_FOV_oversampling')
+    @Graph.node(action_precedence=1, simulator_method=True)
+    def set_kspace_version(self, kspace):
+        if hasattr(self, 'graph'):
+            self.kspace_version = self.graph.nodes['kspace'].version
+    
+    @param.depends('kspace_version')
     def display_kspace(self):
         return self.graph.nodes['kspace'].value
     
