@@ -146,7 +146,7 @@ class Graph:
             self.simulator.param.watch(partial(on_change, node, self), node.name)
     
     def input_nodes(self):
-        return [node for node in self.nodes.values() if (node.name in self.simulator.param) and not node.parents]
+        return [node for node in self.nodes.values() if (node.name in self.simulator.param) and node.children and not node.parents]
     
     def flush_actions(self):
         for precedence in sorted(self.action_nodes):
