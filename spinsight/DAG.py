@@ -82,14 +82,14 @@ class Graph:
     node_specs = {}
 
     @classmethod
-    def node(cls, action_precedence=False, simulator_method=False):
+    def node(cls, action=False, simulator_method=False):
         def decorator(func):
             func_params = [p.name for p in inspect.signature(func).parameters.values()]
             cls.node_specs[func.__name__] = {
                 'func': func,
                 'parents': [p for p in func_params if p != 'self'],
                 'simulator_method': simulator_method, # is func a method of MRIsimulator?
-                'action_precedence': action_precedence # order for action node to be flushed
+                'action_precedence': action # order for action node to be flushed
             }
             return func
         return decorator
