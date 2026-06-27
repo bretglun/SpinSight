@@ -64,9 +64,9 @@ class Node:
         if not self._valid:
             inputs = [parent.value for parent in self.parents]
             current_versions = tuple(p.version for p in self.parents)
-            if current_versions != self.parent_versions or not self.parents:
-                self.recompute(inputs)
+            if not self.parents or current_versions != self.parent_versions:
                 self.parent_versions = current_versions
+                self.recompute(inputs)
             self._valid = True
         return self._cache
     
