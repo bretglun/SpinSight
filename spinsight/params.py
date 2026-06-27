@@ -152,7 +152,7 @@ PARAMS = {
         precedence = 1,
     ),
 
-    'TR': ParamSpec(
+    'TR_ui': ParamSpec(
         label = 'TR',
         objects = {formatting.Ts(tr): tr for tr in TR_vals},
         default = 9000,

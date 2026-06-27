@@ -282,6 +282,12 @@ def min_TR(spoiler, sequence_start):
 
 
 @Graph.node()
+def TR(TR_ui, min_TR):
+    min_TR = params.snap(min_TR, PARAMS['TR_ui'].objects.values(), mode='ceil')
+    return max(TR_ui, min_TR)
+
+
+@Graph.node()
 def min_TE(k0_echo_indices_linear_order, k0_echo_indices_reverse_linear_order, min_refocusing_time, min_RF_to_readtrain_center, gr_echo_spacing, EPI_factor, is_gradient_echo, turbo_factor):
     if EPI_factor == 1:
         gr_index, rf_index = 0, 0
