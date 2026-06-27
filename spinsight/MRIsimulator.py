@@ -219,15 +219,6 @@ class MRIsimulator(param.Parameterized):
             setattr(self, par.name, new)
     
     @Graph.node(action_precedence=1, simulator_method=True)
-    def set_isotropic_voxel_size(self, is_radial, FOV_F, matrix_F, FOV_P, matrix_P):
-        # TODO: needs repair, for instance set param according to param_style
-        if is_radial:
-            if (FOV_F / matrix_F < FOV_P / matrix_P):
-                self.set_param(self.param.matrix_P, matrix_F * FOV_P / FOV_F, mode='nearest')
-            else:
-                self.set_param(self.param.matrix_F, matrix_P * FOV_F / FOV_P, mode='nearest')
-
-    @Graph.node(action_precedence=1, simulator_method=True)
     def set_x_y_labels(self, frequency_direction):
         for p in [self.param.FOV_F, self.param.FOV_P, self.param.matrix_F_ui, self.param.matrix_P_ui, self.param.recon_matrix_F_ui, self.param.recon_matrix_P_ui]:
             if (' y' in p.label) and (('_F' in p.name and frequency_direction=='left-right') or
@@ -278,13 +269,13 @@ class MRIsimulator(param.Parameterized):
             self.set_param(self.param.FW_shift, convert.pixel_BW_to_shift(pixel_bandwidth, field_strength))
 
     @Graph.node(action_precedence=1, simulator_method=True)
-    def set_matrix_F(self, matrix_is_input, matrix_F):
-        if not matrix_is_input:
+    def set_matrix_F(self, matrix_is_input, isotropic_voxel_size, matrix_F):
+        if not matrix_is_input or isotropic_voxel_size:
             self.set_param(self.param.matrix_F_ui, matrix_F)
 
     @Graph.node(action_precedence=1, simulator_method=True)
-    def set_matrix_P(self, matrix_is_input, matrix_P):
-        if not matrix_is_input:
+    def set_matrix_P(self, matrix_is_input, isotropic_voxel_size, matrix_P):
+        if not matrix_is_input or isotropic_voxel_size:
             self.set_param(self.param.matrix_P_ui, matrix_P)
 
     @Graph.node(action_precedence=1, simulator_method=True)
@@ -298,13 +289,13 @@ class MRIsimulator(param.Parameterized):
             self.set_param(self.param.recon_matrix_P_ui, recon_matrix_P)
 
     @Graph.node(action_precedence=1, simulator_method=True)
-    def set_voxel_F(self, voxel_size_is_input, FOV_F, matrix_F):
-        if not voxel_size_is_input:
+    def set_voxel_F(self, voxel_size_is_input, isotropic_voxel_size, FOV_F, matrix_F):
+        if not voxel_size_is_input or isotropic_voxel_size:
             self.set_param(self.param.voxel_F, FOV_F / matrix_F)
 
     @Graph.node(action_precedence=1, simulator_method=True)
-    def set_voxel_P(self, voxel_size_is_input, FOV_P, matrix_P):
-        if not voxel_size_is_input:
+    def set_voxel_P(self, voxel_size_is_input, isotropic_voxel_size, FOV_P, matrix_P):
+        if not voxel_size_is_input or isotropic_voxel_size:
             self.set_param(self.param.voxel_P, FOV_P / matrix_P)
 
     @Graph.node(action_precedence=1, simulator_method=True)
