@@ -1,5 +1,5 @@
 import xarray as xr
-from spinsight import constants, convert, formatting, sequence, recon, phantom
+from spinsight import constants, convert, formatting, sequence, recon, phantom, params
 from spinsight.DAG import Graph
 from spinsight.params import PARAMS
 from functools import partial
@@ -292,6 +292,12 @@ def min_TE(k0_echo_indices_linear_order, k0_echo_indices_reverse_linear_order, m
         for (gr_index, rf_index) in indices:
             min_TE_cands.append(min_TE_from_k0_echo_indices(gr_echo_spacing, gr_index, EPI_factor, is_gradient_echo, min_RF_to_readtrain_center, turbo_factor, min_refocusing_time, rf_index))
     return min(min_TE_cands)
+
+
+@Graph.node()
+def TE(TE_ui, min_TE):
+    min_TE = params.snap(min_TE, PARAMS['TE_ui'].objects.values(), mode='ceil')
+    return max(TE_ui, min_TE)
 
 
 @Graph.node()

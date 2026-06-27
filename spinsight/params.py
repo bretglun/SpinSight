@@ -159,7 +159,7 @@ PARAMS = {
         precedence = 2,
     ),
 
-    'TE': ParamSpec(
+    'TE_ui': ParamSpec(
         label = 'TE',
         objects = {formatting.Ts(te): te for te in TE_vals},
         default = 12,

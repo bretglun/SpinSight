@@ -72,7 +72,7 @@ class MRIsimulator(param.Parameterized):
     # Contrast
     FatSat = param.Boolean(**PARAMS['FatSat'].param_kwargs)
     TR = param.Selector(**PARAMS['TR'].param_kwargs)
-    TE = param.Selector(**PARAMS['TE'].param_kwargs)
+    TE_ui = param.Selector(**PARAMS['TE_ui'].param_kwargs)
     TI = param.Selector(**PARAMS['TI'].param_kwargs)
     FA = param.Selector(**PARAMS['FA'].param_kwargs)
     
@@ -219,10 +219,8 @@ class MRIsimulator(param.Parameterized):
             setattr(self, par.name, new)
     
     @Graph.node(action_precedence=0.5, simulator_method=True)
-    def resolve_conflicts(self, min_TE, TE, min_TR, TR):
-        if min_TE > TE:
-            self.set_param(self.param.TE, min_TE, mode='ceil')
-        elif min_TR > TR:
+    def resolve_conflicts(self, min_TR, TR):
+        if min_TR > TR:
             self.set_param(self.param.TR, min_TR, mode='ceil')
     
     @Graph.node(action_precedence=1, simulator_method=True)
@@ -283,7 +281,7 @@ class MRIsimulator(param.Parameterized):
     def set_FW_shift(self, FW_shift_is_input, pixel_bandwidth, field_strength):
         if not FW_shift_is_input:
             self.set_param(self.param.FW_shift, convert.pixel_BW_to_shift(pixel_bandwidth, field_strength))
-    
+
     @Graph.node(action_precedence=1, simulator_method=True)
     def set_matrix_F(self, matrix_is_input, matrix_F):
         if not matrix_is_input:
@@ -342,8 +340,9 @@ class MRIsimulator(param.Parameterized):
         self.set_param_bounds(self.param.TR, minval=min_TR)
         
     @Graph.node(action_precedence=1, simulator_method=True)
-    def set_TE_bounds(self, min_TE, max_TE):
-        self.set_param_bounds(self.param.TE, minval=min_TE, maxval=max_TE)
+    def set_TE_and_bounds(self, min_TE, max_TE, TE):
+        self.set_param_bounds(self.param.TE_ui, minval=min_TE, maxval=max_TE)
+        self.set_param(self.param.TE_ui, TE)
 
     @Graph.node(action_precedence=1, simulator_method=True)
     def set_TI_bounds(self, sequence_type, max_TI):
@@ -559,14 +558,14 @@ class MRIsimulator(param.Parameterized):
     def set_reference_SNR(self, event=None):
         self.reference_SNR = self.graph.nodes['SNR'].value
     
-    @param.depends('sequence_type', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOV_F', 'FOV_P', 'phase_oversampling', 'num_shots', 'matrix_F_ui', 'matrix_P_ui', 'voxel_F', 'voxel_P', 'slice_thickness', 'trajectory', 'frequency_direction', 'pixel_bandwidth_ui', 'FOV_bandwidth', 'FW_shift', 'partial_Fourier', 'turbo_factor', 'EPI_factor', 'shot')
+    @param.depends('sequence_type', 'FatSat', 'TR', 'TE_ui', 'FA', 'TI', 'FOV_F', 'FOV_P', 'phase_oversampling', 'num_shots', 'matrix_F_ui', 'matrix_P_ui', 'voxel_F', 'voxel_P', 'slice_thickness', 'trajectory', 'frequency_direction', 'pixel_bandwidth_ui', 'FOV_bandwidth', 'FW_shift', 'partial_Fourier', 'turbo_factor', 'EPI_factor', 'shot')
     def display_sequence_plot(self):
         return self.graph.nodes['sequence_plot'].value
     
-    @param.depends('object', 'field_strength', 'sequence_type', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOV_F', 'FOV_P', 'phase_oversampling', 'num_shots', 'matrix_F_ui', 'matrix_P_ui', 'voxel_F', 'voxel_P', 'recon_matrix_F_ui', 'recon_matrix_P_ui', 'recon_voxel_F', 'recon_voxel_P', 'slice_thickness', 'trajectory', 'frequency_direction', 'pixel_bandwidth_ui', 'FOV_bandwidth', 'FW_shift', 'NSA', 'partial_Fourier', 'turbo_factor', 'EPI_factor', 'kspace_type', 'show_processed_kspace', 'kspace_exponent', 'homodyne', 'do_apodize', 'apodization_alpha', 'do_zerofill', 'radial_FOV_oversampling')
+    @param.depends('object', 'field_strength', 'sequence_type', 'FatSat', 'TR', 'TE_ui', 'FA', 'TI', 'FOV_F', 'FOV_P', 'phase_oversampling', 'num_shots', 'matrix_F_ui', 'matrix_P_ui', 'voxel_F', 'voxel_P', 'recon_matrix_F_ui', 'recon_matrix_P_ui', 'recon_voxel_F', 'recon_voxel_P', 'slice_thickness', 'trajectory', 'frequency_direction', 'pixel_bandwidth_ui', 'FOV_bandwidth', 'FW_shift', 'NSA', 'partial_Fourier', 'turbo_factor', 'EPI_factor', 'kspace_type', 'show_processed_kspace', 'kspace_exponent', 'homodyne', 'do_apodize', 'apodization_alpha', 'do_zerofill', 'radial_FOV_oversampling')
     def display_kspace(self):
         return self.graph.nodes['kspace'].value
 
-    @param.depends('object', 'field_strength', 'sequence_type', 'FatSat', 'TR', 'TE', 'FA', 'TI', 'FOV_F', 'FOV_P', 'phase_oversampling', 'num_shots', 'matrix_F_ui', 'matrix_P_ui', 'voxel_F', 'voxel_P', 'recon_matrix_F_ui', 'recon_matrix_P_ui', 'recon_voxel_F', 'recon_voxel_P', 'slice_thickness', 'trajectory', 'frequency_direction', 'pixel_bandwidth_ui', 'FOV_bandwidth', 'FW_shift', 'NSA', 'partial_Fourier', 'turbo_factor', 'EPI_factor', 'image_type', 'show_FOV', 'homodyne', 'do_apodize', 'apodization_alpha', 'do_zerofill', 'radial_FOV_oversampling')
+    @param.depends('object', 'field_strength', 'sequence_type', 'FatSat', 'TR', 'TE_ui', 'FA', 'TI', 'FOV_F', 'FOV_P', 'phase_oversampling', 'num_shots', 'matrix_F_ui', 'matrix_P_ui', 'voxel_F', 'voxel_P', 'recon_matrix_F_ui', 'recon_matrix_P_ui', 'recon_voxel_F', 'recon_voxel_P', 'slice_thickness', 'trajectory', 'frequency_direction', 'pixel_bandwidth_ui', 'FOV_bandwidth', 'FW_shift', 'NSA', 'partial_Fourier', 'turbo_factor', 'EPI_factor', 'image_type', 'show_FOV', 'homodyne', 'do_apodize', 'apodization_alpha', 'do_zerofill', 'radial_FOV_oversampling')
     def display_image(self):
         return self.graph.nodes['image'].value * self.graph.nodes['FOV_box'].value
