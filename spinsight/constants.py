@@ -1,5 +1,5 @@
 import numpy as np
-from spinsight import convert, formatting
+from types import SimpleNamespace
 
 
 GYRO = 42.577 # 1H gyromagnetic ratio [MHz/T]
@@ -37,7 +37,14 @@ FAT_RESONANCES = {'Fat1': {'shift': 0.9 - 4.7, 'ratio': .087, 'ratio_with_FatSat
                   'Fat5': {'shift': 4.3 - 4.7, 'ratio': .039, 'ratio_with_FatSat': .037, 'PD': 1.0, 'T1': {1.5:  290, 3.0:  370}, 'T2': {1.5:  165, 3.0:  130}}, 
                   'Fat6': {'shift': 5.3 - 4.7, 'ratio': .047, 'ratio_with_FatSat': .045, 'PD': 1.0, 'T1': {1.5:  290, 3.0:  370}, 'T2': {1.5:  165, 3.0:  130}} }
 
-OPERATORS = {'Magnitude': np.abs, 'Phase': np.angle, 'Real': np.real, 'Imaginary': np.imag}
+T2_PRIM = 35. # ad hoc value [msec]
+
+OPERATORS = {
+    'Magnitude': np.abs, 
+    'Phase': np.angle, 
+    'Real': np.real, 
+    'Imaginary': np.imag
+}
 
 MAX_AMP = 25. # mT/m
 MAX_SLEW = 80. # T/m/s
@@ -51,3 +58,15 @@ BOARD_COLORS = {
     'signal': 'orange',
     'ADC': 'peru',
 }
+
+
+# Action node precedences
+ACTION = SimpleNamespace(
+    VISIBILITY = 1,
+    BOUNDS = 2,
+    VALUE = 3,
+    SEQPLOT = 4,
+    KSPACE = 5,
+    IMAGE = 6,
+    INVISIBLE = 7,
+)

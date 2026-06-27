@@ -5,22 +5,30 @@ import numpy as np
 import math
 from pathlib import Path
 from spinsight import constants, convert, params
-from spinsight import nodes # needed to initialize graph node decorators
+from spinsight.constants import ACTION
+# Initialize graph node decorators:
+from spinsight.nodes import (
+    internal_input_params,
+    helpers,
+    param_bounds,
+    setup_sequence_objects,
+    sequence_timing,
+    phase_encoding_order,
+    place_sequence_objects,
+    kspace_simulation,
+    kspace_processing,
+    image_reconstruction,
+    sequence_plot,
+    kspace_plot,
+    image_plot,
+    SNR_and_scantime
+)
 from spinsight.DAG import Graph
 from spinsight.params import PARAMS
 from bokeh.models import HoverTool, CustomJS, ColumnDataSource
 import warnings
 
 hv.extension('bokeh')
-
-# Action node precedences
-VISIBILITY_ACTION = 1
-BOUNDS_ACTION = 2
-VALUE_ACTION = 3
-SEQPLOT_ACTION = 4
-KSPACE_ACTION = 5
-IMAGE_ACTION = 6
-INVISIBLE_ACTION = 7
 
 
 def filter_objects(objects, minval=None, maxval=None):
@@ -265,7 +273,7 @@ class MRIsimulator(param.Parameterized):
         return self.graph.nodes['annotated_image'].value
 
 
-@Graph.node(action=BOUNDS_ACTION)
+@Graph.node(action=ACTION.BOUNDS)
 def set_x_y_labels(simulator, frequency_direction):
     for p in [simulator.param.FOV_F, simulator.param.FOV_P, simulator.param.matrix_F_ui, simulator.param.matrix_P_ui, simulator.param.recon_matrix_F_ui, simulator.param.recon_matrix_P_ui]:
         if (' y' in p.label) and (('_F' in p.name and frequency_direction=='left-right') or
@@ -276,213 +284,218 @@ def set_x_y_labels(simulator, frequency_direction):
             p.label = p.label.replace(' x', ' y')
 
 
-@Graph.node(action=BOUNDS_ACTION)
+@Graph.node()
+def shot_label(is_radial, EPI_factor, turbo_factor):
+    return 'shot' if not is_radial else 'spoke' if (EPI_factor * turbo_factor == 1) else 'blade'
+
+
+@Graph.node(action=ACTION.BOUNDS)
 def set_labels_by_trajectory(simulator, shot_label):
     simulator.param.shot_ui.label = f'Displayed {shot_label}'
     simulator.param.radial_factor.label = f'{shot_label.capitalize()} sampling factor'
 
 
-@Graph.node(action=BOUNDS_ACTION)
+@Graph.node(action=ACTION.BOUNDS)
 def set_shot_label(simulator, shot_label):
     simulator.set_param(simulator.param.shot_label, shot_label)
 
 
-@Graph.node(action=VALUE_ACTION)
+@Graph.node(action=ACTION.VALUE)
 def set_spoke_angle(simulator, spoke_angle):
     simulator.set_param(simulator.param.spoke_angle, spoke_angle)
 
 
-@Graph.node(action=VALUE_ACTION)
+@Graph.node(action=ACTION.VALUE)
 def set_num_shots(simulator, num_shots):
     simulator.set_param(simulator.param.num_shots, num_shots)
 
 
-@Graph.node(action=VALUE_ACTION)
+@Graph.node(action=ACTION.VALUE)
 def set_relative_SNR(simulator, relative_SNR):
     simulator.set_param(simulator.param.relative_SNR, relative_SNR)
 
 
-@Graph.node(action=VALUE_ACTION)
+@Graph.node(action=ACTION.VALUE)
 def set_scantime(simulator, scantime):
     simulator.set_param(simulator.param.scantime, scantime)
 
 
-@Graph.node(action=VALUE_ACTION)
+@Graph.node(action=ACTION.VALUE)
 def set_pixel_bandwidth(simulator, pixel_BW_is_input, pixel_bandwidth):
     if not pixel_BW_is_input:
         simulator.set_param(simulator.param.pixel_bandwidth_ui, pixel_bandwidth)
 
 
-@Graph.node(action=VALUE_ACTION)
+@Graph.node(action=ACTION.VALUE)
 def set_FOV_bandwidth(simulator, FOV_BW_is_input, pixel_bandwidth, matrix_F):
     if not FOV_BW_is_input:
         simulator.set_param(simulator.param.FOV_bandwidth, convert.pixel_BW_to_FOV_BW(pixel_bandwidth, matrix_F))
 
 
-@Graph.node(action=VALUE_ACTION)
+@Graph.node(action=ACTION.VALUE)
 def set_FW_shift(simulator, FW_shift_is_input, pixel_bandwidth, field_strength):
     if not FW_shift_is_input:
         simulator.set_param(simulator.param.FW_shift, convert.pixel_BW_to_shift(pixel_bandwidth, field_strength))
 
 
-@Graph.node(action=VALUE_ACTION)
+@Graph.node(action=ACTION.VALUE)
 def set_matrix_F(simulator, matrix_is_input, isotropic_voxel_size, matrix_F):
     if not matrix_is_input or isotropic_voxel_size:
         simulator.set_param(simulator.param.matrix_F_ui, matrix_F)
 
 
-@Graph.node(action=VALUE_ACTION)
+@Graph.node(action=ACTION.VALUE)
 def set_matrix_P(simulator, matrix_is_input, isotropic_voxel_size, matrix_P):
     if not matrix_is_input or isotropic_voxel_size:
         simulator.set_param(simulator.param.matrix_P_ui, matrix_P)
 
 
-@Graph.node(action=VALUE_ACTION)
+@Graph.node(action=ACTION.VALUE)
 def set_recon_matrix_F(simulator, matrix_is_input, keep_rec_acq_ratio, recon_matrix_F):
     if not matrix_is_input or keep_rec_acq_ratio:
         simulator.set_param(simulator.param.recon_matrix_F_ui, recon_matrix_F)
 
 
-@Graph.node(action=VALUE_ACTION)
+@Graph.node(action=ACTION.VALUE)
 def set_recon_matrix_P(simulator, matrix_is_input, keep_rec_acq_ratio, recon_matrix_P):
     if not matrix_is_input or keep_rec_acq_ratio:
         simulator.set_param(simulator.param.recon_matrix_P_ui, recon_matrix_P)
 
 
-@Graph.node(action=VALUE_ACTION)
+@Graph.node(action=ACTION.VALUE)
 def set_voxel_F(simulator, voxel_size_is_input, isotropic_voxel_size, FOV_F, matrix_F):
     if not voxel_size_is_input or isotropic_voxel_size:
         simulator.set_param(simulator.param.voxel_F, FOV_F / matrix_F)
 
 
-@Graph.node(action=VALUE_ACTION)
+@Graph.node(action=ACTION.VALUE)
 def set_voxel_P(simulator, voxel_size_is_input, isotropic_voxel_size, FOV_P, matrix_P):
     if not voxel_size_is_input or isotropic_voxel_size:
         simulator.set_param(simulator.param.voxel_P, FOV_P / matrix_P)
 
 
-@Graph.node(action=VALUE_ACTION)
+@Graph.node(action=ACTION.VALUE)
 def set_recon_voxel_F(simulator, voxel_size_is_input, keep_rec_acq_ratio, FOV_F, recon_matrix_F):
     if not voxel_size_is_input or keep_rec_acq_ratio:
         simulator.set_param(simulator.param.recon_voxel_F, FOV_F / recon_matrix_F)
 
 
-@Graph.node(action=VALUE_ACTION)
+@Graph.node(action=ACTION.VALUE)
 def set_recon_voxel_P(simulator, voxel_size_is_input, keep_rec_acq_ratio, FOV_P, recon_matrix_P):
     if not voxel_size_is_input or keep_rec_acq_ratio:
         simulator.set_param(simulator.param.recon_voxel_P, FOV_P / recon_matrix_P)
 
 
-@Graph.node(action=INVISIBLE_ACTION)
+@Graph.node(action=ACTION.INVISIBLE)
 def set_rec_acq_ratio_F(simulator, recon_matrix_F, matrix_F):
     simulator.set_param(simulator.param.rec_acq_ratio_F, recon_matrix_F / matrix_F)
 
 
-@Graph.node(action=INVISIBLE_ACTION)
+@Graph.node(action=ACTION.INVISIBLE)
 def set_rec_acq_ratio_P(simulator, recon_matrix_P, matrix_P):
     simulator.set_param(simulator.param.rec_acq_ratio_P, recon_matrix_P / matrix_P)
 
 
-@Graph.node(action=VALUE_ACTION)
+@Graph.node(action=ACTION.VALUE)
 def set_TR_and_bounds(simulator, min_TR, TR):
     simulator.set_param_bounds(simulator.param.TR_ui, minval=min_TR)
     simulator.set_param(simulator.param.TR_ui, TR)
 
 
-@Graph.node(action=VALUE_ACTION)
+@Graph.node(action=ACTION.VALUE)
 def set_TE_and_bounds(simulator, min_TE, max_TE, TE):
     simulator.set_param_bounds(simulator.param.TE_ui, minval=min_TE, maxval=max_TE)
     simulator.set_param(simulator.param.TE_ui, TE)
 
 
-@Graph.node(action=BOUNDS_ACTION)
+@Graph.node(action=ACTION.BOUNDS)
 def set_TI_bounds(simulator, sequence_type, max_TI):
     if sequence_type == 'Inversion Recovery':
         simulator.set_param_bounds(simulator.param.TI, maxval=max_TI)
 
 
-@Graph.node(action=BOUNDS_ACTION)
+@Graph.node(action=ACTION.BOUNDS)
 def set_slice_thickness_bounds(simulator, min_slice_thickness):
     simulator.set_param_bounds(simulator.param.slice_thickness, minval=min_slice_thickness)
 
 
-@Graph.node(action=BOUNDS_ACTION)
+@Graph.node(action=ACTION.BOUNDS)
 def set_pixel_bandwidth_bounds(simulator, pixel_BW_is_input, pixel_bandwidth_bounds):
     if pixel_BW_is_input:
         simulator.set_param_bounds(simulator.param.pixel_bandwidth_ui, minval=pixel_bandwidth_bounds.min, maxval=pixel_bandwidth_bounds.max)
 
 
-@Graph.node(action=BOUNDS_ACTION)
+@Graph.node(action=ACTION.BOUNDS)
 def set_FOV_bandwidth_bounds(simulator, FOV_BW_is_input, pixel_bandwidth_bounds, matrix_F):
     if FOV_BW_is_input:
         simulator.set_param_bounds(simulator.param.FOV_bandwidth, minval=convert.pixel_BW_to_FOV_BW(pixel_bandwidth_bounds.min, matrix_F), maxval=convert.pixel_BW_to_FOV_BW(pixel_bandwidth_bounds.max, matrix_F))
 
 
-@Graph.node(action=BOUNDS_ACTION)
+@Graph.node(action=ACTION.BOUNDS)
 def set_FW_shift_bounds(simulator, FW_shift_is_input, pixel_bandwidth_bounds, field_strength):
     if FW_shift_is_input:
         simulator.set_param_bounds(simulator.param.FW_shift, minval=convert.pixel_BW_to_shift(pixel_bandwidth_bounds.max, field_strength), maxval=convert.pixel_BW_to_shift(pixel_bandwidth_bounds.min, field_strength))
 
 
-@Graph.node(action=BOUNDS_ACTION)
+@Graph.node(action=ACTION.BOUNDS)
 def set_matrix_F_bounds(simulator, matrix_is_input, matrix_F_bounds):
     if matrix_is_input:
         simulator.set_param_bounds(simulator.param.matrix_F_ui, minval=matrix_F_bounds.min, maxval=matrix_F_bounds.max)
 
 
-@Graph.node(action=BOUNDS_ACTION)
+@Graph.node(action=ACTION.BOUNDS)
 def set_matrix_P_bounds(simulator, matrix_is_input, matrix_P_bounds):
     if matrix_is_input:
         simulator.set_param_bounds(simulator.param.matrix_P_ui, minval=matrix_P_bounds.min, maxval=matrix_P_bounds.max)
 
 
-@Graph.node(action=BOUNDS_ACTION)
+@Graph.node(action=ACTION.BOUNDS)
 def set_recon_matrix_F_bounds(simulator, matrix_is_input, recon_matrix_F_bounds):
     if matrix_is_input:
         simulator.set_param_bounds(simulator.param.recon_matrix_F_ui, minval=recon_matrix_F_bounds.min, maxval=recon_matrix_F_bounds.max)
 
 
-@Graph.node(action=BOUNDS_ACTION)
+@Graph.node(action=ACTION.BOUNDS)
 def set_recon_matrix_P_bounds(simulator, matrix_is_input, recon_matrix_P_bounds):
     if matrix_is_input:
         simulator.set_param_bounds(simulator.param.recon_matrix_P_ui, minval=recon_matrix_P_bounds.min, maxval=recon_matrix_P_bounds.max)
 
 
-@Graph.node(action=BOUNDS_ACTION)
+@Graph.node(action=ACTION.BOUNDS)
 def set_FOV_F_bounds(simulator, FOV_F_bounds):
     simulator.set_param_bounds(simulator.param.FOV_F, minval=FOV_F_bounds.min, maxval=FOV_F_bounds.max)
 
 
-@Graph.node(action=BOUNDS_ACTION)
+@Graph.node(action=ACTION.BOUNDS)
 def set_FOV_P_bounds(simulator, FOV_P_bounds):
     simulator.set_param_bounds(simulator.param.FOV_P, minval=FOV_P_bounds.min, maxval=FOV_P_bounds.max)
 
 
-@Graph.node(action=BOUNDS_ACTION)
+@Graph.node(action=ACTION.BOUNDS)
 def set_voxel_F_bounds(simulator, voxel_size_is_input, FOV_F, matrix_F_bounds):
     if voxel_size_is_input:
         simulator.set_param_bounds(simulator.param.voxel_F, minval=FOV_F/matrix_F_bounds.max, maxval=FOV_F/matrix_F_bounds.min)
 
 
-@Graph.node(action=BOUNDS_ACTION)
+@Graph.node(action=ACTION.BOUNDS)
 def set_voxel_P_bounds(simulator, voxel_size_is_input, FOV_P, matrix_P_bounds):
     if voxel_size_is_input:
         simulator.set_param_bounds(simulator.param.voxel_P, minval=FOV_P/matrix_P_bounds.max, maxval=FOV_P/matrix_P_bounds.min)
 
 
-@Graph.node(action=BOUNDS_ACTION)
+@Graph.node(action=ACTION.BOUNDS)
 def set_recon_voxel_F_bounds(simulator, voxel_size_is_input, FOV_F, recon_matrix_F_bounds):
     if voxel_size_is_input:
         simulator.set_param_bounds(simulator.param.recon_voxel_F, minval=FOV_F/recon_matrix_F_bounds.max, maxval=FOV_F/recon_matrix_F_bounds.min)
 
 
-@Graph.node(action=BOUNDS_ACTION)
+@Graph.node(action=ACTION.BOUNDS)
 def set_recon_voxel_P_bounds(simulator, voxel_size_is_input, FOV_P, recon_matrix_P_bounds):
     if voxel_size_is_input:
         simulator.set_param_bounds(simulator.param.recon_voxel_P, minval=FOV_P/recon_matrix_P_bounds.max, maxval=FOV_P/recon_matrix_P_bounds.min)
 
 
-@Graph.node(action=BOUNDS_ACTION)
+@Graph.node(action=ACTION.BOUNDS)
 def set_turbo_factor_bounds(simulator, max_turbo_factor):
     # turbo_factor must equal 1 when the EPI_factor is even
     if not simulator.EPI_factor%2:
@@ -493,13 +506,13 @@ def set_turbo_factor_bounds(simulator, max_turbo_factor):
     simulator.param.turbo_factor.constant = False
 
 
-@Graph.node(action=VALUE_ACTION)
+@Graph.node(action=ACTION.VALUE)
 def set_shot_and_bounds(simulator, num_shots, shot):
     simulator.param.shot_ui.bounds = (1, num_shots)
     simulator.set_param(simulator.param.shot_ui, shot + 1)
 
 
-@Graph.node(action=BOUNDS_ACTION)
+@Graph.node(action=ACTION.BOUNDS)
 def set_EPI_factor_objects(simulator, max_EPI_factor):
     simulator.set_param_bounds(simulator.param.EPI_factor, maxval=max_EPI_factor)
     # EPI_factor must be odd for turbo spin echo (GRASE)
@@ -507,13 +520,13 @@ def set_EPI_factor_objects(simulator, max_EPI_factor):
         simulator.param.EPI_factor.objects = [v for v in simulator.param.EPI_factor.objects if v%2]
 
 
-@Graph.node(action=VALUE_ACTION)
+@Graph.node(action=ACTION.VALUE)
 def set_reference_tissue_objects(simulator, tissues):
     simulator.param.reference_tissue.objects = tissues
     simulator.reference_tissue = tissues[0]
 
 
-@Graph.node(action=VALUE_ACTION)
+@Graph.node(action=ACTION.VALUE)
 def set_trajectory_objects(simulator, EPI_factor, turbo_factor):
     # Label radial trajectory 'Radial' or 'PROPELLER' depending on nLines per shot
     simulator.param.trajectory.objects = PARAMS['trajectory'].objects
@@ -523,34 +536,34 @@ def set_trajectory_objects(simulator, EPI_factor, turbo_factor):
     simulator.param.trajectory.objects = [t for t in PARAMS['trajectory'].objects if t != invalid]
 
 
-@Graph.node(action=VISIBILITY_ACTION)
+@Graph.node(action=ACTION.VISIBILITY)
 def set_pixel_bandwidth_visibility(simulator, pixel_BW_is_input):
     simulator.set_visibility('pixel_bandwidth_ui', pixel_BW_is_input)
 
 
-@Graph.node(action=VISIBILITY_ACTION)
+@Graph.node(action=ACTION.VISIBILITY)
 def set_FOV_bandwidth_visibility(simulator, FOV_BW_is_input):
     simulator.set_visibility('FOV_bandwidth', FOV_BW_is_input)
 
 
-@Graph.node(action=VISIBILITY_ACTION)
+@Graph.node(action=ACTION.VISIBILITY)
 def set_FW_shift_visibility(simulator, FW_shift_is_input):
     simulator.set_visibility('FW_shift', FW_shift_is_input)
 
 
-@Graph.node(action=VISIBILITY_ACTION)
+@Graph.node(action=ACTION.VISIBILITY)
 def set_voxel_size_visibility(simulator, voxel_size_is_input):
     for voxel_size_param in ['voxel_F', 'voxel_P', 'recon_voxel_F', 'recon_voxel_P']:
         simulator.set_visibility(voxel_size_param, voxel_size_is_input)
 
 
-@Graph.node(action=VISIBILITY_ACTION)
+@Graph.node(action=ACTION.VISIBILITY)
 def set_matrix_visibility(simulator, matrix_is_input):
     for matrix_param in ['matrix_F_ui', 'matrix_P_ui', 'recon_matrix_F_ui', 'recon_matrix_P_ui']:
         simulator.set_visibility(matrix_param, matrix_is_input)
 
 
-@Graph.node(action=VISIBILITY_ACTION)
+@Graph.node(action=ACTION.VISIBILITY)
 def set_partial_Fourier_visibility(simulator, is_radial):
     visible = not is_radial
     simulator.set_visibility('partial_Fourier', visible)
@@ -558,12 +571,12 @@ def set_partial_Fourier_visibility(simulator, is_radial):
         simulator.set_param(simulator.param.partial_Fourier, 1)
 
 
-@Graph.node(action=VISIBILITY_ACTION)
+@Graph.node(action=ACTION.VISIBILITY)
 def set_frequency_direction_visibility(simulator, is_radial):
     simulator.set_visibility('frequency_direction', not is_radial)
 
 
-@Graph.node(action=VISIBILITY_ACTION)
+@Graph.node(action=ACTION.VISIBILITY)
 def set_phase_oversampling_visibility(simulator, is_radial):
     visible = not is_radial
     simulator.set_visibility('phase_oversampling', visible)
@@ -571,22 +584,22 @@ def set_phase_oversampling_visibility(simulator, is_radial):
         simulator.set_param(simulator.param.phase_oversampling, 1)
 
 
-@Graph.node(action=VISIBILITY_ACTION)
+@Graph.node(action=ACTION.VISIBILITY)
 def set_radial_factor_visibility(simulator, is_radial):
     simulator.set_visibility('radial_factor', is_radial)
 
 
-@Graph.node(action=VISIBILITY_ACTION)
+@Graph.node(action=ACTION.VISIBILITY)
 def set_TI_visibility(simulator, sequence_type):
     simulator.set_visibility('TI', sequence_type == 'Inversion Recovery')
 
 
-@Graph.node(action=VISIBILITY_ACTION)
+@Graph.node(action=ACTION.VISIBILITY)
 def set_FA_visibility(simulator, sequence_type):
     simulator.set_visibility('FA', sequence_type == 'Spoiled Gradient Echo')
 
 
-@Graph.node(action=VISIBILITY_ACTION)
+@Graph.node(action=ACTION.VISIBILITY)
 def set_turbo_factor_visibility(simulator, sequence_type):
     visible = sequence_type != 'Spoiled Gradient Echo'
     simulator.set_visibility('turbo_factor', visible)
@@ -594,51 +607,11 @@ def set_turbo_factor_visibility(simulator, sequence_type):
         simulator.set_param(simulator.param.turbo_factor, 1)
 
 
-@Graph.node(action=VISIBILITY_ACTION)
+@Graph.node(action=ACTION.VISIBILITY)
 def set_homodyne_visibility(simulator, num_blank_lines, is_radial):
     simulator.set_visibility('homodyne', (num_blank_lines > 0 and not is_radial))
 
 
-@Graph.node(action=VISIBILITY_ACTION)
+@Graph.node(action=ACTION.VISIBILITY)
 def set_apodization_alpha_visibility(simulator, do_apodize):
     simulator.set_visibility('apodization_alpha', do_apodize)
-
-
-@Graph.node()
-def frequency_hover(simulator):
-    return simulator.get_hover_tool('frequency', ['name', 'center', 'duration', 'area'])
-
-
-@Graph.node()
-def phase_hover(simulator):
-    return simulator.get_hover_tool('phase', ['name', 'center', 'duration', 'area'])
-
-
-@Graph.node()
-def slice_hover(simulator):
-    return simulator.get_hover_tool('slice', ['name', 'center', 'duration', 'area'])
-
-
-@Graph.node()
-def RF_hover(simulator):
-    return simulator.get_hover_tool('RF', ['name', 'center', 'duration', 'flip_angle'])
-
-
-@Graph.node()
-def signal_hover(simulator):
-    return simulator.get_hover_tool('signal', ['name', 'center', 'duration'])
-
-
-@Graph.node(action=SEQPLOT_ACTION)
-def update_seqplot(simulator, sequence_plot):
-    simulator.seqplot_update += 1
-
-
-@Graph.node(action=KSPACE_ACTION)
-def update_kspace(simulator, kspace):
-    simulator.kspace_update += 1
-
-
-@Graph.node(action=IMAGE_ACTION)
-def update_image(simulator, annotated_image):
-    simulator.image_update += 1
