@@ -92,13 +92,15 @@ PARAMS = {
     'FOV_bandwidth': ParamSpec(
         label = 'FOV bandwidth',
         objects = {formatting.FOV_bandwidth(fovbw): fovbw for fovbw in fov_bw_vals},
+        default = 43.2,
         precedence = 2,
         derived = True,
     ),
 
     'FW_shift': ParamSpec(
         label = 'Fat/water shift',
-        objects = {formatting.format_float(shift): shift for shift in FW_shift_vals},
+        objects = {formatting.FW_shift(shift): shift for shift in FW_shift_vals},
+        default = 0.45,
         precedence = 2,
         derived = True,
     ),
@@ -231,6 +233,7 @@ PARAMS = {
     'voxel_P': ParamSpec(
         label = 'Voxel size x',
         objects =  {formatting.voxel_size(voxel): voxel for voxel in voxel_vals},
+        default = 1.333, 
         precedence = 4,
         derived = True,
     ),
@@ -238,6 +241,7 @@ PARAMS = {
     'voxel_F': ParamSpec(
         label = 'Voxel size y',
         objects =  {formatting.voxel_size(voxel): voxel for voxel in voxel_vals},
+        default = 1.333, 
         precedence = 4,
         derived = True,
     ),
