@@ -82,13 +82,12 @@ class Graph:
     node_specs = {}
 
     @classmethod
-    def node(cls, action=False, simulator_method=False):
+    def node(cls, action=False):
         def decorator(func):
             func_params = [p.name for p in inspect.signature(func).parameters.values()]
             cls.node_specs[func.__name__] = {
                 'func': func,
                 'parents': [p for p in func_params if p != 'self'],
-                'simulator_method': simulator_method, # is func a method of MRIsimulator?
                 'action_precedence': action # order for action node to be flushed
             }
             return func
@@ -110,6 +109,8 @@ class Graph:
         specs = dict(type(self).node_specs)
         # special node to track which input node was trigger
         specs['trigger_node'] = {'func': lambda: 'None'}
+        # special simulator node
+        specs['simulator'] = {'func': lambda: self.simulator}
         # add specs for remaining simulator param nodes
         specs.update({par: {'func': partial(getattr, self.simulator, par)} for par in self.simulator.param if par != 'name' and par not in specs})
         return specs
@@ -117,7 +118,7 @@ class Graph:
     def build_nodes(self, specs):
         nodes, action_nodes = {}, {}
         for name in topological_order(specs):
-            nodes[name] = self.make_node(name, specs[name].get('func', None), specs[name].get('simulator_method', False))
+            nodes[name] = Node(name, specs[name].get('func', None))
             for parent in specs[name].get('parents', []):
                 nodes[name].attach(nodes[parent])
             if specs[name].get('action_precedence', False):
@@ -126,11 +127,6 @@ class Graph:
                     action_nodes[precedence] = []
                 action_nodes[precedence].append(nodes[name])
         return nodes, action_nodes
-
-    def make_node(self, name, func, simulator_method):
-        if simulator_method:
-            func = partial(func, self.simulator)
-        return Node(name, func=func)
     
     def add_input_watchers(self):
         for node in self.input_nodes():
