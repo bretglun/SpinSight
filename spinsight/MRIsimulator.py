@@ -134,9 +134,9 @@ class MRIsimulator(param.Parameterized):
     spoke_angle = param.Number(**PARAMS['spoke_angle'].param_kwargs)
     
     # Dynamic map triggers
-    image_version = param.Integer(default=0)
-    kspace_version = param.Integer(default=0)
-    seqplot_version = param.Integer(default=0)
+    image_update = param.Integer(default = 0)
+    kspace_update = param.Integer(default = 0)
+    seqplot_update = param.Integer(default = 0)
 
     def __init__(self, **params):
         
@@ -252,15 +252,15 @@ class MRIsimulator(param.Parameterized):
     def set_reference_SNR(self, event=None):
         self.reference_SNR = self.graph.nodes['SNR'].value
     
-    @param.depends('seqplot_version')
+    @param.depends('seqplot_update')
     def display_sequence_plot(self):
         return self.graph.nodes['sequence_plot'].value
     
-    @param.depends('kspace_version')
+    @param.depends('kspace_update')
     def display_kspace(self):
         return self.graph.nodes['kspace'].value
     
-    @param.depends('image_version')
+    @param.depends('image_update')
     def display_image(self):
         return self.graph.nodes['annotated_image'].value
 
@@ -630,18 +630,15 @@ def signal_hover(simulator):
 
 
 @Graph.node(action=SEQPLOT_ACTION)
-def set_seqplot_version(simulator, sequence_plot):
-    if hasattr(simulator, 'graph'):
-        simulator.seqplot_version = simulator.graph.nodes['sequence_plot'].version
+def update_seqplot(simulator, sequence_plot):
+    simulator.seqplot_update += 1
 
 
 @Graph.node(action=KSPACE_ACTION)
-def set_kspace_version(simulator, kspace):
-    if hasattr(simulator, 'graph'):
-        simulator.kspace_version = simulator.graph.nodes['kspace'].version
+def update_kspace(simulator, kspace):
+    simulator.kspace_update += 1
 
 
 @Graph.node(action=IMAGE_ACTION)
-def set_image_version(simulator, annotated_image):
-    if hasattr(simulator, 'graph'):
-        simulator.image_version = simulator.graph.nodes['annotated_image'].version
+def update_image(simulator, annotated_image):
+    simulator.image_update += 1
