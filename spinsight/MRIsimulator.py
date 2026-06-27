@@ -121,7 +121,7 @@ class MRIsimulator(param.Parameterized):
     do_zerofill = param.Boolean(**PARAMS['do_zerofill'].param_kwargs)
     
     # Sequence plot
-    shot = param.Integer(**PARAMS['shot'].param_kwargs)
+    shot_ui = param.Integer(**PARAMS['shot_ui'].param_kwargs)
     spoke_angle = param.Number(**PARAMS['spoke_angle'].param_kwargs)
 
     def __init__(self, **params):
@@ -239,7 +239,7 @@ class MRIsimulator(param.Parameterized):
 
     @Graph.node(action_precedence=1, simulator_method=True)
     def set_labels_by_trajectory(self, shot_label):
-        self.param.shot.label = f'Displayed {shot_label}'
+        self.param.shot_ui.label = f'Displayed {shot_label}'
         self.param.radial_factor.label = f'{shot_label.capitalize()} sampling factor'
 
     @Graph.node(action_precedence=1, simulator_method=True)
@@ -326,15 +326,10 @@ class MRIsimulator(param.Parameterized):
         self.set_param(self.param.rec_acq_ratio_P, recon_matrix_P / matrix_P)
     
     @Graph.node(action_precedence=1, simulator_method=True)
-    def set_shot(self, num_shots):
-        if self.shot > num_shots:
-            self.shot = min(self.shot, num_shots)
-
-    @Graph.node(action_precedence=1, simulator_method=True)
     def set_TR_and_bounds(self, min_TR, TR):
         self.set_param_bounds(self.param.TR_ui, minval=min_TR)
         self.set_param(self.param.TR_ui, TR)
-        
+    
     @Graph.node(action_precedence=1, simulator_method=True)
     def set_TE_and_bounds(self, min_TE, max_TE, TE):
         self.set_param_bounds(self.param.TE_ui, minval=min_TE, maxval=max_TE)
@@ -421,10 +416,11 @@ class MRIsimulator(param.Parameterized):
             return
         self.param.turbo_factor.bounds = (1, min(max_turbo_factor, PARAMS['turbo_factor'].bounds[-1]))
         self.param.turbo_factor.constant = False
-
+    
     @Graph.node(action_precedence=1, simulator_method=True)
-    def set_shot_bounds(self, num_shots):
-        self.param.shot.bounds = (1, num_shots)
+    def set_shot_and_bounds(self, num_shots, shot):
+        self.param.shot_ui.bounds = (1, num_shots)
+        self.set_param(self.param.shot_ui, shot + 1)
     
     @Graph.node(action_precedence=1, simulator_method=True)
     def set_EPI_factor_objects(self, max_EPI_factor):
@@ -554,7 +550,7 @@ class MRIsimulator(param.Parameterized):
     def set_reference_SNR(self, event=None):
         self.reference_SNR = self.graph.nodes['SNR'].value
     
-    @param.depends('sequence_type', 'FatSat', 'TR_ui', 'TE_ui', 'FA', 'TI', 'FOV_F', 'FOV_P', 'phase_oversampling', 'num_shots', 'matrix_F_ui', 'matrix_P_ui', 'voxel_F', 'voxel_P', 'slice_thickness', 'trajectory', 'frequency_direction', 'pixel_bandwidth_ui', 'FOV_bandwidth', 'FW_shift', 'partial_Fourier', 'turbo_factor', 'EPI_factor', 'shot')
+    @param.depends('sequence_type', 'FatSat', 'TR_ui', 'TE_ui', 'FA', 'TI', 'FOV_F', 'FOV_P', 'phase_oversampling', 'num_shots', 'matrix_F_ui', 'matrix_P_ui', 'voxel_F', 'voxel_P', 'slice_thickness', 'trajectory', 'frequency_direction', 'pixel_bandwidth_ui', 'FOV_bandwidth', 'FW_shift', 'partial_Fourier', 'turbo_factor', 'EPI_factor', 'shot_ui')
     def display_sequence_plot(self):
         return self.graph.nodes['sequence_plot'].value
     

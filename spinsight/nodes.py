@@ -670,12 +670,17 @@ def k_angles(num_blades):
 
 @Graph.node()
 def spoke_angle(k_angles, shot):
-    return np.degrees(k_angles[min(shot-1, len(k_angles)-1)])
+    return np.degrees(k_angles[min(shot, len(k_angles)-1)])
 
 
 @Graph.node()
 def num_shots(matrix_P, phase_oversampling, partial_Fourier, turbo_factor, EPI_factor, is_radial, num_blades):
     return int(np.ceil(matrix_P * phase_oversampling * partial_Fourier / turbo_factor / EPI_factor)) if not is_radial else num_blades
+
+
+@Graph.node()
+def shot(shot_ui, num_shots):
+    return min(shot_ui, num_shots) - 1
 
 
 @Graph.node()
@@ -1199,7 +1204,7 @@ def gre_echo_train_dur(EPI_factor, gr_echo_spacing, readout_gap):
 def phasers_floating(turbo_factor, largest_phaser_area, pe_table, phase_step_area, shot):
     phasers = []
     for rf_echo in range(turbo_factor):
-        phaser_area = largest_phaser_area + pe_table[shot-1, rf_echo, 0] * phase_step_area
+        phaser_area = largest_phaser_area + pe_table[shot, rf_echo, 0] * phase_step_area
         suffix = f' {rf_echo + 1}' if turbo_factor > 1 else ''
         phaser = sequence.get_gradient('phase', total_area=largest_phaser_area, name='phase encode'+suffix, max_amp=constants.MAX_AMP, max_slew=constants.MAX_SLEW)
         if abs(largest_phaser_area) > 1e-5:
@@ -1214,7 +1219,7 @@ def blips_floating(turbo_factor, EPI_factor, phase_step_area, pe_table, shot):
     for rf_echo in range(turbo_factor):
         blips.append([])
         for gr_echo in range(1, EPI_factor):
-            blip_area = phase_step_area * (pe_table[shot-1, rf_echo, gr_echo] - pe_table[shot-1, rf_echo, gr_echo-1])
+            blip_area = phase_step_area * (pe_table[shot, rf_echo, gr_echo] - pe_table[shot, rf_echo, gr_echo-1])
             blip = sequence.get_gradient('phase', total_area=blip_area, name='blip', max_amp=constants.MAX_AMP, max_slew=constants.MAX_SLEW)
             blips[-1].append(blip)
     return blips
@@ -1367,11 +1372,11 @@ def signal_curves(measured_kspace, shot, is_radial, turbo_factor, EPI_factor, pe
     signal_curves = []
     scale = 1 / np.max(np.abs(np.real(measured_kspace)))
     signal_exponent = .5
-    spoke = shot-1 if is_radial else 0
+    spoke = shot if is_radial else 0
     for rf_echo in range(turbo_factor):
         signal_curves.append([])
         for gr_echo in range(EPI_factor):
-            ky = pe_table[shot-1, rf_echo, gr_echo]
+            ky = pe_table[shot, rf_echo, gr_echo]
             waveform = np.real(np.take(measured_kspace[..., spoke], indices=ky, axis=phase_dir))
             t = np.take(time_after_excitation[..., spoke if spoke<time_after_excitation.shape[-1] else 0], indices=ky, axis=phase_dir)
             signal = sequence.get_signal(waveform, t, scale, signal_exponent)

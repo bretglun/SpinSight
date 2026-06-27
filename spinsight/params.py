@@ -401,7 +401,7 @@ PARAMS = {
         precedence = 4,
     ),
 
-    'shot': ParamSpec(
+    'shot_ui': ParamSpec(
         label = 'Displayed shot',
         default = 1,
         precedence = 1,
