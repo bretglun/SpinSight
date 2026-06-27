@@ -3,6 +3,18 @@ from spinsight import constants, convert, formatting, phantom
 import numpy as np
 
 
+def snap(value, values, mode='nearest'):
+    match mode:
+        case 'nearest':
+            return min(values, key=lambda x: abs(x-value), default=None)
+        case 'ceil':
+            return min([v for v in values if v >= value], default=None)
+        case 'floor':
+            return max([v for v in values if v <= value], default=None)
+        case _:
+            raise ValueError(f'Invalid mode {mode}')
+
+
 @dataclass(frozen=True)
 class ParamSpec:
     label: str
@@ -19,7 +31,7 @@ class ParamSpec:
             # assert default is in objects
             values = self.objects.values() if isinstance(self.objects, dict) else self.objects
             if self.default not in values:
-                object.__setattr__(self, 'default', min(values, key=lambda x: abs(x - self.default), default=None))
+                object.__setattr__(self, 'default', snap(self.default, values))
 
     @property
     def param_kwargs(self):

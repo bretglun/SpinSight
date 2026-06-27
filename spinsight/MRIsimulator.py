@@ -4,7 +4,7 @@ import param
 import numpy as np
 import math
 from pathlib import Path
-from spinsight import constants, convert, phantom
+from spinsight import constants, convert, params
 from spinsight import nodes # needed to initialize graph node decorators
 from spinsight.DAG import Graph
 from spinsight.params import PARAMS
@@ -12,18 +12,6 @@ from bokeh.models import HoverTool, CustomJS, ColumnDataSource
 import warnings
 
 hv.extension('bokeh')
-
-
-def snap(value, values, mode='nearest'):
-    match mode:
-        case 'nearest':
-            return min(values, key=lambda x: abs(x-value), default=None)
-        case 'ceil':
-            return min([v for v in values if v >= value], default=None)
-        case 'floor':
-            return max([v for v in values if v <= value], default=None)
-        case _:
-            raise ValueError(f'Invalid mode {mode}')
 
 
 def filter_objects(objects, minval=None, maxval=None):
@@ -209,13 +197,13 @@ class MRIsimulator(param.Parameterized):
     def set_param(self, par, value, mode='nearest'):
         objects = getattr(par, 'objects', None) # par.objects could be dict or param.ListProxy
         values = get_object_values(objects)
-        new = snap(value, values, mode) if values else value
+        new = params.snap(value, values, mode) if values else value
 
         insert_value = False
         if values and new is None:
             default_objects = PARAMS[par.name].objects 
             default_values = get_object_values(default_objects)
-            new = snap(value, default_values, mode)
+            new = params.snap(value, default_values, mode)
             if new is None:
                 raise ValueError(f'Value {value} is not supported by current or default objects for param {par.name} (mode={mode})')
             insert_value = True
