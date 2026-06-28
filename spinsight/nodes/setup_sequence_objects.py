@@ -1,6 +1,6 @@
 from spinsight import sequence
 from spinsight.DAG import Graph
-from spinsight.constants import GYRO, MAX_AMP, MAX_SLEW, INVERSION_THK_FACTOR
+from spinsight.constants import GYRO, MAX_AMP, MAX_SLEW, INVERSION_THK_FACTOR, SPOILER_AREA
 import numpy as np
 
 
@@ -24,8 +24,7 @@ def slice_select_inversion_floating(sequence_type, RF_inversion_floating, slice_
 def inversion_spoiler_floating(sequence_type):
     if sequence_type != 'Inversion Recovery':
         return None
-    spoiler_area = 30. # uTs/m
-    return sequence.get_gradient('slice', total_area=spoiler_area, name='inversion spoiler', max_amp=MAX_AMP, max_slew=MAX_SLEW)
+    return sequence.get_gradient('slice', total_area=SPOILER_AREA, name='inversion spoiler', max_amp=MAX_AMP, max_slew=MAX_SLEW)
 
 
 @Graph.node()
@@ -39,8 +38,7 @@ def RF_FatSat_floating(FatSat, field_strength):
 def FatSat_spoiler_floating(FatSat):
     if not FatSat:
         return None
-    spoiler_area = 30. # uTs/m
-    return sequence.get_gradient('slice', total_area=spoiler_area, name='FatSat spoiler', max_amp=MAX_AMP, max_slew=MAX_SLEW)
+    return sequence.get_gradient('slice', total_area=SPOILER_AREA, name='FatSat spoiler', max_amp=MAX_AMP, max_slew=MAX_SLEW)
 
 
 @Graph.node()
@@ -182,5 +180,4 @@ def rephasers_floating(turbo_factor, phasers_floating, blips_floating, largest_p
 
 @Graph.node()
 def spoiler_floating():
-    spoiler_area = 30. # uTs/m
-    return sequence.get_gradient('slice', total_area=spoiler_area, name='spoiler', max_amp=MAX_AMP, max_slew=MAX_SLEW)
+    return sequence.get_gradient('slice', total_area=SPOILER_AREA, name='spoiler', max_amp=MAX_AMP, max_slew=MAX_SLEW)
