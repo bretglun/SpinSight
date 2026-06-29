@@ -4,9 +4,11 @@ import param
 import numpy as np
 import math
 from pathlib import Path
+from functools import partial
 from spinsight import params
-from spinsight.DAG import Graph
 from spinsight.params import PARAMS
+from spinsight.InputParams import InputParams
+from spinsight.DAG import Graph
 from bokeh.models import HoverTool, CustomJS, ColumnDataSource
 import warnings
 # Initialize graph node decorators:
@@ -67,80 +69,17 @@ def get_k_on_interval(interval, k_trajectory):
 
 
 class MRIsimulator(param.Parameterized):
-
-    # Settings
-    object = param.ObjectSelector(**PARAMS['object'].param_kwargs)
-    field_strength = param.ObjectSelector(**PARAMS['field_strength'].param_kwargs)
-    parameter_style = param.ObjectSelector(**PARAMS['parameter_style'].param_kwargs)
-
-    min_voxel_size = param.Number(**PARAMS['min_voxel_size'].param_kwargs)
-    noise_gain = param.Number(**PARAMS['noise_gain'].param_kwargs)
-
-    # Sequence
-    sequence_type = param.ObjectSelector(**PARAMS['sequence_type'].param_kwargs)
-    pixel_bandwidth_ui = param.Selector(**PARAMS['pixel_bandwidth_ui'].param_kwargs)
-    FOV_bandwidth = param.Selector(**PARAMS['FOV_bandwidth'].param_kwargs)
-    FW_shift = param.Selector(**PARAMS['FW_shift'].param_kwargs)
-    NSA = param.Integer(**PARAMS['NSA'].param_kwargs)
-    partial_Fourier = param.Number(**PARAMS['partial_Fourier'].param_kwargs)
-    turbo_factor = param.Integer(**PARAMS['turbo_factor'].param_kwargs)
-    EPI_factor = param.Selector(**PARAMS['EPI_factor'].param_kwargs)
-
-    # Contrast
-    FatSat = param.Boolean(**PARAMS['FatSat'].param_kwargs)
-    TR_ui = param.Selector(**PARAMS['TR_ui'].param_kwargs)
-    TE_ui = param.Selector(**PARAMS['TE_ui'].param_kwargs)
-    TI = param.Selector(**PARAMS['TI'].param_kwargs)
-    FA = param.Selector(**PARAMS['FA'].param_kwargs)
+    shot_label = param.String() # shot/spoke/blade label
+    num_shots = param.Integer() # number of shots
+    spoke_angle = param.Number() # spoke angle [°]
+    rec_acq_ratio_P = param.Number(default=2.0) # reconstructed / acquired matrix_P ratio
+    rec_acq_ratio_F = param.Number(default=2.0) # reconstructed / acquired matrix_F ratio
     
-    # Geometry
-    trajectory = param.ObjectSelector(**PARAMS['trajectory'].param_kwargs)
-    frequency_direction = param.ObjectSelector(**PARAMS['frequency_direction'].param_kwargs)
-    FOV_P = param.Selector(**PARAMS['FOV_P'].param_kwargs)
-    FOV_F = param.Selector(**PARAMS['FOV_F'].param_kwargs)
-    phase_oversampling = param.Selector(**PARAMS['phase_oversampling'].param_kwargs)
-    radial_factor = param.Number(**PARAMS['radial_factor'].param_kwargs)
-    num_shots = param.Integer(**PARAMS['num_shots'].param_kwargs)
-    matrix_P_ui = param.Selector(**PARAMS['matrix_P_ui'].param_kwargs)
-    matrix_F_ui = param.Selector(**PARAMS['matrix_F_ui'].param_kwargs)
-    voxel_P = param.Selector(**PARAMS['voxel_P'].param_kwargs)
-    voxel_F = param.Selector(**PARAMS['voxel_F'].param_kwargs)
-    recon_matrix_P_ui = param.Selector(**PARAMS['recon_matrix_P_ui'].param_kwargs)
-    recon_matrix_F_ui = param.Selector(**PARAMS['recon_matrix_F_ui'].param_kwargs)
-    recon_voxel_P = param.Selector(**PARAMS['recon_voxel_P'].param_kwargs)
-    recon_voxel_F = param.Selector(**PARAMS['recon_voxel_F'].param_kwargs)
-    slice_thickness = param.Selector(**PARAMS['slice_thickness'].param_kwargs)
-    
-    shot_label = param.String(**PARAMS['shot_label'].param_kwargs)
-    radial_FOV_oversampling = param.Number(**PARAMS['radial_FOV_oversampling'].param_kwargs)
-    rec_acq_ratio_P = param.Number(**PARAMS['rec_acq_ratio_P'].param_kwargs)
-    rec_acq_ratio_F = param.Number(**PARAMS['rec_acq_ratio_F'].param_kwargs)
-    
-    # MR image
-    show_FOV = param.Boolean(**PARAMS['show_FOV'].param_kwargs)
-    reference_tissue = param.ObjectSelector(**PARAMS['reference_tissue'].param_kwargs)
+    SNR = param.Number()
+    reference_SNR = param.Number()
+    relative_SNR = param.Number() # [%]
+    scantime = param.String()
 
-    image_type = param.ObjectSelector(**PARAMS['image_type'].param_kwargs)
-    SNR = param.Number(**PARAMS['SNR'].param_kwargs)
-    reference_SNR = param.Number(**PARAMS['reference_SNR'].param_kwargs)
-    relative_SNR = param.Number(**PARAMS['relative_SNR'].param_kwargs)
-    scantime = param.String(**PARAMS['scantime'].param_kwargs)
-
-    # k-space
-    show_processed_kspace = param.Boolean(**PARAMS['show_processed_kspace'].param_kwargs)
-    kspace_exponent = param.Number(**PARAMS['kspace_exponent'].param_kwargs)
-    kspace_type = param.ObjectSelector(**PARAMS['kspace_type'].param_kwargs)
-
-    # Post-processing
-    homodyne = param.Boolean(**PARAMS['homodyne'].param_kwargs)
-    do_apodize = param.Boolean(**PARAMS['do_apodize'].param_kwargs)
-    apodization_alpha = param.Number(**PARAMS['apodization_alpha'].param_kwargs)
-    do_zerofill = param.Boolean(**PARAMS['do_zerofill'].param_kwargs)
-    
-    # Sequence plot
-    shot_ui = param.Integer(**PARAMS['shot_ui'].param_kwargs)
-    spoke_angle = param.Number(**PARAMS['spoke_angle'].param_kwargs)
-    
     # Dynamic map triggers
     image_update = param.Integer(default = 0)
     kspace_update = param.Integer(default = 0)
@@ -149,6 +88,8 @@ class MRIsimulator(param.Parameterized):
     def __init__(self, **params):
         
         super().__init__(**params)
+
+        self.input = InputParams()
 
         def arrow(coords):
             angle = 0
@@ -163,24 +104,73 @@ class MRIsimulator(param.Parameterized):
         self.hover_index.on_change('data', self.update_k_line_coords)
         
         self.graph = Graph(self)
+        self.add_input_watchers(self.graph)
 
         self.set_reference_SNR()
+
+    def input_nodes(self):
+        input_nodes = set(par for par in self.input.param if par != 'name')
+        input_nodes.update(('rec_acq_ratio_P', 'rec_acq_ratio_F', 'reference_SNR'))
+        return input_nodes
+    
+    def get_input_node_specs(self):
+        specs = {}
+        for par in self.input_nodes():
+            if par in self.param:
+                specs[par] = {'func': partial(getattr, self, par)}
+            elif par in self.input.param:
+                specs[par] = {'func': partial(getattr, self.input, par)}
+        return specs
+    
+    def add_input_watchers(self, graph):
+        for par in self.input_nodes():
+            node = graph.nodes[par]
+            if par in self.param:
+                self.param.watch(partial(graph.on_change, node), node.name)
+            elif par in self.input.param:
+                self.input.param.watch(partial(graph.on_change, node), node.name)
 
     def get_params(self):
         return {param: self.__getattribute__(param) for param in self.param.values().keys() if param != 'name' and not PARAMS[param].derived}
 
     def set_params(self, settings):
-        self.init_bounds()
         self.param.update(settings)
 
     def set_visibility(self, par_name, visible):
-        precedence = abs(self.param[par_name].precedence)
+        par = self.input.param[par_name]
+        precedence = abs(par.precedence)
         if not visible:
             precedence *= -1
-        self.param[par_name].precedence = precedence
+        par.precedence = precedence
+    
+    def set_param(self, par_name, value, mode='nearest'):
+        par = self.input.param[par_name]
+        objects = getattr(par, 'objects', None) # par.objects could be dict or param.ListProxy
+        values = get_object_values(objects)
+        new = params.snap(value, values, mode) if values else value
 
-    def set_param_bounds(self, par, minval=None, maxval=None):
-        curval = getattr(self, par.name)
+        insert_value = False
+        if values and new is None:
+            default_objects = PARAMS[par_name].objects 
+            default_values = get_object_values(default_objects)
+            new = params.snap(value, default_values, mode)
+            if new is None:
+                raise ValueError(f'Value {value} is not supported by current or default objects for param {par.name} (mode={mode})')
+            insert_value = True
+            if isinstance(objects, dict):
+                new_label = next((k for k, v in default_objects.items() if v==new), str(new))
+                insert_value_in_dict_sorted(new_label, new, objects)
+            else:
+                insert_value_in_list_sorted(new, objects)
+        
+        if new != getattr(self.input, par_name):
+            if insert_value:
+                par.objects = objects
+            setattr(self.input, par_name, new)
+    
+    def set_param_bounds(self, par_name, minval=None, maxval=None):
+        par = self.input.param[par_name]
+        curval = getattr(self.input, par_name)
         if PARAMS[par.name].objects is not None:
             return self.set_param_discrete_bounds(par, curval, minval, maxval)
         
@@ -193,30 +183,6 @@ class MRIsimulator(param.Parameterized):
             outbound = True
         if not outbound:
             par.bounds = (minval, maxval)
-    
-    def set_param(self, par, value, mode='nearest'):
-        objects = getattr(par, 'objects', None) # par.objects could be dict or param.ListProxy
-        values = get_object_values(objects)
-        new = params.snap(value, values, mode) if values else value
-
-        insert_value = False
-        if values and new is None:
-            default_objects = PARAMS[par.name].objects 
-            default_values = get_object_values(default_objects)
-            new = params.snap(value, default_values, mode)
-            if new is None:
-                raise ValueError(f'Value {value} is not supported by current or default objects for param {par.name} (mode={mode})')
-            insert_value = True
-            if isinstance(objects, dict):
-                new_label = next((k for k, v in default_objects.items() if v==new), str(new))
-                insert_value_in_dict_sorted(new_label, new, objects)
-            else:
-                insert_value_in_list_sorted(new, objects)
-        
-        if new != getattr(self, par.name):
-            if insert_value:
-                par.objects = objects
-            setattr(self, par.name, new)
     
     def set_param_discrete_bounds(self, par, curval, minval=None, maxval=None):
         objects = filter_objects(PARAMS[par.name].objects, minval, maxval)

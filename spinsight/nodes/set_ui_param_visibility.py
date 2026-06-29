@@ -35,7 +35,7 @@ def set_partial_Fourier_visibility(simulator, is_radial):
     visible = not is_radial
     simulator.set_visibility('partial_Fourier', visible)
     if not visible:
-        simulator.set_param(simulator.param.partial_Fourier, 1)
+        simulator.set_param('partial_Fourier', 1)
 
 
 @Graph.node(action=ACTION.VISIBILITY)
@@ -48,7 +48,7 @@ def set_phase_oversampling_visibility(simulator, is_radial):
     visible = not is_radial
     simulator.set_visibility('phase_oversampling', visible)
     if not visible:
-        simulator.set_param(simulator.param.phase_oversampling, 1)
+        simulator.set_param('phase_oversampling', 1)
 
 
 @Graph.node(action=ACTION.VISIBILITY)
@@ -71,7 +71,7 @@ def set_turbo_factor_visibility(simulator, sequence_type):
     visible = sequence_type != 'Spoiled Gradient Echo'
     simulator.set_visibility('turbo_factor', visible)
     if not visible:
-        simulator.set_param(simulator.param.turbo_factor, 1)
+        simulator.set_param('turbo_factor', 1)
 
 
 @Graph.node(action=ACTION.VISIBILITY)

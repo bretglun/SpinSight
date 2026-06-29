@@ -222,12 +222,6 @@ PARAMS = {
         precedence = 3,
     ),
 
-    'num_shots': ParamSpec(
-        label = 'Number of shots',
-        precedence = 3,
-        derived = True,
-    ),
-
     'matrix_P_ui': ParamSpec(
         label = 'Acquisition matrix x',
         objects = matrix_vals,
@@ -293,12 +287,6 @@ PARAMS = {
         precedence = 6,
     ),
 
-    'shot_label': ParamSpec(
-        label = 'shot/spoke/blade label',
-        default = 'shot',
-        derived = True,
-    ),
-
     'radial_FOV_oversampling': ParamSpec(
         label = 'Radial FOV oversampling factor',
         bounds = (1.0, 2.0),
@@ -333,26 +321,6 @@ PARAMS = {
         label = 'Image type',
         objects = constants.OPERATORS.keys(),
         default = 'Magnitude',
-    ),
-
-    'SNR': ParamSpec(
-        label = 'SNR',
-        derived = True,
-    ),
-
-    'reference_SNR': ParamSpec(
-        label = 'Reference SNR',
-        default = 1.0,
-    ),
-
-    'relative_SNR': ParamSpec(
-        label = 'Relative SNR [%]',
-        derived = True,
-    ),
-
-    'scantime': ParamSpec(
-        label = 'Scan time',
-        derived = True,
     ),
 
     'show_processed_kspace': ParamSpec(
@@ -405,12 +373,6 @@ PARAMS = {
         label = 'Displayed shot',
         default = 1,
         precedence = 1,
-    ),
-
-    'spoke_angle': ParamSpec(
-        label = 'Spoke angle [°]',
-        precedence = 2,
-        derived = True,
     ),
 
 }

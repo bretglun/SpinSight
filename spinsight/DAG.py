@@ -25,11 +25,10 @@ class Graph:
 
         specs = self.build_node_specs()
         self.nodes, self.action_nodes = self.build_nodes(specs)
-
+        
         self.processing = False
 
         self.flush_actions()
-        self.add_input_watchers()
     
     def build_node_specs(self):
         # get node specs from decorators
@@ -39,7 +38,7 @@ class Graph:
         # special simulator node
         specs['simulator'] = {'func': lambda: self.simulator}
         # add specs for remaining simulator param nodes
-        specs.update({par: {'func': partial(getattr, self.simulator, par)} for par in self.simulator.param if par != 'name' and par not in specs})
+        specs.update(self.simulator.get_input_node_specs())
         return specs
     
     def build_nodes(self, specs):
@@ -55,21 +54,15 @@ class Graph:
                 action_nodes[precedence].append(nodes[name])
         return nodes, action_nodes
     
-    def add_input_watchers(self):
-        for node in self.input_nodes():
-            def on_change(node, graph, event):
-                if not graph.processing:
-                    graph.nodes['trigger_node'].func = lambda: node.name
-                    graph.nodes['trigger_node'].invalidate()
-                was_processing = graph.processing
-                graph.processing = True
-                node.invalidate()
-                graph.flush_actions()
-                graph.processing = was_processing
-            self.simulator.param.watch(partial(on_change, node, self), node.name)
-    
-    def input_nodes(self):
-        return [node for node in self.nodes.values() if (node.name in self.simulator.param) and node.children and not node.parents]
+    def on_change(self, node, event):
+        if not self.processing:
+            self.nodes['trigger_node'].func = lambda: node.name
+            self.nodes['trigger_node'].invalidate()
+        was_processing = self.processing
+        self.processing = True
+        node.invalidate()
+        self.flush_actions()
+        self.processing = was_processing
     
     def flush_actions(self):
         for precedence in sorted(self.action_nodes):

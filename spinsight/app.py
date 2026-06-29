@@ -53,7 +53,7 @@ def get_app(dark_mode=True, settings_filestem='', start_time=datetime.now(), laz
         version = ''
     
     discrete_slider_params = ['TR_ui', 'TE_ui', 'FA', 'TI', 'FOV_F', 'FOV_P', 'phase_oversampling', 'matrix_F_ui', 'matrix_P_ui', 'recon_matrix_F_ui', 'recon_matrix_P_ui', 'voxel_F', 'voxel_P', 'recon_voxel_F', 'recon_voxel_P', 'slice_thickness', 'pixel_bandwidth_ui', 'FOV_bandwidth', 'FW_shift', 'EPI_factor']
-    param_panels = {name: pn.panel(simulator.param, parameters=params, widgets={p: pn.widgets.DiscreteSlider for p in params if p in discrete_slider_params}, name=name) for name, params in [
+    param_panels = {name: pn.panel(simulator.input.param, parameters=params, widgets={p: pn.widgets.DiscreteSlider for p in params if p in discrete_slider_params}, name=name) for name, params in [
         ('Settings', ['object', 'field_strength', 'parameter_style']),
         ('Contrast', ['FatSat', 'TR_ui', 'TE_ui', 'FA', 'TI']),
         ('Geometry', ['trajectory', 'frequency_direction', 'FOV_F', 'FOV_P', 'phase_oversampling', 'radial_factor', 'voxel_F', 'voxel_P', 'matrix_F_ui', 'matrix_P_ui', 'recon_voxel_F', 'recon_voxel_P', 'recon_matrix_F_ui', 'recon_matrix_P_ui', 'slice_thickness']),
@@ -63,8 +63,8 @@ def get_app(dark_mode=True, settings_filestem='', start_time=datetime.now(), laz
 
     info_pane = pn.Row(info_number(name='Relative SNR', format='{value:.0f}%', value=simulator.param.relative_SNR, text_color=text_color),
                       info_string(name='Scan time', value=simulator.param.scantime, text_color=text_color),
-                      info_number(name='Fat/water shift', format='{value:.2f} pixels', value=simulator.param.FW_shift, text_color=text_color),
-                      info_number(name='Bandwidth', format='{value:.0f} Hz/pixel', value=simulator.param.pixel_bandwidth_ui, text_color=text_color))
+                      info_number(name='Fat/water shift', format='{value:.2f} pixels', value=simulator.input.param.FW_shift, text_color=text_color),
+                      info_number(name='Bandwidth', format='{value:.0f} Hz/pixel', value=simulator.input.param.pixel_bandwidth_ui, text_color=text_color))
     shot_angle_info = info_number(name='Angle', format='{value:.0f}°', value=simulator.param.spoke_angle, text_color=text_color) 
     num_shots_info = info_number(name='# shots', format='{value:.0f}', value=simulator.param.num_shots, text_color=text_color)
     def update_num_shots_label(event): 
@@ -72,11 +72,11 @@ def get_app(dark_mode=True, settings_filestem='', start_time=datetime.now(), laz
     simulator.param.watch(update_num_shots_label, 'shot_label')
     
     dmap_kspace = pn.Column(hv.DynamicMap(simulator.display_kspace) * simulator.k_line, 
-                           # simulator.param.kspace_type, 
-                           pn.Row(simulator.param.show_processed_kspace, simulator.param.kspace_exponent), 
+                           # simulator.input.param.kspace_type, 
+                           pn.Row(simulator.input.param.show_processed_kspace, simulator.input.param.kspace_exponent), 
                            visible=False)
     dmap_MR_image = hv.DynamicMap(simulator.display_image)
-    dmap_sequence = pn.Column(hv.DynamicMap(simulator.display_sequence_plot), pn.Row(simulator.param.shot_ui, shot_angle_info, num_shots_info), visible=False)
+    dmap_sequence = pn.Column(hv.DynamicMap(simulator.display_sequence_plot), pn.Row(simulator.input.param.shot_ui, shot_angle_info, num_shots_info), visible=False)
     load_button = pn.widgets.Button(name='Load settings', visible=settings_file.is_file())
     load_button.on_click(partial(load_button_callback, simulator, settings_file))
     save_button = pn.widgets.Button(name='Save settings', visible=settings_file.is_file())
@@ -104,9 +104,9 @@ def get_app(dark_mode=True, settings_filestem='', start_time=datetime.now(), laz
             pn.Column(
                 dmap_MR_image, 
                 pn.Column(
-                    # simulator.param.image_type, 
-                    pn.Row(reset_SNR_button, simulator.param.show_FOV), 
-                    simulator.param.reference_tissue, 
+                    # simulator.input.param.image_type, 
+                    pn.Row(reset_SNR_button, simulator.input.param.show_FOV), 
+                    simulator.input.param.reference_tissue, 
                     info_pane
                 )
             ), 
