@@ -10,6 +10,8 @@ def SNR(reference_signal, noise_std):
 
 @Graph.node()
 def relative_SNR(SNR, reference_SNR):
+    if not reference_SNR:
+        return 100
     return SNR / reference_SNR * 100
 
 
