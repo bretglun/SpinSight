@@ -51,16 +51,6 @@ MAX_SLEW = 80. # T/m/s
 INVERSION_THK_FACTOR = 1.1 # make inversion slice 10% thicker
 SPOILER_AREA = 30. # uTs/m
 
-BOARD_COLORS = {
-    'frequency': 'cadetblue',
-    'phase': 'cadetblue',
-    'slice': 'cadetblue',
-    'RF': 'red',
-    'signal': 'orange',
-    'ADC': 'peru',
-}
-
-
 # Action node precedences
 ACTION = SimpleNamespace(
     VISIBILITY = 1,

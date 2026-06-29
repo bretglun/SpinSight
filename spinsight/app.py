@@ -2,7 +2,7 @@ import holoviews as hv
 import panel as pn
 from pathlib import Path
 import toml
-from spinsight import MRIsimulator
+from spinsight import styles, MRIsimulator
 from functools import partial
 from datetime import datetime
 
@@ -39,9 +39,8 @@ def info_string(name, value, text_color):
 
 
 def get_app(dark_mode=True, settings_filestem='', start_time=datetime.now(), lazy_sliders=True):
-    pn.config.theme = 'dark' if dark_mode else 'default'
     pn.config.throttled = lazy_sliders
-    text_color = 'white' if dark_mode else 'black' # needed for pn.indicators.Number which doesn't respect pn.config.theme
+    text_color = styles.text_color(dark_mode)
 
     settings_file = Path(settings_filestem).with_suffix('.toml') if bool(settings_filestem) else Path('')
 
@@ -123,14 +122,7 @@ def get_app(dark_mode=True, settings_filestem='', start_time=datetime.now(), laz
         sizing_mode='stretch_both'
     )
 
-    template = pn.template.FastListTemplate(
-        title=title,
-        theme='dark' if dark_mode else 'default',
-        theme_toggle=False,
-        header_background='#262626',
-        modal=[pn.Column()],
-        collapsed_sidebar=True
-    )
+    template = styles.panel_template(title, dark_mode)
     template.main.append(dashboard)
     template.sidebar.append(
         pn.Column(

@@ -1,5 +1,6 @@
 from spinsight import sequence
-from spinsight.constants import ACTION, BOARD_COLORS
+from spinsight.constants import ACTION
+from spinsight.styles import BOARD_COLORS
 from spinsight.DAG import Graph
 import holoviews as hv
 from functools import partial

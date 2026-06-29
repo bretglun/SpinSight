@@ -5,7 +5,6 @@ import numpy as np
 import math
 from pathlib import Path
 from spinsight import params
-from spinsight.constants import BOARD_COLORS
 from spinsight.DAG import Graph
 from spinsight.params import PARAMS
 from bokeh.models import HoverTool, CustomJS, ColumnDataSource
@@ -30,8 +29,6 @@ from spinsight.nodes import (
     set_ui_param_bounds,
     set_ui_params,
 )
-
-hv.extension('bokeh')
 
 
 def filter_objects(objects, minval=None, maxval=None):
@@ -165,17 +162,6 @@ class MRIsimulator(param.Parameterized):
         self.hover_index = ColumnDataSource({'index': [], 'board': []})
         self.hover_index.on_change('data', self.update_k_line_coords)
         
-        hv.opts.defaults(hv.opts.Image(width=500, height=500, invert_yaxis=False, toolbar='below', cmap='gray', aspect='equal'))
-        hv.opts.defaults(hv.opts.HLine(line_width=1.5, line_color='gray'))
-        hv.opts.defaults(hv.opts.VSpan(color='orange', fill_alpha=.1, hover_fill_alpha=.8, default_tools=[]))
-        hv.opts.defaults(hv.opts.Rectangles(color=BOARD_COLORS['ADC'], line_color=BOARD_COLORS['ADC'], fill_alpha=.1, line_alpha=.3, hover_fill_alpha=.8, default_tools=[]))
-        hv.opts.defaults(hv.opts.Box(line_width=3))
-        hv.opts.defaults(hv.opts.Ellipse(line_width=3))
-        hv.opts.defaults(hv.opts.Area(fill_alpha=.5, line_width=1.5, line_color='gray', default_tools=[]))
-        hv.opts.defaults(hv.opts.Polygons(line_width=1.5, fill_alpha=0, line_alpha=0, line_color='gray', selection_line_color='black', hover_fill_alpha=.8, hover_line_alpha=1, selection_fill_alpha=.8, selection_line_alpha=1, nonselection_line_alpha=0, default_tools=[]))
-        hv.opts.defaults(hv.opts.Curve(line_width=5, line_color=BOARD_COLORS['ADC']))
-        hv.opts.defaults(hv.opts.Points(line_color=None, color=BOARD_COLORS['ADC'], size=15))
-
         self.graph = Graph(self)
 
         self.set_reference_SNR()
