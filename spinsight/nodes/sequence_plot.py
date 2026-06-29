@@ -65,7 +65,7 @@ def RF_board(time_dim, RF_dim, RF_objects, TR_span, RF_hover):
 @Graph.node()
 def signal_board(time_dim, signal_dim, signal_objects, ADC_objects, TR_span, signal_hover):
     vdims = [tip[0] for tip in signal_hover.tooltips]
-    specs = {'zero_lines': hline(time_dim, signal_dim),
+    specs = {'zero_lines': hline(time_dim, signal_dim, yticks=list(zip([0], ' '))),
                 'net_signal': hv.Area(sequence.accumulate_waveforms(signal_objects, 'signal'), time_dim, signal_dim).opts(color=BOARD_COLORS['signal']),
                 'waveforms': hv.Polygons(signal_objects, kdims=[time_dim, signal_dim], vdims='signal').opts(tools=[], cmap=[BOARD_COLORS['signal']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=TIME_BOUNDS)]),
                 'sampling_windows': hv.Rectangles(ADC_objects, kdims=['c1', 'c2', 'c3', 'c4'], vdims=vdims).opts(tools=[signal_hover]),
@@ -110,8 +110,8 @@ def ADC_objects(sampling_windows):
     return objects
 
 
-def hline(time_dim, amp_dim):
-    return hv.HLine(0.0, kdims=[time_dim, amp_dim]).opts(tools=['xwheel_zoom', 'xpan', 'reset'], default_tools=[], active_tools=['xwheel_zoom', 'xpan'])
+def hline(time_dim, amp_dim, yticks=None):
+    return hv.HLine(0.0, kdims=[time_dim, amp_dim]).opts(tools=['xwheel_zoom', 'xpan', 'reset'], default_tools=[], active_tools=['xwheel_zoom', 'xpan'], yticks=yticks)
 
 
 @Graph.node()

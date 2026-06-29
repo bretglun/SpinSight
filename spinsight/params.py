@@ -45,7 +45,7 @@ FW_shift_vals = [convert.pixel_BW_to_shift(pBW, 1.5) for pBW in pbw_vals[::-1]]
 
 TR_vals = np.exp(np.linspace(np.log(1), np.log(1e4), 500))
 TE_vals = np.exp(np.linspace(np.log(1), np.log(1e3), 500))
-TI_vals = np.exp(np.linspace(np.log(40), np.log(1e4), 500))
+TI_vals = np.exp(np.linspace(np.log(1e2), np.log(4e3), 500))
 
 fov_vals = range(100, 600 + 1)
 

@@ -1,5 +1,6 @@
 import holoviews as hv
 import panel as pn
+from spinsight.constants import MAX_AMP
 
 hv.extension('bokeh')
 
@@ -13,14 +14,16 @@ BOARD_COLORS = {
     'ADC': 'peru',
 }
 
+G_RANGE = MAX_AMP * 1.05
+
 BOARD_PLOT_WIDTH = 1700
 BOARD_PLOT_HEIGHT = 180
 BOARD_PLOT_HEIGHT_LAST = 120
 TIME_BOUNDS = (-19000, 19000)
-G_READ_RANGE = (-30, 30)
-G_PHASE_RANGE = (-30, 30)
-G_SLICE_RANGE = (-30, 30)
-RF_RANGE = (-5, 25)
+G_READ_RANGE = (-G_RANGE, G_RANGE)
+G_PHASE_RANGE = (-G_RANGE, G_RANGE)
+G_SLICE_RANGE = (-G_RANGE, G_RANGE)
+RF_RANGE = (-3, 22)
 SIGNAL_RANGE = (-1, 1)
 
 
