@@ -13,6 +13,17 @@ BOARD_COLORS = {
     'ADC': 'peru',
 }
 
+BOARD_PLOT_WIDTH = 1700
+BOARD_PLOT_HEIGHT = 180
+BOARD_PLOT_HEIGHT_LAST = 120
+TIME_BOUNDS = (-19000, 19000)
+G_READ_RANGE = (-30, 30)
+G_PHASE_RANGE = (-30, 30)
+G_SLICE_RANGE = (-30, 30)
+RF_RANGE = (-5, 25)
+SIGNAL_RANGE = (-1, 1)
+
+
 hv.opts.defaults(hv.opts.Image(width=500, height=500, invert_yaxis=False, toolbar='below', cmap='gray', aspect='equal'))
 hv.opts.defaults(hv.opts.HLine(line_width=1.5, line_color='gray'))
 hv.opts.defaults(hv.opts.VSpan(color='orange', fill_alpha=.1, hover_fill_alpha=.8, default_tools=[]))

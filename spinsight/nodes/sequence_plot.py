@@ -1,6 +1,6 @@
 from spinsight import sequence
 from spinsight.constants import ACTION
-from spinsight.styles import BOARD_COLORS
+from spinsight.styles import BOARD_COLORS, BOARD_PLOT_WIDTH, BOARD_PLOT_HEIGHT, BOARD_PLOT_HEIGHT_LAST, TIME_BOUNDS, G_READ_RANGE, G_PHASE_RANGE, G_SLICE_RANGE, RF_RANGE, SIGNAL_RANGE
 from spinsight.DAG import Graph
 import holoviews as hv
 from functools import partial
@@ -13,7 +13,7 @@ def sequence_plot(frequency_board, phase_board, slice_board, RF_board, signal_bo
     board_plots = []
     for board in boards:
         last = board is boards[-1]
-        board_plots.append(hv.Overlay(board.values()).opts(width=1700, height=180 if last else 120, border=0, xaxis='bottom' if last else None))
+        board_plots.append(hv.Overlay(board.values()).opts(width=BOARD_PLOT_WIDTH, height=BOARD_PLOT_HEIGHT if last else BOARD_PLOT_HEIGHT_LAST, border=0, xaxis='bottom' if last else None))
     return hv.Layout(list(board_plots)).cols(1).options(toolbar='below')
 
 
@@ -27,7 +27,7 @@ def frequency_board(time_dim, frequency_dim, frequency_objects, TR_span, frequen
     vdims = [tip[0] for tip in frequency_hover.tooltips]
     specs = {'zero_line': hline(time_dim, frequency_dim),
                 'net_gradient': hv.Area(sequence.accumulate_waveforms(frequency_objects, 'frequency'), time_dim, frequency_dim).opts(color=BOARD_COLORS['frequency']),
-                'waveforms': hv.Polygons(frequency_objects, kdims=[time_dim, frequency_dim], vdims=vdims).opts(tools=[frequency_hover], cmap=[BOARD_COLORS['frequency']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=(-19000, 19000))]),
+                'waveforms': hv.Polygons(frequency_objects, kdims=[time_dim, frequency_dim], vdims=vdims).opts(tools=[frequency_hover], cmap=[BOARD_COLORS['frequency']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=TIME_BOUNDS)]),
                 'TR_span': TR_span['frequency']}
     return specs
 
@@ -37,7 +37,7 @@ def phase_board(time_dim, phase_dim, phase_objects, TR_span, phase_hover):
     vdims = [tip[0] for tip in phase_hover.tooltips]
     specs = {'zero_lines': hline(time_dim, phase_dim),
                 'net_gradient': hv.Area(sequence.accumulate_waveforms(phase_objects, 'phase'), time_dim, phase_dim).opts(color=BOARD_COLORS['phase']),
-                'waveforms': hv.Polygons(phase_objects, kdims=[time_dim, phase_dim], vdims=vdims).opts(tools=[phase_hover], cmap=[BOARD_COLORS['phase']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=(-19000, 19000))]),
+                'waveforms': hv.Polygons(phase_objects, kdims=[time_dim, phase_dim], vdims=vdims).opts(tools=[phase_hover], cmap=[BOARD_COLORS['phase']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=TIME_BOUNDS)]),
                 'TR_span': TR_span['phase']}
     return specs
 
@@ -47,7 +47,7 @@ def slice_board(time_dim, slice_dim, slice_objects, TR_span, slice_hover):
     vdims = [tip[0] for tip in slice_hover.tooltips]
     specs = {'zero_lines': hline(time_dim, slice_dim),
                 'net_gradient': hv.Area(sequence.accumulate_waveforms(slice_objects, 'slice'), time_dim, slice_dim).opts(color=BOARD_COLORS['slice']),
-                'waveforms': hv.Polygons(slice_objects, kdims=[time_dim, slice_dim], vdims=vdims).opts(tools=[slice_hover], cmap=[BOARD_COLORS['slice']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=(-19000, 19000))]),
+                'waveforms': hv.Polygons(slice_objects, kdims=[time_dim, slice_dim], vdims=vdims).opts(tools=[slice_hover], cmap=[BOARD_COLORS['slice']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=TIME_BOUNDS)]),
                 'TR_span': TR_span['slice']}
     return specs
 
@@ -57,7 +57,7 @@ def RF_board(time_dim, RF_dim, RF_objects, TR_span, RF_hover):
     vdims = [tip[0] for tip in RF_hover.tooltips]
     specs = {'zero_lines': hline(time_dim, RF_dim),
                 'net_RF': hv.Area(sequence.accumulate_waveforms(RF_objects, 'RF'), time_dim, RF_dim).opts(color=BOARD_COLORS['RF']),
-                'waveforms': hv.Polygons(RF_objects, kdims=[time_dim, RF_dim], vdims=vdims).opts(tools=[RF_hover], cmap=[BOARD_COLORS['RF']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=(-19000, 19000))]),
+                'waveforms': hv.Polygons(RF_objects, kdims=[time_dim, RF_dim], vdims=vdims).opts(tools=[RF_hover], cmap=[BOARD_COLORS['RF']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=TIME_BOUNDS)]),
                 'TR_span': TR_span['RF']}
     return specs
 
@@ -67,7 +67,7 @@ def signal_board(time_dim, signal_dim, signal_objects, ADC_objects, TR_span, sig
     vdims = [tip[0] for tip in signal_hover.tooltips]
     specs = {'zero_lines': hline(time_dim, signal_dim),
                 'net_signal': hv.Area(sequence.accumulate_waveforms(signal_objects, 'signal'), time_dim, signal_dim).opts(color=BOARD_COLORS['signal']),
-                'waveforms': hv.Polygons(signal_objects, kdims=[time_dim, signal_dim], vdims='signal').opts(tools=[], cmap=[BOARD_COLORS['signal']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=(-19000, 19000))]),
+                'waveforms': hv.Polygons(signal_objects, kdims=[time_dim, signal_dim], vdims='signal').opts(tools=[], cmap=[BOARD_COLORS['signal']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=TIME_BOUNDS)]),
                 'sampling_windows': hv.Rectangles(ADC_objects, kdims=['c1', 'c2', 'c3', 'c4'], vdims=vdims).opts(tools=[signal_hover]),
                 'TR_span': TR_span['signal']}
     return specs
@@ -159,27 +159,27 @@ def time_dim():
 
 @Graph.node()
 def frequency_dim():
-    return hv.Dimension('frequency', label='G read', unit='mT/m', range=(-30, 30))
+    return hv.Dimension('frequency', label='G read', unit='mT/m', range=G_READ_RANGE)
 
 
 @Graph.node()
 def phase_dim():
-    return hv.Dimension('phase', label='G phase', unit='mT/m', range=(-30, 30))
+    return hv.Dimension('phase', label='G phase', unit='mT/m', range=G_PHASE_RANGE)
 
 
 @Graph.node()
 def slice_dim():
-    return hv.Dimension('slice', label='G slice', unit='mT/m', range=(-30, 30))
+    return hv.Dimension('slice', label='G slice', unit='mT/m', range=G_SLICE_RANGE)
 
 
 @Graph.node()
 def RF_dim():
-    return hv.Dimension('RF', label='RF', unit='μT', range=(-5, 25))
+    return hv.Dimension('RF', label='RF', unit='μT', range=RF_RANGE)
 
 
 @Graph.node()
 def signal_dim():
-    return hv.Dimension('signal', label='signal', unit='a.u.', range=(-1, 1))
+    return hv.Dimension('signal', label='signal', unit='a.u.', range=SIGNAL_RANGE)
 
 
 @Graph.node()
