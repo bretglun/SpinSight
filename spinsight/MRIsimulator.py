@@ -8,29 +8,8 @@ from functools import partial
 from spinsight import params
 from spinsight.params import PARAMS
 from spinsight.InputParams import InputParams
-from spinsight.DAG import Graph
 from bokeh.models import HoverTool, CustomJS, ColumnDataSource
 import warnings
-# Initialize graph node decorators:
-from spinsight.nodes import (
-    internal_input_params,
-    helpers,
-    param_bounds,
-    setup_sequence_objects,
-    sequence_timing,
-    phase_encoding_order,
-    place_sequence_objects,
-    kspace_simulation,
-    kspace_processing,
-    image_reconstruction,
-    sequence_plot,
-    kspace_plot,
-    image_plot,
-    SNR_and_scantime,
-    set_ui_param_visibility,
-    set_ui_param_bounds,
-    set_ui_params,
-)
 
 
 def filter_objects(objects, minval=None, maxval=None):
@@ -102,12 +81,12 @@ class MRIsimulator(param.Parameterized):
 
         self.hover_index = ColumnDataSource({'index': [], 'board': []})
         self.hover_index.on_change('data', self.update_k_line_coords)
-        
-        self.graph = Graph(self)
-        self.add_input_watchers(self.graph)
 
+    def attach_graph(self, graph):
+        self.graph = graph
+        self.add_input_watchers(graph)
         self.set_reference_SNR()
-
+    
     def input_nodes(self):
         input_nodes = set(par for par in self.input.param if par != 'name')
         input_nodes.update(('rec_acq_ratio_P', 'rec_acq_ratio_F', 'reference_SNR'))

@@ -3,6 +3,7 @@ import panel as pn
 from pathlib import Path
 import toml
 from spinsight import styles, MRIsimulator
+from spinsight.simulator_graph import make_graph
 from functools import partial
 from datetime import datetime
 
@@ -45,6 +46,9 @@ def get_app(dark_mode=True, settings_filestem='', start_time=datetime.now(), laz
     settings_file = Path(settings_filestem).with_suffix('.toml') if bool(settings_filestem) else Path('')
 
     simulator = MRIsimulator.MRIsimulator(name='')
+    graph = make_graph(simulator)
+    simulator.attach_graph(graph)
+
     title = 'SpinSight MRI simulator'
     author = '*Written by [Johan Berglund](mailto:johan.berglund@akademiska.se), Ph.D.*'
     try:
