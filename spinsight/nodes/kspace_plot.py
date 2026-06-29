@@ -34,8 +34,8 @@ def kspace(kspace_type, show_processed_kspace, oversampled_recon_matrix, FOV, re
 
 
 @Graph.node(action=ACTION.KSPACE)
-def update_kspace(simulator, kspace):
-    simulator.kspace_update += 1
+def update_kspace(controller, kspace):
+    controller.kspace_update += 1
 
 
 @Graph.node()

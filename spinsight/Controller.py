@@ -47,7 +47,7 @@ def get_k_on_interval(interval, k_trajectory):
     return zip(kx, ky)
 
 
-class MRIsimulator(param.Parameterized):
+class Controller(param.Parameterized):
     shot_label = param.String() # shot/spoke/blade label
     num_shots = param.Integer() # number of shots
     spoke_angle = param.Number() # spoke angle [°]

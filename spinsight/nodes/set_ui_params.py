@@ -5,124 +5,124 @@ from spinsight.constants import ACTION
 
 
 @Graph.node(action=ACTION.VALUE)
-def set_spoke_angle(simulator, spoke_angle):
-    simulator.spoke_angle = spoke_angle
+def set_spoke_angle(controller, spoke_angle):
+    controller.spoke_angle = spoke_angle
 
 
 @Graph.node(action=ACTION.VALUE)
-def set_num_shots(simulator, num_shots):
-    simulator.num_shots = num_shots
+def set_num_shots(controller, num_shots):
+    controller.num_shots = num_shots
 
 
 @Graph.node(action=ACTION.VALUE)
-def set_relative_SNR(simulator, relative_SNR):
-    simulator.relative_SNR = relative_SNR
+def set_relative_SNR(controller, relative_SNR):
+    controller.relative_SNR = relative_SNR
 
 
 @Graph.node(action=ACTION.VALUE)
-def set_scantime(simulator, scantime):
-    simulator.scantime = scantime
+def set_scantime(controller, scantime):
+    controller.scantime = scantime
 
 
 @Graph.node(action=ACTION.VALUE)
-def set_pixel_bandwidth(simulator, pixel_BW_is_input, pixel_bandwidth):
+def set_pixel_bandwidth(controller, pixel_BW_is_input, pixel_bandwidth):
     if not pixel_BW_is_input:
-        simulator.set_param('pixel_bandwidth_ui', pixel_bandwidth)
+        controller.set_param('pixel_bandwidth_ui', pixel_bandwidth)
 
 
 @Graph.node(action=ACTION.VALUE)
-def set_FOV_bandwidth(simulator, FOV_BW_is_input, pixel_bandwidth, matrix_F):
+def set_FOV_bandwidth(controller, FOV_BW_is_input, pixel_bandwidth, matrix_F):
     if not FOV_BW_is_input:
-        simulator.set_param('FOV_bandwidth', convert.pixel_BW_to_FOV_BW(pixel_bandwidth, matrix_F))
+        controller.set_param('FOV_bandwidth', convert.pixel_BW_to_FOV_BW(pixel_bandwidth, matrix_F))
 
 
 @Graph.node(action=ACTION.VALUE)
-def set_FW_shift(simulator, FW_shift_is_input, pixel_bandwidth, field_strength):
+def set_FW_shift(controller, FW_shift_is_input, pixel_bandwidth, field_strength):
     if not FW_shift_is_input:
-        simulator.set_param('FW_shift', convert.pixel_BW_to_shift(pixel_bandwidth, field_strength))
+        controller.set_param('FW_shift', convert.pixel_BW_to_shift(pixel_bandwidth, field_strength))
 
 
 @Graph.node(action=ACTION.VALUE)
-def set_matrix_F(simulator, matrix_is_input, isotropic_voxel_size, matrix_F):
+def set_matrix_F(controller, matrix_is_input, isotropic_voxel_size, matrix_F):
     if not matrix_is_input or isotropic_voxel_size:
-        simulator.set_param('matrix_F_ui', matrix_F)
+        controller.set_param('matrix_F_ui', matrix_F)
 
 
 @Graph.node(action=ACTION.VALUE)
-def set_matrix_P(simulator, matrix_is_input, isotropic_voxel_size, matrix_P):
+def set_matrix_P(controller, matrix_is_input, isotropic_voxel_size, matrix_P):
     if not matrix_is_input or isotropic_voxel_size:
-        simulator.set_param('matrix_P_ui', matrix_P)
+        controller.set_param('matrix_P_ui', matrix_P)
 
 
 @Graph.node(action=ACTION.VALUE)
-def set_recon_matrix_F(simulator, matrix_is_input, keep_rec_acq_ratio, recon_matrix_F):
+def set_recon_matrix_F(controller, matrix_is_input, keep_rec_acq_ratio, recon_matrix_F):
     if not matrix_is_input or keep_rec_acq_ratio:
-        simulator.set_param('recon_matrix_F_ui', recon_matrix_F)
+        controller.set_param('recon_matrix_F_ui', recon_matrix_F)
 
 
 @Graph.node(action=ACTION.VALUE)
-def set_recon_matrix_P(simulator, matrix_is_input, keep_rec_acq_ratio, recon_matrix_P):
+def set_recon_matrix_P(controller, matrix_is_input, keep_rec_acq_ratio, recon_matrix_P):
     if not matrix_is_input or keep_rec_acq_ratio:
-        simulator.set_param('recon_matrix_P_ui', recon_matrix_P)
+        controller.set_param('recon_matrix_P_ui', recon_matrix_P)
 
 
 @Graph.node(action=ACTION.VALUE)
-def set_voxel_F(simulator, voxel_size_is_input, isotropic_voxel_size, FOV_F, matrix_F):
+def set_voxel_F(controller, voxel_size_is_input, isotropic_voxel_size, FOV_F, matrix_F):
     if not voxel_size_is_input or isotropic_voxel_size:
-        simulator.set_param('voxel_F', FOV_F / matrix_F)
+        controller.set_param('voxel_F', FOV_F / matrix_F)
 
 
 @Graph.node(action=ACTION.VALUE)
-def set_voxel_P(simulator, voxel_size_is_input, isotropic_voxel_size, FOV_P, matrix_P):
+def set_voxel_P(controller, voxel_size_is_input, isotropic_voxel_size, FOV_P, matrix_P):
     if not voxel_size_is_input or isotropic_voxel_size:
-        simulator.set_param('voxel_P', FOV_P / matrix_P)
+        controller.set_param('voxel_P', FOV_P / matrix_P)
 
 
 @Graph.node(action=ACTION.VALUE)
-def set_recon_voxel_F(simulator, voxel_size_is_input, keep_rec_acq_ratio, FOV_F, recon_matrix_F):
+def set_recon_voxel_F(controller, voxel_size_is_input, keep_rec_acq_ratio, FOV_F, recon_matrix_F):
     if not voxel_size_is_input or keep_rec_acq_ratio:
-        simulator.set_param('recon_voxel_F', FOV_F / recon_matrix_F)
+        controller.set_param('recon_voxel_F', FOV_F / recon_matrix_F)
 
 
 @Graph.node(action=ACTION.VALUE)
-def set_recon_voxel_P(simulator, voxel_size_is_input, keep_rec_acq_ratio, FOV_P, recon_matrix_P):
+def set_recon_voxel_P(controller, voxel_size_is_input, keep_rec_acq_ratio, FOV_P, recon_matrix_P):
     if not voxel_size_is_input or keep_rec_acq_ratio:
-        simulator.set_param('recon_voxel_P', FOV_P / recon_matrix_P)
+        controller.set_param('recon_voxel_P', FOV_P / recon_matrix_P)
 
 
 @Graph.node(action=ACTION.VALUE)
-def set_TR_and_bounds(simulator, min_TR, TR):
-    simulator.set_param_bounds('TR_ui', minval=min_TR)
-    simulator.set_param('TR_ui', TR)
+def set_TR_and_bounds(controller, min_TR, TR):
+    controller.set_param_bounds('TR_ui', minval=min_TR)
+    controller.set_param('TR_ui', TR)
 
 
 @Graph.node(action=ACTION.VALUE)
-def set_TE_and_bounds(simulator, min_TE, max_TE, TE):
-    simulator.set_param_bounds('TE_ui', minval=min_TE, maxval=max_TE)
-    simulator.set_param('TE_ui', TE)
+def set_TE_and_bounds(controller, min_TE, max_TE, TE):
+    controller.set_param_bounds('TE_ui', minval=min_TE, maxval=max_TE)
+    controller.set_param('TE_ui', TE)
 
 
 @Graph.node(action=ACTION.VALUE)
-def set_shot_and_bounds(simulator, num_shots, shot):
-    simulator.input.param.shot_ui.bounds = (1, num_shots)
-    simulator.set_param('shot_ui', shot + 1)
+def set_shot_and_bounds(controller, num_shots, shot):
+    controller.input.param.shot_ui.bounds = (1, num_shots)
+    controller.set_param('shot_ui', shot + 1)
 
 
 @Graph.node(action=ACTION.VALUE)
-def set_trajectory_objects(simulator, EPI_factor, turbo_factor):
+def set_trajectory_objects(controller, EPI_factor, turbo_factor):
     # Label radial trajectory 'Radial' or 'PROPELLER' depending on nLines per shot
-    simulator.input.param.trajectory.objects = PARAMS['trajectory'].objects
+    controller.input.param.trajectory.objects = PARAMS['trajectory'].objects
     invalid, updated = ('PROPELLER', 'Radial') if (EPI_factor * turbo_factor == 1) else ('Radial', 'PROPELLER')
-    if simulator.input.trajectory == invalid:
-        simulator.input.trajectory = updated
-    simulator.input.param.trajectory.objects = [t for t in PARAMS['trajectory'].objects if t != invalid]
+    if controller.input.trajectory == invalid:
+        controller.input.trajectory = updated
+    controller.input.param.trajectory.objects = [t for t in PARAMS['trajectory'].objects if t != invalid]
 
 
 @Graph.node(action=ACTION.INVISIBLE)
-def set_rec_acq_ratio_F(simulator, recon_matrix_F, matrix_F):
-    simulator.rec_acq_ratio_F = recon_matrix_F / matrix_F
+def set_rec_acq_ratio_F(controller, recon_matrix_F, matrix_F):
+    controller.rec_acq_ratio_F = recon_matrix_F / matrix_F
 
 
 @Graph.node(action=ACTION.INVISIBLE)
-def set_rec_acq_ratio_P(simulator, recon_matrix_P, matrix_P):
-    simulator.rec_acq_ratio_P = recon_matrix_P / matrix_P
+def set_rec_acq_ratio_P(controller, recon_matrix_P, matrix_P):
+    controller.rec_acq_ratio_P = recon_matrix_P / matrix_P

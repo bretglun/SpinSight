@@ -18,8 +18,8 @@ def sequence_plot(frequency_board, phase_board, slice_board, RF_board, signal_bo
 
 
 @Graph.node(action=ACTION.SEQPLOT)
-def update_seqplot(simulator, sequence_plot):
-    simulator.seqplot_update += 1
+def update_seqplot(controller, sequence_plot):
+    controller.seqplot_update += 1
 
 
 @Graph.node()
@@ -188,28 +188,28 @@ def ADC_dim():
 
 
 @Graph.node()
-def frequency_hover(simulator):
-    return simulator.get_hover_tool('frequency', ['name', 'center', 'duration', 'area'])
+def frequency_hover(controller):
+    return controller.get_hover_tool('frequency', ['name', 'center', 'duration', 'area'])
 
 
 @Graph.node()
-def phase_hover(simulator):
-    return simulator.get_hover_tool('phase', ['name', 'center', 'duration', 'area'])
+def phase_hover(controller):
+    return controller.get_hover_tool('phase', ['name', 'center', 'duration', 'area'])
 
 
 @Graph.node()
-def slice_hover(simulator):
-    return simulator.get_hover_tool('slice', ['name', 'center', 'duration', 'area'])
+def slice_hover(controller):
+    return controller.get_hover_tool('slice', ['name', 'center', 'duration', 'area'])
 
 
 @Graph.node()
-def RF_hover(simulator):
-    return simulator.get_hover_tool('RF', ['name', 'center', 'duration', 'flip_angle'])
+def RF_hover(controller):
+    return controller.get_hover_tool('RF', ['name', 'center', 'duration', 'flip_angle'])
 
 
 @Graph.node()
-def signal_hover(simulator):
-    return simulator.get_hover_tool('signal', ['name', 'center', 'duration'])
+def signal_hover(controller):
+    return controller.get_hover_tool('signal', ['name', 'center', 'duration'])
 
 
 def flatten_dicts(list_of_dicts_and_lists):

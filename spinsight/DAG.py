@@ -20,8 +20,8 @@ class Graph:
             return func
         return decorator
 
-    def __init__(self, simulator):
-        self.simulator = simulator
+    def __init__(self, controller):
+        self.controller = controller
 
         specs = self.build_node_specs()
         self.nodes, self.action_nodes = self.build_nodes(specs)
@@ -35,10 +35,10 @@ class Graph:
         specs = dict(type(self).node_specs)
         # special node to track which input node was trigger
         specs['trigger_node'] = {'func': lambda: 'None'}
-        # special simulator node
-        specs['simulator'] = {'func': lambda: self.simulator}
-        # add specs for remaining simulator param nodes
-        specs.update(self.simulator.get_input_node_specs())
+        # special controller node
+        specs['controller'] = {'func': lambda: self.controller}
+        # add specs for remaining controller param nodes
+        specs.update(self.controller.get_input_node_specs())
         return specs
     
     def build_nodes(self, specs):

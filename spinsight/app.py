@@ -2,8 +2,8 @@ import holoviews as hv
 import panel as pn
 from pathlib import Path
 import toml
-from spinsight import styles, MRIsimulator
-from spinsight.simulator_graph import make_graph
+from spinsight import styles, simulator
+from spinsight.Controller import Controller
 from functools import partial
 from datetime import datetime
 
@@ -17,16 +17,16 @@ def hide_show_button_callback(pane, event):
         event.obj.name = event.obj.name.replace('Hide', 'Show')
 
 
-def load_button_callback(simulator, settings_file, event):
+def load_button_callback(controller, settings_file, event):
     print('Loading settings from file', settings_file)
     with open(settings_file, 'r') as f:
         settings = toml.load(f)
-    simulator.set_input_params(settings)
+    controller.set_input_params(settings)
 
 
-def save_button_callback(simulator, settings_file, event):
+def save_button_callback(controller, settings_file, event):
     print('Saving settings to file', settings_file)
-    settings = simulator.get_input_params()
+    settings = controller.get_input_params()
     with open(settings_file, 'w') as f:
         toml.dump(settings, f)
 
@@ -45,9 +45,9 @@ def get_app(dark_mode=True, settings_filestem='', start_time=datetime.now(), laz
 
     settings_file = Path(settings_filestem).with_suffix('.toml') if bool(settings_filestem) else Path('')
 
-    simulator = MRIsimulator.MRIsimulator(name='')
-    graph = make_graph(simulator)
-    simulator.attach_graph(graph)
+    controller = Controller()
+    graph = simulator.make_graph(controller)
+    controller.attach_graph(graph)
 
     title = 'SpinSight MRI simulator'
     author = '*Written by [Johan Berglund](mailto:johan.berglund@akademiska.se), Ph.D.*'
@@ -57,7 +57,7 @@ def get_app(dark_mode=True, settings_filestem='', start_time=datetime.now(), laz
         version = ''
     
     discrete_slider_params = ['TR_ui', 'TE_ui', 'FA', 'TI', 'FOV_F', 'FOV_P', 'phase_oversampling', 'matrix_F_ui', 'matrix_P_ui', 'recon_matrix_F_ui', 'recon_matrix_P_ui', 'voxel_F', 'voxel_P', 'recon_voxel_F', 'recon_voxel_P', 'slice_thickness', 'pixel_bandwidth_ui', 'FOV_bandwidth', 'FW_shift', 'EPI_factor']
-    param_panels = {name: pn.panel(simulator.input.param, parameters=params, widgets={p: pn.widgets.DiscreteSlider for p in params if p in discrete_slider_params}, name=name) for name, params in [
+    param_panels = {name: pn.panel(controller.input.param, parameters=params, widgets={p: pn.widgets.DiscreteSlider for p in params if p in discrete_slider_params}, name=name) for name, params in [
         ('Settings', ['object', 'field_strength', 'parameter_style']),
         ('Contrast', ['FatSat', 'TR_ui', 'TE_ui', 'FA', 'TI']),
         ('Geometry', ['trajectory', 'frequency_direction', 'FOV_F', 'FOV_P', 'phase_oversampling', 'radial_factor', 'voxel_F', 'voxel_P', 'matrix_F_ui', 'matrix_P_ui', 'recon_voxel_F', 'recon_voxel_P', 'recon_matrix_F_ui', 'recon_matrix_P_ui', 'slice_thickness']),
@@ -65,32 +65,32 @@ def get_app(dark_mode=True, settings_filestem='', start_time=datetime.now(), laz
         ('Post-processing', ['homodyne', 'do_apodize', 'apodization_alpha', 'do_zerofill']),
     ]}
 
-    info_pane = pn.Row(info_number(name='Relative SNR', format='{value:.0f}%', value=simulator.param.relative_SNR, text_color=text_color),
-                      info_string(name='Scan time', value=simulator.param.scantime, text_color=text_color),
-                      info_number(name='Fat/water shift', format='{value:.2f} pixels', value=simulator.input.param.FW_shift, text_color=text_color),
-                      info_number(name='Bandwidth', format='{value:.0f} Hz/pixel', value=simulator.input.param.pixel_bandwidth_ui, text_color=text_color))
-    shot_angle_info = info_number(name='Angle', format='{value:.0f}°', value=simulator.param.spoke_angle, text_color=text_color) 
-    num_shots_info = info_number(name='# shots', format='{value:.0f}', value=simulator.param.num_shots, text_color=text_color)
+    info_pane = pn.Row(info_number(name='Relative SNR', format='{value:.0f}%', value=controller.param.relative_SNR, text_color=text_color),
+                      info_string(name='Scan time', value=controller.param.scantime, text_color=text_color),
+                      info_number(name='Fat/water shift', format='{value:.2f} pixels', value=controller.input.param.FW_shift, text_color=text_color),
+                      info_number(name='Bandwidth', format='{value:.0f} Hz/pixel', value=controller.input.param.pixel_bandwidth_ui, text_color=text_color))
+    shot_angle_info = info_number(name='Angle', format='{value:.0f}°', value=controller.param.spoke_angle, text_color=text_color) 
+    num_shots_info = info_number(name='# shots', format='{value:.0f}', value=controller.param.num_shots, text_color=text_color)
     def update_num_shots_label(event): 
         num_shots_info.name = f'# {event.new}s'
-    simulator.param.watch(update_num_shots_label, 'shot_label')
+    controller.param.watch(update_num_shots_label, 'shot_label')
     
-    dmap_kspace = pn.Column(hv.DynamicMap(simulator.display_kspace) * simulator.k_line, 
-                           # simulator.input.param.kspace_type, 
-                           pn.Row(simulator.input.param.show_processed_kspace, simulator.input.param.kspace_exponent), 
+    dmap_kspace = pn.Column(hv.DynamicMap(controller.display_kspace) * controller.k_line, 
+                           # controller.input.param.kspace_type, 
+                           pn.Row(controller.input.param.show_processed_kspace, controller.input.param.kspace_exponent), 
                            visible=False)
-    dmap_MR_image = hv.DynamicMap(simulator.display_image)
-    dmap_sequence = pn.Column(hv.DynamicMap(simulator.display_sequence_plot), pn.Row(simulator.input.param.shot_ui, shot_angle_info, num_shots_info), visible=False)
+    dmap_MR_image = hv.DynamicMap(controller.display_image)
+    dmap_sequence = pn.Column(hv.DynamicMap(controller.display_sequence_plot), pn.Row(controller.input.param.shot_ui, shot_angle_info, num_shots_info), visible=False)
     load_button = pn.widgets.Button(name='Load settings', visible=settings_file.is_file())
-    load_button.on_click(partial(load_button_callback, simulator, settings_file))
+    load_button.on_click(partial(load_button_callback, controller, settings_file))
     save_button = pn.widgets.Button(name='Save settings', visible=settings_file.is_file())
-    save_button.on_click(partial(save_button_callback, simulator, settings_file))
+    save_button.on_click(partial(save_button_callback, controller, settings_file))
     sequence_button = pn.widgets.Button(name='Show sequence')
     sequence_button.on_click(partial(hide_show_button_callback, dmap_sequence))
     kspace_button = pn.widgets.Button(name='Show k-space')
     kspace_button.on_click(partial(hide_show_button_callback, dmap_kspace))
     reset_SNR_button = pn.widgets.Button(name='Set reference SNR')
-    reset_SNR_button.on_click(simulator.set_reference_SNR)
+    reset_SNR_button.on_click(controller.set_reference_SNR)
     dashboard = pn.Column(
         pn.Row(
             pn.Column(
@@ -108,9 +108,9 @@ def get_app(dark_mode=True, settings_filestem='', start_time=datetime.now(), laz
             pn.Column(
                 dmap_MR_image, 
                 pn.Column(
-                    # simulator.input.param.image_type, 
-                    pn.Row(reset_SNR_button, simulator.input.param.show_FOV), 
-                    simulator.input.param.reference_tissue, 
+                    # controller.input.param.image_type, 
+                    pn.Row(reset_SNR_button, controller.input.param.show_FOV), 
+                    controller.input.param.reference_tissue, 
                     info_pane
                 )
             ), 
