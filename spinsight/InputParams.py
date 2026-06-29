@@ -2,69 +2,73 @@ import param
 from spinsight.params import PARAMS
 
 
+def init_param(func, par_name):
+    return func(**PARAMS[par_name].param_kwargs)
+
+
 class InputParams(param.Parameterized):
 
     # Settings
-    object = param.ObjectSelector(**PARAMS['object'].param_kwargs)
-    field_strength = param.ObjectSelector(**PARAMS['field_strength'].param_kwargs)
-    parameter_style = param.ObjectSelector(**PARAMS['parameter_style'].param_kwargs)
+    object = init_param(param.ObjectSelector, 'object')
+    field_strength = init_param(param.ObjectSelector, 'field_strength')
+    parameter_style = init_param(param.ObjectSelector, 'parameter_style')
 
-    min_voxel_size = param.Number(**PARAMS['min_voxel_size'].param_kwargs)
-    noise_gain = param.Number(**PARAMS['noise_gain'].param_kwargs)
+    min_voxel_size = init_param(param.Number, 'min_voxel_size')
+    noise_gain = init_param(param.Number, 'noise_gain')
 
     # Sequence
-    sequence_type = param.ObjectSelector(**PARAMS['sequence_type'].param_kwargs)
-    pixel_bandwidth_ui = param.Selector(**PARAMS['pixel_bandwidth_ui'].param_kwargs)
-    FOV_bandwidth = param.Selector(**PARAMS['FOV_bandwidth'].param_kwargs)
-    FW_shift = param.Selector(**PARAMS['FW_shift'].param_kwargs)
-    NSA = param.Integer(**PARAMS['NSA'].param_kwargs)
-    partial_Fourier = param.Number(**PARAMS['partial_Fourier'].param_kwargs)
-    turbo_factor = param.Integer(**PARAMS['turbo_factor'].param_kwargs)
-    EPI_factor = param.Selector(**PARAMS['EPI_factor'].param_kwargs)
+    sequence_type = init_param(param.ObjectSelector, 'sequence_type')
+    pixel_bandwidth_ui = init_param(param.Selector, 'pixel_bandwidth_ui')
+    FOV_bandwidth = init_param(param.Selector, 'FOV_bandwidth')
+    FW_shift = init_param(param.Selector, 'FW_shift')
+    NSA = init_param(param.Integer, 'NSA')
+    partial_Fourier = init_param(param.Number, 'partial_Fourier')
+    turbo_factor = init_param(param.Integer, 'turbo_factor')
+    EPI_factor = init_param(param.Selector, 'EPI_factor')
 
     # Contrast
-    FatSat = param.Boolean(**PARAMS['FatSat'].param_kwargs)
-    TR_ui = param.Selector(**PARAMS['TR_ui'].param_kwargs)
-    TE_ui = param.Selector(**PARAMS['TE_ui'].param_kwargs)
-    TI = param.Selector(**PARAMS['TI'].param_kwargs)
-    FA = param.Selector(**PARAMS['FA'].param_kwargs)
+    FatSat = init_param(param.Boolean, 'FatSat')
+    TR_ui = init_param(param.Selector, 'TR_ui')
+    TE_ui = init_param(param.Selector, 'TE_ui')
+    TI = init_param(param.Selector, 'TI')
+    FA = init_param(param.Selector, 'FA')
     
     # Geometry
-    trajectory = param.ObjectSelector(**PARAMS['trajectory'].param_kwargs)
-    frequency_direction = param.ObjectSelector(**PARAMS['frequency_direction'].param_kwargs)
-    FOV_P = param.Selector(**PARAMS['FOV_P'].param_kwargs)
-    FOV_F = param.Selector(**PARAMS['FOV_F'].param_kwargs)
-    phase_oversampling = param.Selector(**PARAMS['phase_oversampling'].param_kwargs)
-    radial_factor = param.Number(**PARAMS['radial_factor'].param_kwargs)
-    matrix_P_ui = param.Selector(**PARAMS['matrix_P_ui'].param_kwargs)
-    matrix_F_ui = param.Selector(**PARAMS['matrix_F_ui'].param_kwargs)
-    voxel_P = param.Selector(**PARAMS['voxel_P'].param_kwargs)
-    voxel_F = param.Selector(**PARAMS['voxel_F'].param_kwargs)
-    recon_matrix_P_ui = param.Selector(**PARAMS['recon_matrix_P_ui'].param_kwargs)
-    recon_matrix_F_ui = param.Selector(**PARAMS['recon_matrix_F_ui'].param_kwargs)
-    recon_voxel_P = param.Selector(**PARAMS['recon_voxel_P'].param_kwargs)
-    recon_voxel_F = param.Selector(**PARAMS['recon_voxel_F'].param_kwargs)
-    slice_thickness = param.Selector(**PARAMS['slice_thickness'].param_kwargs)
+    trajectory = init_param(param.ObjectSelector, 'trajectory')
+    frequency_direction = init_param(param.ObjectSelector, 'frequency_direction')
+    FOV_P = init_param(param.Selector, 'FOV_P')
+    FOV_F = init_param(param.Selector, 'FOV_F')
+    phase_oversampling = init_param(param.Selector, 'phase_oversampling')
+    radial_factor = init_param(param.Number, 'radial_factor')
+    matrix_P_ui = init_param(param.Selector, 'matrix_P_ui')
+    matrix_F_ui = init_param(param.Selector, 'matrix_F_ui')
+    voxel_P = init_param(param.Selector, 'voxel_P')
+    voxel_F = init_param(param.Selector, 'voxel_F')
+    recon_matrix_P_ui = init_param(param.Selector, 'recon_matrix_P_ui')
+    recon_matrix_F_ui = init_param(param.Selector, 'recon_matrix_F_ui')
+    recon_voxel_P = init_param(param.Selector, 'recon_voxel_P')
+    recon_voxel_F = init_param(param.Selector, 'recon_voxel_F')
+    slice_thickness = init_param(param.Selector, 'slice_thickness')
     
-    radial_FOV_oversampling = param.Number(**PARAMS['radial_FOV_oversampling'].param_kwargs)
+    radial_FOV_oversampling = init_param(param.Number, 'radial_FOV_oversampling')
     
     # MR image
-    show_FOV = param.Boolean(**PARAMS['show_FOV'].param_kwargs)
-    reference_tissue = param.ObjectSelector(**PARAMS['reference_tissue'].param_kwargs)
+    show_FOV = init_param(param.Boolean, 'show_FOV')
+    reference_tissue = init_param(param.ObjectSelector, 'reference_tissue')
 
-    image_type = param.ObjectSelector(**PARAMS['image_type'].param_kwargs)
+    image_type = init_param(param.ObjectSelector, 'image_type')
 
     # k-space
-    show_processed_kspace = param.Boolean(**PARAMS['show_processed_kspace'].param_kwargs)
-    kspace_exponent = param.Number(**PARAMS['kspace_exponent'].param_kwargs)
-    kspace_type = param.ObjectSelector(**PARAMS['kspace_type'].param_kwargs)
+    show_processed_kspace = init_param(param.Boolean, 'show_processed_kspace')
+    kspace_exponent = init_param(param.Number, 'kspace_exponent')
+    kspace_type = init_param(param.ObjectSelector, 'kspace_type')
 
     # Post-processing
-    homodyne = param.Boolean(**PARAMS['homodyne'].param_kwargs)
-    do_apodize = param.Boolean(**PARAMS['do_apodize'].param_kwargs)
-    apodization_alpha = param.Number(**PARAMS['apodization_alpha'].param_kwargs)
-    do_zerofill = param.Boolean(**PARAMS['do_zerofill'].param_kwargs)
+    homodyne = init_param(param.Boolean, 'homodyne')
+    do_apodize = init_param(param.Boolean, 'do_apodize')
+    apodization_alpha = init_param(param.Number, 'apodization_alpha')
+    do_zerofill = init_param(param.Boolean, 'do_zerofill')
     
     # Sequence plot
-    shot_ui = param.Integer(**PARAMS['shot_ui'].param_kwargs)
-    signal_exponent = param.Number(**PARAMS['signal_exponent'].param_kwargs)
+    shot_ui = init_param(param.Integer, 'shot_ui')
+    signal_exponent = init_param(param.Number, 'signal_exponent')
