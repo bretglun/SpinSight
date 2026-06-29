@@ -130,11 +130,11 @@ class MRIsimulator(param.Parameterized):
             elif par in self.input.param:
                 self.input.param.watch(partial(graph.on_change, node), node.name)
 
-    def get_params(self):
-        return {param: self.__getattribute__(param) for param in self.param.values().keys() if param != 'name' and not PARAMS[param].derived}
+    def get_input_params(self):
+        return {par: getattr(self.input, par) for par in self.input.param if par != 'name' and not PARAMS[par].derived}
 
-    def set_params(self, settings):
-        self.param.update(settings)
+    def set_input_params(self, settings):
+        self.input.param.update(settings)
 
     def set_visibility(self, par_name, visible):
         par = self.input.param[par_name]

@@ -20,12 +20,12 @@ def load_button_callback(simulator, settings_file, event):
     print('Loading settings from file', settings_file)
     with open(settings_file, 'r') as f:
         settings = toml.load(f)
-    simulator.set_params(settings)
+    simulator.set_input_params(settings)
 
 
 def save_button_callback(simulator, settings_file, event):
     print('Saving settings to file', settings_file)
-    settings = simulator.get_params()
+    settings = simulator.get_input_params()
     with open(settings_file, 'w') as f:
         toml.dump(settings, f)
 

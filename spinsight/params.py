@@ -39,13 +39,13 @@ class ParamSpec:
         return {kw: getattr(self, kw) for kw in param_kw if getattr(self, kw) is not None}
 
 
-pbw_vals = np.exp(np.linspace(np.log(125), np.log(2000), 500))
+pbw_vals = [float(v) for v in np.geomspace(125, 2e3, 500)]
 fov_bw_vals = [convert.pixel_BW_to_FOV_BW(bw, 180) for bw in pbw_vals]
 FW_shift_vals = [convert.pixel_BW_to_shift(pBW, 1.5) for pBW in pbw_vals[::-1]]
 
-TR_vals = np.exp(np.linspace(np.log(1), np.log(1e4), 500))
-TE_vals = np.exp(np.linspace(np.log(1), np.log(1e3), 500))
-TI_vals = np.exp(np.linspace(np.log(1e2), np.log(4e3), 500))
+TR_vals = [float(v) for v in np.geomspace(1, 1e4, 500)]
+TE_vals = [float(v) for v in np.geomspace(1, 1e3, 500)]
+TI_vals = [float(v) for v in np.geomspace(1e2, 4e3, 500)]
 
 fov_vals = range(100, 600 + 1)
 
@@ -210,7 +210,7 @@ PARAMS = {
 
     'phase_oversampling': ParamSpec(
         label = 'Phase oversampling',
-        objects = {formatting.phase_oversampling(factor): factor for factor in np.linspace(1, 2, 101)},
+        objects = {formatting.phase_oversampling(factor): float(factor) for factor in np.linspace(1, 2, 101)},
         default = 0,
         precedence = 3,
     ),
