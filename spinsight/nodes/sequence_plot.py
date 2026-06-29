@@ -124,10 +124,9 @@ def TR_span(sequence_start, TR, time_dim, frequency_dim, phase_dim, slice_dim, R
 
 
 @Graph.node()
-def signal_curves(measured_kspace, shot, is_radial, turbo_factor, EPI_factor, pe_table, phase_dir, time_after_excitation):
+def signal_curves(measured_kspace, shot, is_radial, turbo_factor, EPI_factor, pe_table, phase_dir, time_after_excitation, signal_exponent):
     signal_curves = []
-    scale = 1 / np.max(np.abs(np.real(measured_kspace)))
-    signal_exponent = .5
+    scale = 1 / np.max(np.abs(measured_kspace))
     spoke = shot if is_radial else 0
     for rf_echo in range(turbo_factor):
         signal_curves.append([])

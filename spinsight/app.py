@@ -80,7 +80,7 @@ def get_app(dark_mode=True, settings_filestem='', start_time=datetime.now(), laz
                            pn.Row(controller.input.param.show_processed_kspace, controller.input.param.kspace_exponent), 
                            visible=False)
     dmap_MR_image = hv.DynamicMap(controller.display_image)
-    dmap_sequence = pn.Column(hv.DynamicMap(controller.display_sequence_plot), pn.Row(controller.input.param.shot_ui, shot_angle_info, num_shots_info), visible=False)
+    dmap_sequence = pn.Column(hv.DynamicMap(controller.display_sequence_plot), pn.Row(controller.input.param.shot_ui, shot_angle_info, num_shots_info, controller.input.param.signal_exponent), visible=False)
     load_button = pn.widgets.Button(name='Load settings', visible=settings_file.is_file())
     load_button.on_click(partial(load_button_callback, controller, settings_file))
     save_button = pn.widgets.Button(name='Save settings', visible=settings_file.is_file())

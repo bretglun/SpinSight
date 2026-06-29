@@ -375,4 +375,12 @@ PARAMS = {
         precedence = 1,
     ),
 
+    'signal_exponent': ParamSpec(
+        label = 'Signal exponent',
+        bounds = (0.1, 1.0),
+        step = 0.01,
+        default = 0.5,
+        precedence = 2,
+    ),
+
 }

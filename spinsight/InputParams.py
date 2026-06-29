@@ -67,3 +67,4 @@ class InputParams(param.Parameterized):
     
     # Sequence plot
     shot_ui = param.Integer(**PARAMS['shot_ui'].param_kwargs)
+    signal_exponent = param.Number(**PARAMS['signal_exponent'].param_kwargs)
