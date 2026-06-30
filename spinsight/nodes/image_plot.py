@@ -13,7 +13,7 @@ def annotated_image(image, FOV_box):
 
 @Graph.node(action=ACTION.IMAGE)
 def update_image(controller, annotated_image):
-    controller.image_update += 1
+    controller.image = annotated_image
 
 
 @Graph.node()

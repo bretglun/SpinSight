@@ -58,11 +58,10 @@ class Controller(param.Parameterized):
     reference_SNR = param.Number()
     relative_SNR = param.Number() # [%]
     scantime = param.String()
-
-    # Dynamic map triggers
-    image_update = param.Integer(default = 0)
-    kspace_update = param.Integer(default = 0)
-    seqplot_update = param.Integer(default = 0)
+    
+    image = param.Parameter()
+    kspace = param.Parameter()
+    sequence_plot = param.Parameter()
 
     def __init__(self, **params):
         
@@ -190,14 +189,14 @@ class Controller(param.Parameterized):
         k_trajectory = self.graph.nodes['k_trajectory'].value
         self.k_line.event(coords=list(get_k_on_interval(object['time'][[0, -1]], k_trajectory)))
     
-    @param.depends('seqplot_update')
-    def display_sequence_plot(self):
-        return self.graph.nodes['sequence_plot'].value
-    
-    @param.depends('kspace_update')
-    def display_kspace(self):
-        return self.graph.nodes['kspace'].value
-    
-    @param.depends('image_update')
+    @param.depends('image')
     def display_image(self):
-        return self.graph.nodes['annotated_image'].value
+        return self.image
+    
+    @param.depends('kspace')
+    def display_kspace(self):
+        return self.kspace
+    
+    @param.depends('sequence_plot')
+    def display_sequence_plot(self):
+        return self.sequence_plot

@@ -19,7 +19,7 @@ def sequence_plot(frequency_board, phase_board, slice_board, RF_board, signal_bo
 
 @Graph.node(action=ACTION.SEQPLOT)
 def update_seqplot(controller, sequence_plot):
-    controller.seqplot_update += 1
+    controller.sequence_plot = sequence_plot
 
 
 @Graph.node()
