@@ -22,11 +22,6 @@ class Controller(param.Parameterized):
         super().__init__(**params)
         self.input = InputParams()
     
-    def input_nodes(self):
-        input_nodes = set(par for par in self.input.param if par != 'name')
-        input_nodes.update(('rec_acq_ratio_P', 'rec_acq_ratio_F', 'reference_SNR'))
-        return input_nodes
-    
     def get_input_node_specs(self):
         specs = {}
         for par in self.input_nodes():
@@ -36,6 +31,11 @@ class Controller(param.Parameterized):
                 specs[par] = {'func': partial(getattr, self.input, par)}
         return specs
     
+    def input_nodes(self):
+        input_nodes = set(par for par in self.input.param if par != 'name')
+        input_nodes.update(('rec_acq_ratio_P', 'rec_acq_ratio_F', 'reference_SNR'))
+        return input_nodes
+    
     def add_input_watchers(self, graph):
         for par in self.input_nodes():
             node = graph.nodes[par]
@@ -43,12 +43,6 @@ class Controller(param.Parameterized):
                 self.param.watch(partial(graph.on_change, node), node.name)
             elif par in self.input.param:
                 self.input.param.watch(partial(graph.on_change, node), node.name)
-
-    def get_input_params(self):
-        return {par: getattr(self.input, par) for par in self.input.param if par != 'name' and not PARAMS[par].derived}
-
-    def set_input_params(self, settings):
-        self.input.param.update(settings)
 
     def set_visibility(self, par_name, visible):
         par = self.input.param[par_name]
@@ -108,3 +102,9 @@ class Controller(param.Parameterized):
             else:
                 insert_value_in_list_sorted(curval, objects)
         par.objects = objects
+    
+    def get_input_params(self):
+        return {par: getattr(self.input, par) for par in self.input.param if par != 'name' and not PARAMS[par].derived}
+
+    def set_input_params(self, settings):
+        self.input.param.update(settings)
