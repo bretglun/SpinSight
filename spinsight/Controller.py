@@ -85,7 +85,6 @@ class Controller(param.Parameterized):
     def attach_graph(self, graph):
         self.graph = graph
         self.add_input_watchers(graph)
-        self.set_reference_SNR()
     
     def input_nodes(self):
         input_nodes = set(par for par in self.input.param if par != 'name')
@@ -190,9 +189,6 @@ class Controller(param.Parameterized):
         object = self.graph.nodes[f'{board}_objects'].value[index]
         k_trajectory = self.graph.nodes['k_trajectory'].value
         self.k_line.event(coords=list(get_k_on_interval(object['time'][[0, -1]], k_trajectory)))
-    
-    def set_reference_SNR(self, event=None):
-        self.reference_SNR = self.graph.nodes['SNR'].value
     
     @param.depends('seqplot_update')
     def display_sequence_plot(self):
