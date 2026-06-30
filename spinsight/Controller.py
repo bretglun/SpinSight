@@ -5,39 +5,11 @@ import numpy as np
 import math
 from pathlib import Path
 from functools import partial
-from spinsight import params
+from spinsight.param_utils import snap, filter_objects, value_in_objects, insert_value_in_list_sorted, insert_value_in_dict_sorted, get_object_values
 from spinsight.params import PARAMS
 from spinsight.InputParams import InputParams
 from bokeh.models import HoverTool, CustomJS, ColumnDataSource
 import warnings
-
-
-def filter_objects(objects, minval=None, maxval=None):
-    if isinstance(objects, dict):
-        return {k: v for k, v in objects.items() if (minval or -np.inf) <= v <= (maxval or np.inf)}
-    return [v for v in objects if (minval or -np.inf) <= v <= (maxval or np.inf)]
-
-
-def value_in_objects(value, objects):
-    if isinstance(objects, dict):
-        return value in objects.values()
-    return value in objects
-
-
-def insert_value_in_list_sorted(value, list_):
-    list_.append(value)
-    return sorted(list_)
-
-
-def insert_value_in_dict_sorted(key, value, dict_):
-    dict_[key] = value
-    return dict(sorted(dict_.items()))
-
-
-def get_object_values(objects):
-    if callable(getattr(objects, 'values', False)):
-        return objects.values()
-    return objects
 
 
 def get_k_on_interval(interval, k_trajectory):
@@ -126,13 +98,13 @@ class Controller(param.Parameterized):
         par = self.input.param[par_name]
         objects = getattr(par, 'objects', None) # par.objects could be dict or param.ListProxy
         values = get_object_values(objects)
-        new = params.snap(value, values, mode) if values else value
+        new = snap(value, values, mode) if values else value
 
         insert_value = False
         if values and new is None:
             default_objects = PARAMS[par_name].objects 
             default_values = get_object_values(default_objects)
-            new = params.snap(value, default_values, mode)
+            new = snap(value, default_values, mode)
             if new is None:
                 raise ValueError(f'Value {value} is not supported by current or default objects for param {par.name} (mode={mode})')
             insert_value = True

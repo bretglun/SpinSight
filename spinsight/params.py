@@ -1,18 +1,7 @@
 from dataclasses import dataclass
 from spinsight import constants, convert, formatting, phantom
+from spinsight.param_utils import snap
 import numpy as np
-
-
-def snap(value, values, mode='nearest'):
-    match mode:
-        case 'nearest':
-            return min(values, key=lambda x: abs(x-value), default=None)
-        case 'ceil':
-            return min([v for v in values if v >= value], default=None)
-        case 'floor':
-            return max([v for v in values if v <= value], default=None)
-        case _:
-            raise ValueError(f'Invalid mode {mode}')
 
 
 @dataclass(frozen=True)
