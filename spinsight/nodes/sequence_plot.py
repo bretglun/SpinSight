@@ -18,8 +18,8 @@ def sequence_plot(frequency_board, phase_board, slice_board, RF_board, signal_bo
 
 
 @Graph.node(action=ACTION.SEQPLOT)
-def update_seqplot(controller, sequence_plot):
-    controller.sequence_plot = sequence_plot
+def update_seqplot(dashboard, sequence_plot):
+    dashboard.sequence_plot = sequence_plot
 
 
 @Graph.node()
@@ -111,23 +111,23 @@ def ADC_objects(sampling_windows):
 
 
 @Graph.node(action=ACTION.KSPACE)
-def update_frequency_objects(controller, frequency_objects):
-    controller.frequency_objects = frequency_objects
+def update_frequency_objects(dashboard, frequency_objects):
+    dashboard.frequency_objects = frequency_objects
 
 
 @Graph.node(action=ACTION.KSPACE)
-def update_phase_objects(controller, phase_objects):
-    controller.phase_objects = phase_objects
+def update_phase_objects(dashboard, phase_objects):
+    dashboard.phase_objects = phase_objects
 
 
 @Graph.node(action=ACTION.KSPACE)
-def update_RF_objects(controller, RF_objects):
-    controller.RF_objects = RF_objects
+def update_RF_objects(dashboard, RF_objects):
+    dashboard.RF_objects = RF_objects
 
 
 @Graph.node(action=ACTION.KSPACE)
-def update_signal_objects(controller, signal_objects):
-    controller.signal_objects = signal_objects
+def update_signal_objects(dashboard, signal_objects):
+    dashboard.signal_objects = signal_objects
 
 
 def hline(time_dim, amp_dim, yticks=None):
@@ -207,28 +207,28 @@ def ADC_dim():
 
 
 @Graph.node()
-def frequency_hover(controller):
-    return controller.get_hover_tool('frequency', ['name', 'center', 'duration', 'area'])
+def frequency_hover(dashboard):
+    return dashboard.get_hover_tool('frequency', ['name', 'center', 'duration', 'area'])
 
 
 @Graph.node()
-def phase_hover(controller):
-    return controller.get_hover_tool('phase', ['name', 'center', 'duration', 'area'])
+def phase_hover(dashboard):
+    return dashboard.get_hover_tool('phase', ['name', 'center', 'duration', 'area'])
 
 
 @Graph.node()
-def slice_hover(controller):
-    return controller.get_hover_tool('slice', ['name', 'center', 'duration', 'area'])
+def slice_hover(dashboard):
+    return dashboard.get_hover_tool('slice', ['name', 'center', 'duration', 'area'])
 
 
 @Graph.node()
-def RF_hover(controller):
-    return controller.get_hover_tool('RF', ['name', 'center', 'duration', 'flip_angle'])
+def RF_hover(dashboard):
+    return dashboard.get_hover_tool('RF', ['name', 'center', 'duration', 'flip_angle'])
 
 
 @Graph.node()
-def signal_hover(controller):
-    return controller.get_hover_tool('signal', ['name', 'center', 'duration'])
+def signal_hover(dashboard):
+    return dashboard.get_hover_tool('signal', ['name', 'center', 'duration'])
 
 
 def flatten_dicts(list_of_dicts_and_lists):

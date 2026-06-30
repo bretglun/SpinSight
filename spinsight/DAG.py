@@ -1,6 +1,5 @@
 from graphlib import TopologicalSorter
 import numpy as np
-from functools import partial
 import inspect
 
 
@@ -20,25 +19,25 @@ class Graph:
             return func
         return decorator
 
-    def __init__(self, controller):
-        self.controller = controller
+    def __init__(self, controller, dashboard):
 
-        specs = self.build_node_specs()
+        specs = self.build_node_specs(controller, dashboard)
         self.nodes, self.action_nodes = self.build_nodes(specs)
         
         self.processing = False
 
         self.flush_actions()
     
-    def build_node_specs(self):
+    def build_node_specs(self, controller, dashboard):
         # get node specs from decorators
         specs = dict(type(self).node_specs)
+        specs['dashboard'] = {'func': lambda: dashboard}
         # special node to track which input node was trigger
         specs['trigger_node'] = {'func': lambda: 'None'}
         # special controller node
-        specs['controller'] = {'func': lambda: self.controller}
+        specs['controller'] = {'func': lambda: controller}
         # add specs for remaining controller param nodes
-        specs.update(self.controller.get_input_node_specs())
+        specs.update(controller.get_input_node_specs())
         return specs
     
     def build_nodes(self, specs):

@@ -12,8 +12,8 @@ def annotated_image(image, FOV_box):
 
 
 @Graph.node(action=ACTION.IMAGE)
-def update_image(controller, annotated_image):
-    controller.image = annotated_image
+def update_image(dashboard, annotated_image):
+    dashboard.image = annotated_image
 
 
 @Graph.node()

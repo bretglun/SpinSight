@@ -34,8 +34,8 @@ def kspace(kspace_type, show_processed_kspace, oversampled_recon_matrix, FOV, re
 
 
 @Graph.node(action=ACTION.KSPACE)
-def update_kspace(controller, kspace):
-    controller.kspace = kspace
+def update_kspace(dashboard, kspace):
+    dashboard.kspace = kspace
 
 
 @Graph.node()
@@ -72,8 +72,8 @@ def get_k_coords(t, gp, tp, refocus_intervals):
 
 
 @Graph.node(action=ACTION.KSPACE)
-def update_k_trajectory(controller, k_trajectory):
-    controller.k_trajectory = k_trajectory
+def update_k_trajectory(dashboard, k_trajectory):
+    dashboard.k_trajectory = k_trajectory
 
 
 @Graph.node()

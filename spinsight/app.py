@@ -4,6 +4,7 @@ from pathlib import Path
 import toml
 from spinsight import styles, simulator
 from spinsight.Controller import Controller
+from spinsight.Dashboard import Dashboard
 from functools import partial
 from datetime import datetime
 
@@ -50,7 +51,8 @@ def get_app(dark_mode=True, settings_filestem='', start_time=datetime.now(), laz
     settings_file = Path(settings_filestem).with_suffix('.toml') if bool(settings_filestem) else Path('')
 
     controller = Controller()
-    graph = simulator.make_graph(controller)
+    dashboard = Dashboard()
+    graph = simulator.make_graph(controller, dashboard)
     controller.add_input_watchers(graph)
     set_reference_SNR(controller, graph)
 
@@ -80,12 +82,12 @@ def get_app(dark_mode=True, settings_filestem='', start_time=datetime.now(), laz
         num_shots_info.name = f'# {event.new}s'
     controller.param.watch(update_num_shots_label, 'shot_label')
     
-    dmap_kspace = pn.Column(hv.DynamicMap(controller.display_kspace) * controller.k_line, 
+    dmap_kspace = pn.Column(hv.DynamicMap(dashboard.display_kspace) * dashboard.k_line, 
                            # controller.input.param.kspace_type, 
                            pn.Row(controller.input.param.show_processed_kspace, controller.input.param.kspace_exponent), 
                            visible=False)
-    dmap_MR_image = hv.DynamicMap(controller.display_image)
-    dmap_sequence = pn.Column(hv.DynamicMap(controller.display_sequence_plot), pn.Row(controller.input.param.shot_ui, shot_angle_info, num_shots_info, controller.input.param.signal_exponent), visible=False)
+    dmap_MR_image = hv.DynamicMap(dashboard.display_image)
+    dmap_sequence = pn.Column(hv.DynamicMap(dashboard.display_sequence_plot), pn.Row(controller.input.param.shot_ui, shot_angle_info, num_shots_info, controller.input.param.signal_exponent), visible=False)
     load_button = pn.widgets.Button(name='Load settings', visible=settings_file.is_file())
     load_button.on_click(partial(load_button_callback, controller, settings_file))
     save_button = pn.widgets.Button(name='Save settings', visible=settings_file.is_file())
@@ -96,7 +98,7 @@ def get_app(dark_mode=True, settings_filestem='', start_time=datetime.now(), laz
     kspace_button.on_click(partial(hide_show_button_callback, dmap_kspace))
     reset_SNR_button = pn.widgets.Button(name='Set reference SNR')
     reset_SNR_button.on_click(partial(set_reference_SNR, controller, graph))
-    dashboard = pn.Column(
+    maindash = pn.Column(
         pn.Row(
             pn.Column(
                 pn.Row(
@@ -132,7 +134,7 @@ def get_app(dark_mode=True, settings_filestem='', start_time=datetime.now(), laz
     )
 
     template = styles.panel_template(title, dark_mode)
-    template.main.append(dashboard)
+    template.main.append(maindash)
     template.sidebar.append(
         pn.Column(
             pn.Row(load_button, save_button), 
