@@ -1,4 +1,5 @@
 from spinsight import formatting
+from spinsight.constants import ACTION
 from spinsight.DAG import Graph
 import numpy as np
 
@@ -9,10 +10,17 @@ def SNR(reference_signal, noise_std):
 
 
 @Graph.node()
-def relative_SNR(SNR, reference_SNR):
+def relative_SNR(reference_SNR, SNR):
     if not reference_SNR:
         return 100
     return SNR / reference_SNR * 100
+
+
+@Graph.node(action=ACTION.VALUE)
+def set_reference_SNR(update_reference_SNR, controller, SNR):
+    if update_reference_SNR:
+        controller.reference_SNR = SNR
+        controller.update_reference_SNR = False
 
 
 @Graph.node()

@@ -14,6 +14,7 @@ class Controller(param.Parameterized):
     rec_acq_ratio_F = param.Number(default=2.0) # reconstructed / acquired matrix_F ratio
     
     SNR = param.Number()
+    update_reference_SNR = param.Boolean()
     reference_SNR = param.Number()
     relative_SNR = param.Number() # [%]
     scantime = param.String()
@@ -21,6 +22,9 @@ class Controller(param.Parameterized):
     def __init__(self, **params):
         super().__init__(**params)
         self.input = InputParams()
+    
+    def set_reference_SNR(self, event=None):
+        self.update_reference_SNR = True
     
     def get_input_node_specs(self):
         specs = {}
@@ -33,7 +37,7 @@ class Controller(param.Parameterized):
     
     def input_nodes(self):
         input_nodes = set(par for par in self.input.param if par != 'name')
-        input_nodes.update(('rec_acq_ratio_P', 'rec_acq_ratio_F', 'reference_SNR'))
+        input_nodes.update(('rec_acq_ratio_P', 'rec_acq_ratio_F', 'update_reference_SNR', 'reference_SNR'))
         return input_nodes
     
     def add_input_watchers(self, graph):

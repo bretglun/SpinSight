@@ -32,10 +32,6 @@ def save_button_callback(controller, settings_file, event):
         toml.dump(settings, f)
 
 
-def set_reference_SNR(controller, graph, event=None):
-    controller.reference_SNR = graph.nodes['SNR'].value
-
-
 def info_number(name, value, format, text_color):
     return pn.indicators.Number(default_color=text_color, name=name, format=format, font_size='12pt', title_size='12pt', value=value)
 
@@ -54,7 +50,7 @@ def get_app(dark_mode=True, settings_filestem='', start_time=datetime.now(), laz
     dashboard = Dashboard()
     graph = simulator.make_graph(controller, dashboard)
     controller.add_input_watchers(graph)
-    set_reference_SNR(controller, graph)
+    controller.set_reference_SNR()
 
     title = 'SpinSight MRI simulator'
     author = '*Written by [Johan Berglund](mailto:johan.berglund@akademiska.se), Ph.D.*'
@@ -97,7 +93,7 @@ def get_app(dark_mode=True, settings_filestem='', start_time=datetime.now(), laz
     kspace_button = pn.widgets.Button(name='Show k-space')
     kspace_button.on_click(partial(hide_show_button_callback, dmap_kspace))
     reset_SNR_button = pn.widgets.Button(name='Set reference SNR')
-    reset_SNR_button.on_click(partial(set_reference_SNR, controller, graph))
+    reset_SNR_button.on_click(controller.set_reference_SNR)
     maindash = pn.Column(
         pn.Row(
             pn.Column(
