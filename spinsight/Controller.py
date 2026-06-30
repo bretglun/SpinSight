@@ -58,6 +58,12 @@ class Controller(param.Parameterized):
     reference_SNR = param.Number()
     relative_SNR = param.Number() # [%]
     scantime = param.String()
+
+    k_trajectory = param.Parameter()
+    frequency_objects = param.Parameter()
+    phase_objects = param.Parameter()
+    RF_objects = param.Parameter()
+    signal_objects = param.Parameter()
     
     image = param.Parameter()
     kspace = param.Parameter()
@@ -80,10 +86,6 @@ class Controller(param.Parameterized):
 
         self.hover_index = ColumnDataSource({'index': [], 'board': []})
         self.hover_index.on_change('data', self.update_k_line_coords)
-
-    def attach_graph(self, graph):
-        self.graph = graph
-        self.add_input_watchers(graph)
     
     def input_nodes(self):
         input_nodes = set(par for par in self.input.param if par != 'name')
@@ -185,9 +187,8 @@ class Controller(param.Parameterized):
             return
         board = hover_index['board'][0]
         index = hover_index['index'][0]
-        object = self.graph.nodes[f'{board}_objects'].value[index]
-        k_trajectory = self.graph.nodes['k_trajectory'].value
-        self.k_line.event(coords=list(get_k_on_interval(object['time'][[0, -1]], k_trajectory)))
+        object = getattr(self, f'{board}_objects')[index]
+        self.k_line.event(coords=list(get_k_on_interval(object['time'][[0, -1]], self.k_trajectory)))
     
     @param.depends('image')
     def display_image(self):

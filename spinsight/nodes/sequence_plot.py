@@ -110,6 +110,26 @@ def ADC_objects(sampling_windows):
     return objects
 
 
+@Graph.node(action=ACTION.KSPACE)
+def update_frequency_objects(controller, frequency_objects):
+    controller.frequency_objects = frequency_objects
+
+
+@Graph.node(action=ACTION.KSPACE)
+def update_phase_objects(controller, phase_objects):
+    controller.phase_objects = phase_objects
+
+
+@Graph.node(action=ACTION.KSPACE)
+def update_RF_objects(controller, RF_objects):
+    controller.RF_objects = RF_objects
+
+
+@Graph.node(action=ACTION.KSPACE)
+def update_signal_objects(controller, signal_objects):
+    controller.signal_objects = signal_objects
+
+
 def hline(time_dim, amp_dim, yticks=None):
     return hv.HLine(0.0, kdims=[time_dim, amp_dim]).opts(tools=['xwheel_zoom', 'xpan', 'reset'], default_tools=[], active_tools=['xwheel_zoom', 'xpan'], yticks=yticks)
 

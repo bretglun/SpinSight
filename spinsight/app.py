@@ -51,7 +51,7 @@ def get_app(dark_mode=True, settings_filestem='', start_time=datetime.now(), laz
 
     controller = Controller()
     graph = simulator.make_graph(controller)
-    controller.attach_graph(graph)
+    controller.add_input_watchers(graph)
     set_reference_SNR(controller, graph)
 
     title = 'SpinSight MRI simulator'

@@ -71,6 +71,11 @@ def get_k_coords(t, gp, tp, refocus_intervals):
     return k
 
 
+@Graph.node(action=ACTION.KSPACE)
+def update_k_trajectory(controller, k_trajectory):
+    controller.k_trajectory = k_trajectory
+
+
 @Graph.node()
 def spoke_angle(k_angles, shot):
     return np.degrees(k_angles[min(shot, len(k_angles)-1)])
