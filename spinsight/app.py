@@ -3,6 +3,7 @@ import panel as pn
 from pathlib import Path
 import toml
 from spinsight import styles, simulator
+from spinsight.styles import INFO_FONT_SIZE, INFO_TITLE_SIZE
 from spinsight.controller import Controller
 from spinsight.dashboard import Dashboard
 from functools import partial
@@ -32,13 +33,15 @@ def save_button_callback(controller, settings_file, event):
         toml.dump(settings, f)
 
 
-def info_number(name, value, format, text_color):
-    return pn.indicators.Number(default_color=text_color, name=name, format=format, font_size='12pt', title_size='12pt', value=value)
+def info(indicator_func, **kwargs):
+    return indicator_func(font_size=INFO_FONT_SIZE, title_size=INFO_TITLE_SIZE, **kwargs)
 
 
-def info_string(name, value, text_color):
-    return pn.indicators.String(default_color=text_color, name=name, font_size='12pt', title_size='12pt', value=value)
-
+def get_version():
+    try:
+        return f', v {toml.load(Path(__file__).parent.parent / "pyproject.toml")["project"]["version"]}'
+    except (FileNotFoundError, KeyError):
+        return ''
 
 def get_app(dark_mode=True, settings_filestem='', start_time=datetime.now(), lazy_sliders=True):
     pn.config.throttled = lazy_sliders
@@ -54,10 +57,7 @@ def get_app(dark_mode=True, settings_filestem='', start_time=datetime.now(), laz
 
     title = 'SpinSight MRI simulator'
     author = '*Written by [Johan Berglund](mailto:johan.berglund@akademiska.se), Ph.D.*'
-    try:
-        version = f', v {toml.load(Path(__file__).parent.parent / "pyproject.toml")["project"]["version"]}'
-    except (FileNotFoundError, KeyError):
-        version = ''
+    version = get_version()
     
     discrete_slider_params = ['TR_ui', 'TE_ui', 'FA', 'TI', 'FOV_F', 'FOV_P', 'phase_oversampling', 'matrix_F_ui', 'matrix_P_ui', 'recon_matrix_F_ui', 'recon_matrix_P_ui', 'voxel_F', 'voxel_P', 'recon_voxel_F', 'recon_voxel_P', 'slice_thickness', 'pixel_bandwidth_ui', 'FOV_bandwidth', 'FW_shift', 'EPI_factor']
     param_panels = {name: pn.panel(controller.input.param, parameters=params, widgets={p: pn.widgets.DiscreteSlider for p in params if p in discrete_slider_params}, name=name) for name, params in [
@@ -68,12 +68,12 @@ def get_app(dark_mode=True, settings_filestem='', start_time=datetime.now(), laz
         ('Post-processing', ['homodyne', 'do_apodize', 'apodization_alpha', 'do_zerofill']),
     ]}
 
-    info_pane = pn.Row(info_number(name='Relative SNR', format='{value:.0f}%', value=controller.param.relative_SNR, text_color=text_color),
-                      info_string(name='Scan time', value=controller.param.scantime, text_color=text_color),
-                      info_number(name='Fat/water shift', format='{value:.2f} pixels', value=controller.input.param.FW_shift, text_color=text_color),
-                      info_number(name='Bandwidth', format='{value:.0f} Hz/pixel', value=controller.input.param.pixel_bandwidth_ui, text_color=text_color))
-    shot_angle_info = info_number(name='Angle', format='{value:.0f}°', value=controller.param.spoke_angle, text_color=text_color) 
-    num_shots_info = info_number(name='# shots', format='{value:.0f}', value=controller.param.num_shots, text_color=text_color)
+    info_pane = pn.Row(info(pn.indicators.Number, name='Relative SNR', format='{value:.0f}%', value=controller.param.relative_SNR, default_color=text_color),
+                      info(pn.indicators.String, name='Scan time', value=controller.param.scantime, default_color=text_color),
+                      info(pn.indicators.Number, name='Fat/water shift', format='{value:.2f} pixels', value=controller.input.param.FW_shift, default_color=text_color),
+                      info(pn.indicators.Number, name='Bandwidth', format='{value:.0f} Hz/pixel', value=controller.input.param.pixel_bandwidth_ui, default_color=text_color))
+    shot_angle_info = info(pn.indicators.Number, name='Angle', format='{value:.0f}°', value=controller.param.spoke_angle, default_color=text_color) 
+    num_shots_info = info(pn.indicators.Number, name='# shots', format='{value:.0f}', value=controller.param.num_shots, default_color=text_color)
     def update_num_shots_label(event): 
         num_shots_info.name = f'# {event.new}s'
     controller.param.watch(update_num_shots_label, 'shot_label')
