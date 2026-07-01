@@ -110,26 +110,6 @@ def ADC_objects(sampling_windows):
     return objects
 
 
-@Graph.node(action=ACTION.KSPACE)
-def update_frequency_objects(dashboard, frequency_objects):
-    dashboard.frequency_objects = frequency_objects
-
-
-@Graph.node(action=ACTION.KSPACE)
-def update_phase_objects(dashboard, phase_objects):
-    dashboard.phase_objects = phase_objects
-
-
-@Graph.node(action=ACTION.KSPACE)
-def update_RF_objects(dashboard, RF_objects):
-    dashboard.RF_objects = RF_objects
-
-
-@Graph.node(action=ACTION.KSPACE)
-def update_signal_objects(dashboard, signal_objects):
-    dashboard.signal_objects = signal_objects
-
-
 def hline(time_dim, amp_dim, yticks=None):
     return hv.HLine(0.0, kdims=[time_dim, amp_dim]).opts(tools=['xwheel_zoom', 'xpan', 'reset'], default_tools=[], active_tools=['xwheel_zoom', 'xpan'], yticks=yticks)
 
@@ -208,27 +188,47 @@ def ADC_dim():
 
 @Graph.node()
 def frequency_hover(dashboard):
-    return dashboard.get_hover_tool('frequency', ['name', 'center', 'duration', 'area'])
+    return dashboard.hover.get_hover_tool('frequency', ['name', 'center', 'duration', 'area'])
 
 
 @Graph.node()
 def phase_hover(dashboard):
-    return dashboard.get_hover_tool('phase', ['name', 'center', 'duration', 'area'])
+    return dashboard.hover.get_hover_tool('phase', ['name', 'center', 'duration', 'area'])
 
 
 @Graph.node()
 def slice_hover(dashboard):
-    return dashboard.get_hover_tool('slice', ['name', 'center', 'duration', 'area'])
+    return dashboard.hover.get_hover_tool('slice', ['name', 'center', 'duration', 'area'])
 
 
 @Graph.node()
 def RF_hover(dashboard):
-    return dashboard.get_hover_tool('RF', ['name', 'center', 'duration', 'flip_angle'])
+    return dashboard.hover.get_hover_tool('RF', ['name', 'center', 'duration', 'flip_angle'])
 
 
 @Graph.node()
 def signal_hover(dashboard):
-    return dashboard.get_hover_tool('signal', ['name', 'center', 'duration'])
+    return dashboard.hover.get_hover_tool('signal', ['name', 'center', 'duration'])
+
+
+@Graph.node(action=ACTION.KSPACE)
+def update_frequency_objects(dashboard, frequency_objects):
+    dashboard.hover.objects['frequency'] = frequency_objects
+
+
+@Graph.node(action=ACTION.KSPACE)
+def update_phase_objects(dashboard, phase_objects):
+    dashboard.hover.objects['phase'] = phase_objects
+
+
+@Graph.node(action=ACTION.KSPACE)
+def update_RF_objects(dashboard, RF_objects):
+    dashboard.hover.objects['RF'] = RF_objects
+
+
+@Graph.node(action=ACTION.KSPACE)
+def update_signal_objects(dashboard, signal_objects):
+    dashboard.hover.objects['signal'] = signal_objects
 
 
 def flatten_dicts(list_of_dicts_and_lists):

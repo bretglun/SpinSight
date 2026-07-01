@@ -73,7 +73,7 @@ def get_k_coords(t, gp, tp, refocus_intervals):
 
 @Graph.node(action=ACTION.KSPACE)
 def update_k_trajectory(dashboard, k_trajectory):
-    dashboard.k_trajectory = k_trajectory
+    dashboard.hover.k_trajectory = k_trajectory
 
 
 @Graph.node()

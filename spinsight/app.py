@@ -3,8 +3,8 @@ import panel as pn
 from pathlib import Path
 import toml
 from spinsight import styles, simulator
-from spinsight.Controller import Controller
-from spinsight.Dashboard import Dashboard
+from spinsight.controller import Controller
+from spinsight.dashboard import Dashboard
 from functools import partial
 from datetime import datetime
 
@@ -78,7 +78,7 @@ def get_app(dark_mode=True, settings_filestem='', start_time=datetime.now(), laz
         num_shots_info.name = f'# {event.new}s'
     controller.param.watch(update_num_shots_label, 'shot_label')
     
-    dmap_kspace = pn.Column(hv.DynamicMap(dashboard.display_kspace) * dashboard.k_line, 
+    dmap_kspace = pn.Column(hv.DynamicMap(dashboard.display_kspace) * dashboard.hover.k_line, 
                            # controller.input.param.kspace_type, 
                            pn.Row(controller.input.param.show_processed_kspace, controller.input.param.kspace_exponent), 
                            visible=False)
