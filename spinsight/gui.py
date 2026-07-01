@@ -70,11 +70,11 @@ class GUI(param.Parameterized):
         save_button = self.make_save_button()
         reset_SNR_button = self.make_reset_SNR_button()
         info_panel = self.make_info_panel(reset_SNR_button)
-        settings_params_panel = self.make_param_panel('Settings')
-        sequence_params_panel = self.make_param_panel('Sequence')
-        contrast_params_panel = self.make_param_panel('Contrast')
-        geometry_params_panel = self.make_param_panel('Geometry')
-        post_processing_params_panel = self.make_param_panel('Post-processing')
+        settings_params_panel = self.make_param_group_panel('Settings')
+        sequence_params_panel = self.make_param_group_panel('Sequence')
+        contrast_params_panel = self.make_param_group_panel('Contrast')
+        geometry_params_panel = self.make_param_group_panel('Geometry')
+        post_processing_params_panel = self.make_param_group_panel('Post-processing')
         footer_panel = self.make_footer_panel()
 
         dashboard.sidebar.append(self.make_sidebar(
@@ -158,10 +158,11 @@ class GUI(param.Parameterized):
         return pn.Column(
             hv.DynamicMap(self.display_sequence_plot), 
             pn.Row(
-                self.controller.input.param.shot_ui, 
+                self.make_param_panel('shot_ui'),
                 shot_angle_info, 
                 num_shots_info, 
-                self.controller.input.param.signal_exponent), 
+                self.make_param_panel('signal_exponent')
+            ),
             visible=False
         )
     
@@ -182,9 +183,12 @@ class GUI(param.Parameterized):
             pn.pane.Markdown(author, styles={'color': INFO_TEXT_COLOR}),
             pn.pane.Markdown(f'*(server started {start_time}{self.version})*', styles={'color': INFO_TEXT_COLOR}), height=10)
 
-    def make_param_panel(self, group):
+    def make_param_panel(self, param):
+        return pn.panel(self.controller.input.param[param], widgets={param: PARAMS[param].widget})
+    
+    def make_param_group_panel(self, group):
         params = [par for par in PARAMS if PARAMS[par].group == group]
-        return pn.panel(self.controller.input.param, parameters=params, widgets={p: PARAMS[p].widget for p in params}, name=group)
+        return pn.panel(self.controller.input.param, parameters=params, widgets={par: PARAMS[par].widget for par in params}, name=group)
     
     def make_sequence_button(self, sequence_plot_panel):
         sequence_button = pn.widgets.Button(name='Show sequence')

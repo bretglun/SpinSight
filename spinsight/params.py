@@ -420,6 +420,7 @@ PARAMS = {
         label = 'Displayed shot',
         default = 1,
         precedence = 1,
+        widget = pn.widgets.IntSlider,
     ),
 
     'signal_exponent': ParamSpec(
