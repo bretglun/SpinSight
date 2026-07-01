@@ -15,6 +15,7 @@ class ParamSpec:
     precedence: int = -1
 
     derived: bool = False
+    group: str = None
     widget: pn.Widget = None
 
     def __post_init__(self):
@@ -52,6 +53,7 @@ PARAMS = {
         objects = phantom.get_phantom_names(),
         default = 'brain',
         precedence = 1,
+        group = 'Settings',
     ),
 
     'field_strength': ParamSpec(
@@ -59,6 +61,7 @@ PARAMS = {
         objects = [1.5, 3.0],
         default = 1.5,
         precedence = 2,
+        group = 'Settings',
     ),
 
     'parameter_style': ParamSpec(
@@ -66,6 +69,7 @@ PARAMS = {
         objects = ['Matrix and Pixel BW', 'Voxel size and Fat/water shift', 'Matrix and FOV BW'],
         default = 'Matrix and Pixel BW',
         precedence = 3,
+        group = 'Settings',
     ),
 
     'min_voxel_size': ParamSpec(
@@ -83,6 +87,7 @@ PARAMS = {
         objects = ['Spin Echo', 'Spoiled Gradient Echo', 'Inversion Recovery'],
         default = 'Spin Echo',
         precedence = 1,
+        group = 'Sequence',
     ),
     
     'pixel_bandwidth_ui': ParamSpec(
@@ -91,6 +96,7 @@ PARAMS = {
         default = 480,
         precedence = 2,
         widget = pn.widgets.DiscreteSlider,
+        group = 'Sequence',
     ),
 
     'FOV_bandwidth': ParamSpec(
@@ -100,6 +106,7 @@ PARAMS = {
         precedence = 2,
         derived = True,
         widget = pn.widgets.DiscreteSlider,
+        group = 'Sequence',
     ),
 
     'FW_shift': ParamSpec(
@@ -109,6 +116,7 @@ PARAMS = {
         precedence = 2,
         derived = True,
         widget = pn.widgets.DiscreteSlider,
+        group = 'Sequence',
     ),
 
     'NSA': ParamSpec(
@@ -116,6 +124,7 @@ PARAMS = {
         bounds = (1, 16),
         default = 1,
         precedence = 3,
+        group = 'Sequence',
     ),
 
     'partial_Fourier': ParamSpec(
@@ -124,6 +133,7 @@ PARAMS = {
         step = 0.01,
         default = 1,
         precedence = 5,
+        group = 'Sequence',
     ),
 
     'turbo_factor': ParamSpec(
@@ -131,6 +141,7 @@ PARAMS = {
         bounds = (1, 64),
         default = 1,
         precedence = 6,
+        group = 'Sequence',
     ),
 
     'EPI_factor': ParamSpec(
@@ -139,12 +150,14 @@ PARAMS = {
         default = 1,
         precedence = 7,
         widget = pn.widgets.DiscreteSlider,
+        group = 'Sequence',
     ),
 
     'FatSat': ParamSpec(
         label = 'Fat saturation',
         default = False,
         precedence = 1,
+        group = 'Contrast',
     ),
 
     'TR_ui': ParamSpec(
@@ -153,6 +166,7 @@ PARAMS = {
         default = 9000,
         precedence = 2,
         widget = pn.widgets.DiscreteSlider,
+        group = 'Contrast',
     ),
 
     'TE_ui': ParamSpec(
@@ -161,6 +175,7 @@ PARAMS = {
         default = 12,
         precedence = 3,
         widget = pn.widgets.DiscreteSlider,
+        group = 'Contrast',
     ),
 
     'TI': ParamSpec(
@@ -169,6 +184,7 @@ PARAMS = {
         default = 40,
         precedence = 4,
         widget = pn.widgets.DiscreteSlider,
+        group = 'Contrast',
     ),
 
     'FA': ParamSpec(
@@ -177,6 +193,7 @@ PARAMS = {
         default = 90,
         precedence = 5,
         widget = pn.widgets.DiscreteSlider,
+        group = 'Contrast',
     ),
 
     'trajectory': ParamSpec(
@@ -184,6 +201,7 @@ PARAMS = {
         objects = ['Cartesian', 'Radial', 'PROPELLER'],
         default = 'Cartesian',
         precedence = 1,
+        group = 'Geometry',
     ),
 
     'frequency_direction': ParamSpec(
@@ -191,6 +209,7 @@ PARAMS = {
         objects = ['anterior-posterior', 'left-right'],
         default = 'anterior-posterior',
         precedence = 1,
+        group = 'Geometry',
     ),
 
     'FOV_P': ParamSpec(
@@ -199,6 +218,7 @@ PARAMS = {
         default = 240,
         precedence = 2,
         widget = pn.widgets.DiscreteSlider,
+        group = 'Geometry',
     ),
 
     'FOV_F': ParamSpec(
@@ -207,6 +227,7 @@ PARAMS = {
         default = 240,
         precedence = 2,
         widget = pn.widgets.DiscreteSlider,
+        group = 'Geometry',
     ),
 
     'phase_oversampling': ParamSpec(
@@ -215,6 +236,7 @@ PARAMS = {
         default = 0,
         precedence = 3,
         widget = pn.widgets.DiscreteSlider,
+        group = 'Geometry',
     ),
 
     'radial_factor': ParamSpec(
@@ -222,6 +244,7 @@ PARAMS = {
         bounds = (0.1, 4.0),
         default = 1.0,
         precedence = 3,
+        group = 'Geometry',
     ),
 
     'matrix_P_ui': ParamSpec(
@@ -230,6 +253,7 @@ PARAMS = {
         default = 180,
         precedence = 4,
         widget = pn.widgets.DiscreteSlider,
+        group = 'Geometry',
     ),
 
     'matrix_F_ui': ParamSpec(
@@ -238,6 +262,7 @@ PARAMS = {
         default = 180,
         precedence = 4,
         widget = pn.widgets.DiscreteSlider,
+        group = 'Geometry',
     ),
 
     'voxel_P': ParamSpec(
@@ -247,6 +272,7 @@ PARAMS = {
         precedence = 4,
         derived = True,
         widget = pn.widgets.DiscreteSlider,
+        group = 'Geometry',
     ),
 
     'voxel_F': ParamSpec(
@@ -256,6 +282,7 @@ PARAMS = {
         precedence = 4,
         derived = True,
         widget = pn.widgets.DiscreteSlider,
+        group = 'Geometry',
     ),
 
     'recon_matrix_P_ui': ParamSpec(
@@ -264,6 +291,7 @@ PARAMS = {
         default = 360,
         precedence = 5,
         widget = pn.widgets.DiscreteSlider,
+        group = 'Geometry',
     ),
 
     'recon_matrix_F_ui': ParamSpec(
@@ -272,6 +300,7 @@ PARAMS = {
         default = 360,
         precedence = 5,
         widget = pn.widgets.DiscreteSlider,
+        group = 'Geometry',
     ),
 
     'recon_voxel_P': ParamSpec(
@@ -280,6 +309,7 @@ PARAMS = {
         precedence = 5,
         derived = True,
         widget = pn.widgets.DiscreteSlider,
+        group = 'Geometry',
     ),
 
     'recon_voxel_F': ParamSpec(
@@ -288,6 +318,7 @@ PARAMS = {
         precedence = 5,
         derived = True,
         widget = pn.widgets.DiscreteSlider,
+        group = 'Geometry',
     ),
 
     'slice_thickness': ParamSpec(
@@ -296,6 +327,7 @@ PARAMS = {
         default = 3.0,
         precedence = 6,
         widget = pn.widgets.DiscreteSlider,
+        group = 'Geometry',
     ),
 
     'radial_FOV_oversampling': ParamSpec(
@@ -358,12 +390,14 @@ PARAMS = {
         label = 'Homodyne',
         default = True,
         precedence = 1,
+        group = 'Post-processing',
     ),
 
     'do_apodize': ParamSpec(
         label = 'Apodization',
         default = True,
         precedence = 2,
+        group = 'Post-processing',
     ),
 
     'apodization_alpha': ParamSpec(
@@ -372,12 +406,14 @@ PARAMS = {
         step = 0.01,
         default = 0.25,
         precedence = 3,
+        group = 'Post-processing',
     ),
 
     'do_zerofill': ParamSpec(
         label = 'Zerofill',
         default = True,
         precedence = 4,
+        group = 'Post-processing',
     ),
 
     'shot_ui': ParamSpec(

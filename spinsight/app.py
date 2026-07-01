@@ -44,6 +44,12 @@ def get_version():
     except (FileNotFoundError, KeyError):
         return ''
 
+
+def make_param_panel(name, controller):
+    params = [par for par in PARAMS if PARAMS[par].group == name]
+    return pn.panel(controller.input.param, parameters=params, widgets={p: PARAMS[p].widget for p in params}, name=name)
+
+
 def get_app(dark_mode=True, settings_filestem='', start_time=datetime.now(), lazy_sliders=True):
     pn.config.throttled = lazy_sliders
     text_color = styles.text_color(dark_mode)
@@ -60,14 +66,6 @@ def get_app(dark_mode=True, settings_filestem='', start_time=datetime.now(), laz
     author = '*Written by [Johan Berglund](mailto:johan.berglund@akademiska.se), Ph.D.*'
     version = get_version()
     
-    param_panels = {name: pn.panel(controller.input.param, parameters=params, widgets={p: PARAMS[p].widget for p in params}, name=name) for name, params in [
-        ('Settings', ['object', 'field_strength', 'parameter_style']),
-        ('Contrast', ['FatSat', 'TR_ui', 'TE_ui', 'FA', 'TI']),
-        ('Geometry', ['trajectory', 'frequency_direction', 'FOV_F', 'FOV_P', 'phase_oversampling', 'radial_factor', 'voxel_F', 'voxel_P', 'matrix_F_ui', 'matrix_P_ui', 'recon_voxel_F', 'recon_voxel_P', 'recon_matrix_F_ui', 'recon_matrix_P_ui', 'slice_thickness']),
-        ('Sequence', ['sequence_type', 'pixel_bandwidth_ui', 'FOV_bandwidth', 'FW_shift', 'NSA', 'partial_Fourier', 'turbo_factor', 'EPI_factor']),
-        ('Post-processing', ['homodyne', 'do_apodize', 'apodization_alpha', 'do_zerofill']),
-    ]}
-
     info_pane = pn.Row(info(pn.indicators.Number, name='Relative SNR', format='{value:.0f}%', value=controller.param.relative_SNR, default_color=text_color),
                       info(pn.indicators.String, name='Scan time', value=controller.param.scantime, default_color=text_color),
                       info(pn.indicators.Number, name='Fat/water shift', format='{value:.2f} pixels', value=controller.input.param.FW_shift, default_color=text_color),
@@ -100,11 +98,11 @@ def get_app(dark_mode=True, settings_filestem='', start_time=datetime.now(), laz
                 pn.Row(
                     pn.Column(
                         pn.Row(sequence_button, kspace_button), 
-                        param_panels['Sequence'],
-                        param_panels['Contrast']
+                        make_param_panel('Sequence', controller),
+                        make_param_panel('Contrast', controller)
                     ), 
                     pn.Column(
-                        param_panels['Geometry']
+                        make_param_panel('Geometry', controller)
                     )
                 )
             ), 
@@ -119,7 +117,7 @@ def get_app(dark_mode=True, settings_filestem='', start_time=datetime.now(), laz
             ), 
             pn.Column(
                 dmap_kspace,
-                param_panels['Post-processing']
+                make_param_panel('Post-processing', controller)
             )
         ), 
         dmap_sequence, 
@@ -134,7 +132,7 @@ def get_app(dark_mode=True, settings_filestem='', start_time=datetime.now(), laz
     template.sidebar.append(
         pn.Column(
             pn.Row(load_button, save_button), 
-            param_panels['Settings'], 
+            make_param_panel('Settings', controller)
         )
     )
     return template
