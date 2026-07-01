@@ -18,20 +18,6 @@ def hide_show_button_callback(pane, event):
         event.obj.name = event.obj.name.replace('Hide', 'Show')
 
 
-def load_button_callback(controller, settings_file, event):
-    print('Loading settings from file', settings_file)
-    with open(settings_file, 'r') as f:
-        settings = toml.load(f)
-    controller.set_input_params(settings)
-
-
-def save_button_callback(controller, settings_file, event):
-    print('Saving settings to file', settings_file)
-    settings = controller.get_input_params()
-    with open(settings_file, 'w') as f:
-        toml.dump(settings, f)
-
-
 class GUI(param.Parameterized):
     
     image = param.Parameter()
@@ -78,10 +64,10 @@ class GUI(param.Parameterized):
         image_panel = self.make_image_panel()
         kspace_panel = self.make_kspace_panel()
         sequence_plot_panel = self.make_sequence_plot_panel()
+        sequence_button = self.make_sequence_button(sequence_plot_panel)
+        kspace_button = self.make_kspace_button(kspace_panel)
         load_button = self.make_load_button()
         save_button = self.make_save_button()
-        kspace_button = self.make_kspace_button(kspace_panel)
-        sequence_button = self.make_sequence_button(sequence_plot_panel)
         reset_SNR_button = self.make_reset_SNR_button()
         info_panel = self.make_info_panel(reset_SNR_button)
         settings_params_panel = self.make_param_panel('Settings')
@@ -146,31 +132,6 @@ class GUI(param.Parameterized):
             sizing_mode='stretch_both'
         )
     
-    def make_load_button(self):
-        load_button = pn.widgets.Button(name='Load settings', visible=self.settings_file.is_file())
-        load_button.on_click(partial(load_button_callback, self.controller, self.settings_file))
-        return load_button
-    
-    def make_save_button(self):
-        save_button = pn.widgets.Button(name='Save settings', visible=self.settings_file.is_file())
-        save_button.on_click(partial(save_button_callback, self.controller, self.settings_file))
-        return save_button
-    
-    def make_kspace_button(self, kspace_panel):
-        kspace_button = pn.widgets.Button(name='Show k-space')
-        kspace_button.on_click(partial(hide_show_button_callback, kspace_panel))
-        return kspace_button
-    
-    def make_sequence_button(self, sequence_plot_panel):
-        sequence_button = pn.widgets.Button(name='Show sequence')
-        sequence_button.on_click(partial(hide_show_button_callback, sequence_plot_panel))
-        return sequence_button
-    
-    def make_reset_SNR_button(self):
-        reset_SNR_button = pn.widgets.Button(name='Set reference SNR')
-        reset_SNR_button.on_click(self.controller.set_reference_SNR)
-        return reset_SNR_button
-    
     def make_image_panel(self):
         return pn.Column(
             hv.DynamicMap(self.display_image), 
@@ -196,9 +157,23 @@ class GUI(param.Parameterized):
         self.controller.param.watch(update_num_shots_label, 'shot_label')
         return pn.Column(
             hv.DynamicMap(self.display_sequence_plot), 
-            pn.Row(self.controller.input.param.shot_ui, shot_angle_info, num_shots_info, self.controller.input.param.signal_exponent), 
+            pn.Row(
+                self.controller.input.param.shot_ui, 
+                shot_angle_info, 
+                num_shots_info, 
+                self.controller.input.param.signal_exponent), 
             visible=False
         )
+    
+    def make_info_panel(self, reset_SNR_button):
+        return pn.Column(
+            pn.Row(self.controller.input.param.reference_tissue, reset_SNR_button),
+            pn.Row(*(self.indicator(par) for par in ['relative_SNR', 'scantime', 'FW_shift', 'bandwidth']))
+        )
+    
+    def indicator(self, par_name):
+        par = self.param[par_name]
+        return pn.indicators.String(value=par, name=par.label, font_size=INFO_FONT_SIZE, title_size=INFO_TITLE_SIZE, default_color=INFO_TEXT_COLOR)
     
     def make_footer_panel(self):
         author = '*Written by [Johan Berglund](mailto:johan.berglund@akademiska.se), Ph.D.*'
@@ -207,25 +182,46 @@ class GUI(param.Parameterized):
             pn.pane.Markdown(author, styles={'color': INFO_TEXT_COLOR}),
             pn.pane.Markdown(f'*(server started {start_time}{self.version})*', styles={'color': INFO_TEXT_COLOR}), height=10)
 
+    def make_param_panel(self, group):
+        params = [par for par in PARAMS if PARAMS[par].group == group]
+        return pn.panel(self.controller.input.param, parameters=params, widgets={p: PARAMS[p].widget for p in params}, name=group)
     
-    def make_info_panel(self, reset_SNR_button):
-        return pn.Column(
-            pn.Row(self.controller.input.param.reference_tissue, reset_SNR_button),
-            pn.Row(
-                self.indicator('relative_SNR'),
-                self.indicator('scantime'),
-                self.indicator('FW_shift'),
-                self.indicator('bandwidth')
-            )
-        )
+    def make_sequence_button(self, sequence_plot_panel):
+        sequence_button = pn.widgets.Button(name='Show sequence')
+        sequence_button.on_click(partial(hide_show_button_callback, sequence_plot_panel))
+        return sequence_button
     
-    def indicator(self, par_name):
-        par = self.param[par_name]
-        return pn.indicators.String(value=par, name=par.label, font_size=INFO_FONT_SIZE, title_size=INFO_TITLE_SIZE, default_color=INFO_TEXT_COLOR)
-
-    def make_param_panel(self, name):
-        params = [par for par in PARAMS if PARAMS[par].group == name]
-        return pn.panel(self.controller.input.param, parameters=params, widgets={p: PARAMS[p].widget for p in params}, name=name)
+    def make_kspace_button(self, kspace_panel):
+        kspace_button = pn.widgets.Button(name='Show k-space')
+        kspace_button.on_click(partial(hide_show_button_callback, kspace_panel))
+        return kspace_button
+    
+    def make_load_button(self):
+        load_button = pn.widgets.Button(name='Load settings', visible=self.settings_file.is_file())
+        load_button.on_click(self.load_button_callback)
+        return load_button
+    
+    def make_save_button(self):
+        save_button = pn.widgets.Button(name='Save settings', visible=self.settings_file.is_file())
+        save_button.on_click(self.save_button_callback)
+        return save_button
+    
+    def load_button_callback(self, event):
+        print('Loading settings from file', self.settings_file)
+        with open(self.settings_file, 'r') as f:
+            settings = toml.load(f)
+        self.controller.set_input_params(settings)
+    
+    def save_button_callback(self, event):
+        print('Saving settings to file', self.settings_file)
+        settings = self.controller.get_input_params()
+        with open(self.settings_file, 'w') as f:
+            toml.dump(settings, f)
+    
+    def make_reset_SNR_button(self):
+        reset_SNR_button = pn.widgets.Button(name='Set reference SNR')
+        reset_SNR_button.on_click(self.controller.set_reference_SNR)
+        return reset_SNR_button
     
     def view(self):
         return self.dashboard
