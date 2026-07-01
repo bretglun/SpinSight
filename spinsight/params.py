@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from spinsight import constants, convert, formatting, phantom
 from spinsight.param_utils import snap
 import numpy as np
+import panel as pn
 
 
 @dataclass(frozen=True)
@@ -14,6 +15,7 @@ class ParamSpec:
     precedence: int = -1
 
     derived: bool = False
+    widget: pn.Widget = None
 
     def __post_init__(self):
         if self.default is not None and self.objects is not None:
@@ -88,6 +90,7 @@ PARAMS = {
         objects = {formatting.pixel_bandwidth(bw): bw for bw in pbw_vals},
         default = 480,
         precedence = 2,
+        widget = pn.widgets.DiscreteSlider,
     ),
 
     'FOV_bandwidth': ParamSpec(
@@ -96,6 +99,7 @@ PARAMS = {
         default = 43.2,
         precedence = 2,
         derived = True,
+        widget = pn.widgets.DiscreteSlider,
     ),
 
     'FW_shift': ParamSpec(
@@ -104,6 +108,7 @@ PARAMS = {
         default = 0.45,
         precedence = 2,
         derived = True,
+        widget = pn.widgets.DiscreteSlider,
     ),
 
     'NSA': ParamSpec(
@@ -133,6 +138,7 @@ PARAMS = {
         objects = list(range(1, 64 + 1)),
         default = 1,
         precedence = 7,
+        widget = pn.widgets.DiscreteSlider,
     ),
 
     'FatSat': ParamSpec(
@@ -146,6 +152,7 @@ PARAMS = {
         objects = {formatting.Ts(tr): tr for tr in TR_vals},
         default = 9000,
         precedence = 2,
+        widget = pn.widgets.DiscreteSlider,
     ),
 
     'TE_ui': ParamSpec(
@@ -153,6 +160,7 @@ PARAMS = {
         objects = {formatting.Ts(te): te for te in TE_vals},
         default = 12,
         precedence = 3,
+        widget = pn.widgets.DiscreteSlider,
     ),
 
     'TI': ParamSpec(
@@ -160,6 +168,7 @@ PARAMS = {
         objects = {formatting.Ts(ti): ti for ti in TI_vals},
         default = 40,
         precedence = 4,
+        widget = pn.widgets.DiscreteSlider,
     ),
 
     'FA': ParamSpec(
@@ -167,6 +176,7 @@ PARAMS = {
         objects = {formatting.flip_angle(fa): fa for fa in range(1, 90 + 1)},
         default = 90,
         precedence = 5,
+        widget = pn.widgets.DiscreteSlider,
     ),
 
     'trajectory': ParamSpec(
@@ -188,6 +198,7 @@ PARAMS = {
         objects = {formatting.FOV(fov): fov for fov in fov_vals},
         default = 240,
         precedence = 2,
+        widget = pn.widgets.DiscreteSlider,
     ),
 
     'FOV_F': ParamSpec(
@@ -195,6 +206,7 @@ PARAMS = {
         objects = {formatting.FOV(fov): fov for fov in fov_vals},
         default = 240,
         precedence = 2,
+        widget = pn.widgets.DiscreteSlider,
     ),
 
     'phase_oversampling': ParamSpec(
@@ -202,6 +214,7 @@ PARAMS = {
         objects = {formatting.phase_oversampling(factor): float(factor) for factor in np.linspace(1, 2, 101)},
         default = 0,
         precedence = 3,
+        widget = pn.widgets.DiscreteSlider,
     ),
 
     'radial_factor': ParamSpec(
@@ -216,6 +229,7 @@ PARAMS = {
         objects = matrix_vals,
         default = 180,
         precedence = 4,
+        widget = pn.widgets.DiscreteSlider,
     ),
 
     'matrix_F_ui': ParamSpec(
@@ -223,6 +237,7 @@ PARAMS = {
         objects = matrix_vals,
         default = 180,
         precedence = 4,
+        widget = pn.widgets.DiscreteSlider,
     ),
 
     'voxel_P': ParamSpec(
@@ -231,6 +246,7 @@ PARAMS = {
         default = 1.333, 
         precedence = 4,
         derived = True,
+        widget = pn.widgets.DiscreteSlider,
     ),
 
     'voxel_F': ParamSpec(
@@ -239,6 +255,7 @@ PARAMS = {
         default = 1.333, 
         precedence = 4,
         derived = True,
+        widget = pn.widgets.DiscreteSlider,
     ),
 
     'recon_matrix_P_ui': ParamSpec(
@@ -246,6 +263,7 @@ PARAMS = {
         objects = recon_matrix_vals,
         default = 360,
         precedence = 5,
+        widget = pn.widgets.DiscreteSlider,
     ),
 
     'recon_matrix_F_ui': ParamSpec(
@@ -253,6 +271,7 @@ PARAMS = {
         objects = recon_matrix_vals,
         default = 360,
         precedence = 5,
+        widget = pn.widgets.DiscreteSlider,
     ),
 
     'recon_voxel_P': ParamSpec(
@@ -260,6 +279,7 @@ PARAMS = {
         objects =  {formatting.voxel_size(voxel): voxel for voxel in recon_voxel_vals},
         precedence = 5,
         derived = True,
+        widget = pn.widgets.DiscreteSlider,
     ),
 
     'recon_voxel_F': ParamSpec(
@@ -267,6 +287,7 @@ PARAMS = {
         objects =  {formatting.voxel_size(voxel): voxel for voxel in recon_voxel_vals},
         precedence = 5,
         derived = True,
+        widget = pn.widgets.DiscreteSlider,
     ),
 
     'slice_thickness': ParamSpec(
@@ -274,6 +295,7 @@ PARAMS = {
         objects = {formatting.slice_thickness(thk): thk for thk in np.linspace(0.5, 10, 96)},
         default = 3.0,
         precedence = 6,
+        widget = pn.widgets.DiscreteSlider,
     ),
 
     'radial_FOV_oversampling': ParamSpec(

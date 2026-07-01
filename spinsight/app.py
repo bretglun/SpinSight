@@ -3,6 +3,7 @@ import panel as pn
 from pathlib import Path
 import toml
 from spinsight import styles, simulator
+from spinsight.params import PARAMS
 from spinsight.styles import INFO_FONT_SIZE, INFO_TITLE_SIZE
 from spinsight.controller import Controller
 from spinsight.dashboard import Dashboard
@@ -59,8 +60,7 @@ def get_app(dark_mode=True, settings_filestem='', start_time=datetime.now(), laz
     author = '*Written by [Johan Berglund](mailto:johan.berglund@akademiska.se), Ph.D.*'
     version = get_version()
     
-    discrete_slider_params = ['TR_ui', 'TE_ui', 'FA', 'TI', 'FOV_F', 'FOV_P', 'phase_oversampling', 'matrix_F_ui', 'matrix_P_ui', 'recon_matrix_F_ui', 'recon_matrix_P_ui', 'voxel_F', 'voxel_P', 'recon_voxel_F', 'recon_voxel_P', 'slice_thickness', 'pixel_bandwidth_ui', 'FOV_bandwidth', 'FW_shift', 'EPI_factor']
-    param_panels = {name: pn.panel(controller.input.param, parameters=params, widgets={p: pn.widgets.DiscreteSlider for p in params if p in discrete_slider_params}, name=name) for name, params in [
+    param_panels = {name: pn.panel(controller.input.param, parameters=params, widgets={p: PARAMS[p].widget for p in params}, name=name) for name, params in [
         ('Settings', ['object', 'field_strength', 'parameter_style']),
         ('Contrast', ['FatSat', 'TR_ui', 'TE_ui', 'FA', 'TI']),
         ('Geometry', ['trajectory', 'frequency_direction', 'FOV_F', 'FOV_P', 'phase_oversampling', 'radial_factor', 'voxel_F', 'voxel_P', 'matrix_F_ui', 'matrix_P_ui', 'recon_voxel_F', 'recon_voxel_P', 'recon_matrix_F_ui', 'recon_matrix_P_ui', 'slice_thickness']),
