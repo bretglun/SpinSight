@@ -1,33 +1,34 @@
-from spinsight import convert
+from spinsight import convert, formatting
 from spinsight.DAG import Graph
 from spinsight.params import PARAMS
 from spinsight.constants import ACTION
 
 
 @Graph.node(action=ACTION.VALUE)
-def set_spoke_angle(controller, spoke_angle):
-    controller.spoke_angle = spoke_angle
+def set_spoke_angle(dashboard, spoke_angle):
+    dashboard.spoke_angle = formatting.spoke_angle(spoke_angle)
 
 
 @Graph.node(action=ACTION.VALUE)
-def set_num_shots(controller, num_shots):
-    controller.num_shots = num_shots
+def set_num_shots(dashboard, num_shots):
+    dashboard.num_shots = str(num_shots)
 
 
 @Graph.node(action=ACTION.VALUE)
-def set_relative_SNR(controller, relative_SNR):
-    controller.relative_SNR = relative_SNR
+def set_relative_SNR(dashboard, relative_SNR):
+    dashboard.relative_SNR = formatting.relative_SNR(relative_SNR)
 
 
 @Graph.node(action=ACTION.VALUE)
-def set_scantime(controller, scantime):
-    controller.scantime = scantime
+def set_scantime(dashboard, scantime):
+    dashboard.scantime = formatting.scantime(scantime)
 
 
 @Graph.node(action=ACTION.VALUE)
-def set_pixel_bandwidth(controller, pixel_BW_is_input, pixel_bandwidth):
+def set_pixel_bandwidth(controller, pixel_BW_is_input, pixel_bandwidth, dashboard):
     if not pixel_BW_is_input:
         controller.set_param('pixel_bandwidth_ui', pixel_bandwidth)
+    dashboard.bandwidth = formatting.pixel_bandwidth(pixel_bandwidth)
 
 
 @Graph.node(action=ACTION.VALUE)
@@ -37,9 +38,11 @@ def set_FOV_bandwidth(controller, FOV_BW_is_input, pixel_bandwidth, matrix_F):
 
 
 @Graph.node(action=ACTION.VALUE)
-def set_FW_shift(controller, FW_shift_is_input, pixel_bandwidth, field_strength):
+def set_FW_shift(controller, FW_shift_is_input, pixel_bandwidth, field_strength, dashboard):
+    shift = convert.pixel_BW_to_shift(pixel_bandwidth, field_strength)
     if not FW_shift_is_input:
-        controller.set_param('FW_shift', convert.pixel_BW_to_shift(pixel_bandwidth, field_strength))
+        controller.set_param('FW_shift', shift)
+    dashboard.FW_shift = formatting.FW_shift(shift)
 
 
 @Graph.node(action=ACTION.VALUE)

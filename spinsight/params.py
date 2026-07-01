@@ -91,7 +91,7 @@ PARAMS = {
     ),
     
     'pixel_bandwidth_ui': ParamSpec(
-        label = 'Pixel bandwidth',
+        label = 'Bandwidth',
         objects = {formatting.pixel_bandwidth(bw): bw for bw in pbw_vals},
         default = 480,
         precedence = 2,

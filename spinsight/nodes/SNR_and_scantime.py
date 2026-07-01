@@ -1,4 +1,3 @@
-from spinsight import formatting
 from spinsight.constants import ACTION
 from spinsight.DAG import Graph
 import numpy as np
@@ -12,8 +11,8 @@ def SNR(reference_signal, noise_std):
 @Graph.node()
 def relative_SNR(reference_SNR, SNR):
     if not reference_SNR:
-        return 100
-    return SNR / reference_SNR * 100
+        return 1.0
+    return SNR / reference_SNR
 
 
 @Graph.node(action=ACTION.VALUE)
@@ -40,4 +39,4 @@ def signal_level(k_read_axis, lines_to_measure, num_blades, slice_thickness, FOV
 
 @Graph.node()
 def scantime(num_shots, NSA, TR):
-    return formatting.format_scantime(num_shots * NSA * TR)
+    return num_shots * NSA * TR

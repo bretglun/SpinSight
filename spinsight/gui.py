@@ -32,15 +32,18 @@ def save_button_callback(controller, settings_file, event):
         toml.dump(settings, f)
 
 
-def info(indicator_func, **kwargs):
-    return indicator_func(font_size=INFO_FONT_SIZE, title_size=INFO_TITLE_SIZE, **kwargs)
-
-
 class GUI(param.Parameterized):
     
     image = param.Parameter()
     kspace = param.Parameter()
     sequence_plot = param.Parameter()
+
+    spoke_angle = param.String(label='Angle')
+    num_shots = param.String(label='# shots')
+    relative_SNR = param.String(label='Relative SNR')
+    scantime = param.String(label='Scan time')
+    FW_shift = param.String(label='Fat/water shift')
+    bandwidth = param.String(label='Bandwidth')
     
     def __init__(self, controller, settings_file, start_time, version, lazy_sliders, dark_mode, **params):
         
@@ -186,8 +189,8 @@ class GUI(param.Parameterized):
         )
     
     def make_sequence_plot_panel(self):
-        shot_angle_info = info(pn.indicators.Number, name='Angle', format='{value:.0f}°', value=self.controller.param.spoke_angle, default_color=INFO_TEXT_COLOR) 
-        num_shots_info = info(pn.indicators.Number, name='# shots', format='{value:.0f}', value=self.controller.param.num_shots, default_color=INFO_TEXT_COLOR)
+        shot_angle_info = self.indicator('spoke_angle') 
+        num_shots_info = self.indicator('num_shots')
         def update_num_shots_label(event): 
             num_shots_info.name = f'# {event.new}s'
         self.controller.param.watch(update_num_shots_label, 'shot_label')
@@ -209,12 +212,16 @@ class GUI(param.Parameterized):
         return pn.Column(
             pn.Row(self.controller.input.param.reference_tissue, reset_SNR_button),
             pn.Row(
-                info(pn.indicators.Number, name='Relative SNR', format='{value:.0f}%', value=self.controller.param.relative_SNR, default_color=INFO_TEXT_COLOR),
-                info(pn.indicators.String, name='Scan time', value=self.controller.param.scantime, default_color=INFO_TEXT_COLOR),
-                info(pn.indicators.Number, name='Fat/water shift', format='{value:.2f} pixels', value=self.controller.input.param.FW_shift, default_color=INFO_TEXT_COLOR),
-                info(pn.indicators.Number, name='Bandwidth', format='{value:.0f} Hz/pixel', value=self.controller.input.param.pixel_bandwidth_ui, default_color=INFO_TEXT_COLOR)
+                self.indicator('relative_SNR'),
+                self.indicator('scantime'),
+                self.indicator('FW_shift'),
+                self.indicator('bandwidth')
             )
         )
+    
+    def indicator(self, par_name):
+        par = self.param[par_name]
+        return pn.indicators.String(value=par, name=par.label, font_size=INFO_FONT_SIZE, title_size=INFO_TITLE_SIZE, default_color=INFO_TEXT_COLOR)
 
     def make_param_panel(self, name):
         params = [par for par in PARAMS if PARAMS[par].group == name]

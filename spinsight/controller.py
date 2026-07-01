@@ -8,16 +8,11 @@ import warnings
 
 class Controller(param.Parameterized):
     shot_label = param.String() # shot/spoke/blade label
-    num_shots = param.Integer() # number of shots
-    spoke_angle = param.Number() # spoke angle [°]
     rec_acq_ratio_P = param.Number(default=2.0) # reconstructed / acquired matrix_P ratio
     rec_acq_ratio_F = param.Number(default=2.0) # reconstructed / acquired matrix_F ratio
     
-    SNR = param.Number()
     update_reference_SNR = param.Boolean()
     reference_SNR = param.Number()
-    relative_SNR = param.Number() # [%]
-    scantime = param.String()
 
     def __init__(self, **params):
         super().__init__(**params)

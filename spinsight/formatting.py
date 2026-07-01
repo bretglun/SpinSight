@@ -12,7 +12,7 @@ def format_float(value, sigfigs=2):
     return '.'.join((integer, decimal))
 
 
-def format_scantime(milliseconds):
+def scantime(milliseconds):
     total_seconds = milliseconds / 1000
     minutes = int(total_seconds // 60)
     seconds = int(total_seconds % 60)
@@ -24,11 +24,11 @@ def format_scantime(milliseconds):
     elif seconds > 0:
         return f'{total_seconds:.1f} sec'
     else:
-        return f'{int(milliseconds)} msec'
+        return f'{milliseconds:.0f} msec'
 
 
 def pixel_bandwidth(bw):
-    return f'{format_float(bw, 3)} Hz'
+    return f'{format_float(bw, 3)} Hz / pixel'
 
 
 def FOV_bandwidth(fov_bw):
@@ -44,14 +44,23 @@ def Ts(t):
 
 
 def flip_angle(fa):
-    return f'{int(np.round(fa))}°'
+    return f'{fa:.0f}°'
+
+
+def spoke_angle(angle):
+    return f'{angle:.0f}°'
 
 
 def FOV(fov):
-    return f'{int(np.round(fov))} mm'
+    return f'{fov:.0f} mm'
+
+
+def relative_SNR(snr):
+    return f'{snr * 100:.0f}%'
+
 
 def phase_oversampling(factor):
-    return f'{int(np.round(factor * 100))}%'
+    return f'{factor * 100:.0f}%'
 
 
 def voxel_size(voxel):
