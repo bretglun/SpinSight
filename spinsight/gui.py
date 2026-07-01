@@ -71,73 +71,139 @@ class GUI(param.Parameterized):
         
     def make_layout(self, title, dark_mode):
         dashboard = styles.panel_template(title, dark_mode)
+        
+        image_panel = self.make_image_panel()
+        kspace_panel = self.make_kspace_panel()
+        sequence_plot_panel = self.make_sequence_plot_panel()
+        load_button = self.make_load_button()
+        save_button = self.make_save_button()
+        kspace_button = self.make_kspace_button(kspace_panel)
+        sequence_button = self.make_sequence_button(sequence_plot_panel)
+        reset_SNR_button = self.make_reset_SNR_button()
+        info_panel = self.make_info_panel(reset_SNR_button)
+        settings_params_panel = self.make_param_panel('Settings')
+        sequence_params_panel = self.make_param_panel('Sequence')
+        contrast_params_panel = self.make_param_panel('Contrast')
+        geometry_params_panel = self.make_param_panel('Geometry')
+        post_processing_params_panel = self.make_param_panel('Post-processing')
+        footer_panel = self.make_footer_panel()
 
-        author = '*Written by [Johan Berglund](mailto:johan.berglund@akademiska.se), Ph.D.*'
-        
-        shot_angle_info = info(pn.indicators.Number, name='Angle', format='{value:.0f}°', value=self.controller.param.spoke_angle, default_color=INFO_TEXT_COLOR) 
-        num_shots_info = info(pn.indicators.Number, name='# shots', format='{value:.0f}', value=self.controller.param.num_shots, default_color=INFO_TEXT_COLOR)
-        def update_num_shots_label(event): 
-            num_shots_info.name = f'# {event.new}s'
-        self.controller.param.watch(update_num_shots_label, 'shot_label')
-        
-        dmap_kspace = pn.Column(hv.DynamicMap(self.display_kspace) * self.hover.k_line, 
-                            # self.controller.input.param.kspace_type, 
-                            pn.Row(self.controller.input.param.show_processed_kspace, self.controller.input.param.kspace_exponent), 
-                            visible=False)
-        dmap_MR_image = hv.DynamicMap(self.display_image)
-        dmap_sequence = pn.Column(hv.DynamicMap(self.display_sequence_plot), pn.Row(self.controller.input.param.shot_ui, shot_angle_info, num_shots_info, self.controller.input.param.signal_exponent), visible=False)
-        load_button = pn.widgets.Button(name='Load settings', visible=self.settings_file.is_file())
-        load_button.on_click(partial(load_button_callback, self.controller, self.settings_file))
-        save_button = pn.widgets.Button(name='Save settings', visible=self.settings_file.is_file())
-        save_button.on_click(partial(save_button_callback, self.controller, self.settings_file))
-        sequence_button = pn.widgets.Button(name='Show sequence')
-        sequence_button.on_click(partial(hide_show_button_callback, dmap_sequence))
-        kspace_button = pn.widgets.Button(name='Show k-space')
-        kspace_button.on_click(partial(hide_show_button_callback, dmap_kspace))
-        reset_SNR_button = pn.widgets.Button(name='Set reference SNR')
-        reset_SNR_button.on_click(self.controller.set_reference_SNR)
-        maindash = pn.Column(
+        dashboard.sidebar.append(self.make_sidebar(
+            load_button, 
+            save_button, 
+            settings_params_panel
+            )
+        )
+        dashboard.main.append(self.make_main_page(
+            sequence_button, 
+            kspace_button, 
+            sequence_params_panel, 
+            contrast_params_panel, 
+            geometry_params_panel, 
+            image_panel, 
+            info_panel, 
+            kspace_panel, 
+            post_processing_params_panel, 
+            sequence_plot_panel, 
+            footer_panel
+            )
+        )
+        return dashboard
+
+    def make_sidebar(self, load_button, save_button, settings_params_panel):
+        return pn.Column(
+            pn.Row(load_button, save_button), 
+            settings_params_panel
+        )
+    
+    def make_main_page(self, sequence_button, kspace_button, sequence_params_panel, contrast_params_panel, geometry_params_panel, image_panel, info_panel, kspace_panel, post_processing_params_panel, sequence_plot_panel, footer_panel):
+        return pn.Column(
             pn.Row(
                 pn.Column(
                     pn.Row(
                         pn.Column(
                             pn.Row(sequence_button, kspace_button), 
-                            self.make_param_panel('Sequence'),
-                            self.make_param_panel('Contrast')
-                        ), 
-                        pn.Column(
-                            self.make_param_panel('Geometry')
-                        )
+                            sequence_params_panel,
+                            contrast_params_panel
+                        ),
+                        geometry_params_panel
                     )
                 ), 
                 pn.Column(
-                    dmap_MR_image, 
-                    pn.Column(
-                        # self.controller.input.param.image_type, 
-                        self.controller.input.param.show_FOV,
-                        self.make_info_panel(reset_SNR_button)
-                    )
+                    image_panel,
+                    info_panel
                 ), 
                 pn.Column(
-                    dmap_kspace,
-                    self.make_param_panel('Post-processing')
+                    kspace_panel,
+                    post_processing_params_panel
                 )
             ), 
-            dmap_sequence, 
-            pn.Column(pn.pane.Markdown(author),
-                    pn.pane.Markdown(f'*(server started {self.start_time: %Y-%m-%d %H:%M:%S}{self.version})*', styles={'color': 'gray'}),
-                    height=10),
+            sequence_plot_panel, 
+            footer_panel,
             sizing_mode='stretch_both'
         )
-
-        dashboard.main.append(maindash)
-        dashboard.sidebar.append(
-            pn.Column(
-                pn.Row(load_button, save_button), 
-                self.make_param_panel('Settings')
+    
+    def make_load_button(self):
+        load_button = pn.widgets.Button(name='Load settings', visible=self.settings_file.is_file())
+        load_button.on_click(partial(load_button_callback, self.controller, self.settings_file))
+        return load_button
+    
+    def make_save_button(self):
+        save_button = pn.widgets.Button(name='Save settings', visible=self.settings_file.is_file())
+        save_button.on_click(partial(save_button_callback, self.controller, self.settings_file))
+        return save_button
+    
+    def make_kspace_button(self, kspace_panel):
+        kspace_button = pn.widgets.Button(name='Show k-space')
+        kspace_button.on_click(partial(hide_show_button_callback, kspace_panel))
+        return kspace_button
+    
+    def make_sequence_button(self, sequence_plot_panel):
+        sequence_button = pn.widgets.Button(name='Show sequence')
+        sequence_button.on_click(partial(hide_show_button_callback, sequence_plot_panel))
+        return sequence_button
+    
+    def make_reset_SNR_button(self):
+        reset_SNR_button = pn.widgets.Button(name='Set reference SNR')
+        reset_SNR_button.on_click(self.controller.set_reference_SNR)
+        return reset_SNR_button
+    
+    def make_image_panel(self):
+        return pn.Column(
+            hv.DynamicMap(self.display_image), 
+            pn.Row(
+                # self.controller.input.param.image_type, 
+                self.controller.input.param.show_FOV,
             )
         )
-        return dashboard
+    
+    def make_kspace_panel(self):
+        return pn.Column(
+            hv.DynamicMap(self.display_kspace) * self.hover.k_line, 
+            # self.controller.input.param.kspace_type, 
+            pn.Row(self.controller.input.param.show_processed_kspace, self.controller.input.param.kspace_exponent), 
+            visible=False
+        )
+    
+    def make_sequence_plot_panel(self):
+        shot_angle_info = info(pn.indicators.Number, name='Angle', format='{value:.0f}°', value=self.controller.param.spoke_angle, default_color=INFO_TEXT_COLOR) 
+        num_shots_info = info(pn.indicators.Number, name='# shots', format='{value:.0f}', value=self.controller.param.num_shots, default_color=INFO_TEXT_COLOR)
+        def update_num_shots_label(event): 
+            num_shots_info.name = f'# {event.new}s'
+        self.controller.param.watch(update_num_shots_label, 'shot_label')
+        return pn.Column(
+            hv.DynamicMap(self.display_sequence_plot), 
+            pn.Row(self.controller.input.param.shot_ui, shot_angle_info, num_shots_info, self.controller.input.param.signal_exponent), 
+            visible=False
+        )
+    
+    def make_footer_panel(self):
+        author = '*Written by [Johan Berglund](mailto:johan.berglund@akademiska.se), Ph.D.*'
+        start_time = f'{self.start_time: %Y-%m-%d %H:%M:%S}'
+        return pn.Column(
+            pn.pane.Markdown(author, styles={'color': INFO_TEXT_COLOR}),
+            pn.pane.Markdown(f'*(server started {start_time}{self.version})*', styles={'color': INFO_TEXT_COLOR}), height=10)
+
     
     def make_info_panel(self, reset_SNR_button):
         return pn.Column(
