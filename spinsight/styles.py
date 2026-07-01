@@ -51,10 +51,6 @@ def panel_template(title, dark_mode):
     )
 
 
-def text_color(dark_mode):
-    # needed for pn.indicators.Number which doesn't respect pn.config.theme
-    return 'white' if dark_mode else 'black'
-
-
 INFO_FONT_SIZE = '12pt'
 INFO_TITLE_SIZE = '12pt'
+INFO_TEXT_COLOR = 'gray'
