@@ -114,9 +114,9 @@ def set_shot_and_bounds(controller, num_shots, shot):
 @Graph.node(action=ACTION.VALUE)
 def set_trajectory_objects(controller, EPI_factor, turbo_factor):
     # Label radial trajectory 'Radial' or 'PROPELLER' depending on nLines per shot
-    controller.input.param.trajectory.objects = PARAMS['trajectory'].objects
     invalid, updated = ('PROPELLER', 'Radial') if (EPI_factor * turbo_factor == 1) else ('Radial', 'PROPELLER')
     if controller.input.trajectory == invalid:
+        controller.input.param.trajectory.objects = PARAMS['trajectory'].objects
         controller.input.trajectory = updated
     controller.input.param.trajectory.objects = [t for t in PARAMS['trajectory'].objects if t != invalid]
 
