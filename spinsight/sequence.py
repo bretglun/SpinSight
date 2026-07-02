@@ -1,5 +1,5 @@
 import numpy as np
-from spinsight import constants
+from spinsight import constants, formatting
 import scipy.signal as signal
 import scipy.interpolate as interpolate
 
@@ -70,11 +70,11 @@ def get_RF(flip_angle, dur, name, time=0., shape='hamming_sinc'):
     rf = {'RF': am,
           'time': t,
           'name': name,
-          'center': f'{time:.1f} ms',
+          'center': formatting.seq_time(time),
           'center_f': time,
-          'duration': f'{dur:.1f} ms',
+          'duration': formatting.seq_time(dur),
           'dur_f': dur,
-          'flip_angle': f'{flip_angle:.0f}°',
+          'flip_angle': formatting.flip_angle(flip_angle),
           'FWHM_f': get_FWHM(am[1:-1], t[1:-1])}
     return rf
 
@@ -86,8 +86,8 @@ def get_signal(signal, time, scale=1.0, exponent=1.0, name='sampling'):
     signal = {'signal': am,
               'time': t,
               'name': name,
-              'center': f'{(t0+t1)/2:.1f} ms',
-              'duration': f'{abs(t1-t0):.1f} ms'}
+              'center': formatting.seq_time((t0 + t1) / 2),
+              'duration': formatting.seq_time(abs(t1 - t0))}
     return signal
 
 
@@ -114,13 +114,13 @@ def get_gradient(dir, time=0., max_amp=25., max_slew=80., total_area=None, flat_
         dir: amp,
         'time': t,
         'name': name,
-        'center': f'{time:.1f} ms',
+        'center': formatting.seq_time(time),
         'center_f': time,
-        'duration': f'{dur:.1f} ms',
+        'duration': formatting.seq_time(dur),
         'dur_f': dur,
         'flat_dur_f': flat_dur,
         'risetime_f': risetime,
-        'area': f'{area:.1f} μTs/m',
+        'area': formatting.grad_area(area),
         'area_f': area
     }
     return gr
@@ -133,7 +133,7 @@ def get_gradient_area(g, t):
 def move_waveform(wf, time):
     old_time = wf['center_f']
     wf['time'] += time - old_time
-    wf['center'] = f'{time:.1f} ms'
+    wf['center'] = formatting.seq_time(time)
     wf['center_f'] = time
 
 
@@ -142,16 +142,16 @@ def rescale_gradient(g, scale):
         if dir in g:
             g[dir] *= scale
     g['area_f'] *= scale
-    g['area'] = f'{g["area_f"]:.1f} μTs/m',
+    g['area'] = formatting.grad_area(g['area_f'])
 
 
 def get_ADC(dur, name, time=0.):
     adc = {
         'name': name,
         'time': np.array([-dur/2, dur/2]) + time,
-        'center': f'{time:.1f} ms',
+        'center': formatting.seq_time(time),
         'center_f': time,
-        'duration': f'{dur:.1f} ms',
+        'duration': formatting.seq_time(dur),
         'dur_f': dur
     }
     return adc

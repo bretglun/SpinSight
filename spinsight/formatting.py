@@ -24,7 +24,7 @@ def scantime(milliseconds):
     elif seconds > 0:
         return f'{total_seconds:.1f} sec'
     else:
-        return f'{milliseconds:.0f} msec'
+        return f'{milliseconds:.0f} ms'
 
 
 def pixel_bandwidth(bw):
@@ -40,7 +40,7 @@ def FW_shift(shift):
 
 
 def Ts(t):
-    return f'{format_float(t, 2)} msec'
+    return f'{format_float(t, 2)} ms'
 
 
 def flip_angle(fa):
@@ -69,3 +69,11 @@ def voxel_size(voxel):
 
 def slice_thickness(thk):
     return f'{format_float(thk, 2)} mm'
+
+
+def seq_time(time):
+    return f'{time:.1f} ms'
+
+
+def grad_area(area):
+    return f'{area:.1f} μTs/m'
