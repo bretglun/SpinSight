@@ -100,6 +100,8 @@ def largest_phaser_area(k_phase_axis):
 
 @Graph.node()
 def phase_step_area(k_phase_axis):
+    if len(k_phase_axis)==1:
+        return 0
     return np.mean(np.diff(k_phase_axis)) * 1e3 / GYRO # uTs/m
 
 

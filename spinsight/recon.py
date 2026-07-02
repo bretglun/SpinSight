@@ -105,7 +105,7 @@ def get_gridder(samples, shape):
             shape = tuple(N if d==dim else n for d, n in enumerate(shape))
     samples = np.array(samples, dtype='float32')
     density = mrinufft.density.voronoi(samples)
-    return mrinufft.get_operator('finufft')(samples, density=density, shape=shape)
+    return mrinufft.get_operator('finufft')(samples*2*np.pi, density=density, shape=shape)
 
 
 def ungrid(gridded, samples=None, gridder=None, shape=None):
