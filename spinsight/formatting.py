@@ -59,7 +59,7 @@ def relative_SNR(snr):
     return f'{snr * 100:.0f}%'
 
 
-def phase_oversampling(factor):
+def oversampling(factor):
     return f'{factor * 100:.0f}%'
 
 

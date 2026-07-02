@@ -62,8 +62,8 @@ def num_shots(matrix_P, phase_oversampling, partial_Fourier, turbo_factor, EPI_f
 
 
 @Graph.node()
-def num_blades(is_radial, matrix, radial_factor, turbo_factor, EPI_factor):
-    return int(np.ceil(max(matrix) * radial_factor / turbo_factor / EPI_factor * np.pi / 2)) if is_radial else 1
+def num_blades(is_radial, matrix, radial_oversampling, turbo_factor, EPI_factor):
+    return int(np.ceil(max(matrix) * radial_oversampling / turbo_factor / EPI_factor * np.pi / 2)) if is_radial else 1
 
 
 @Graph.node()

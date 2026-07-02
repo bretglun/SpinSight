@@ -134,11 +134,6 @@ def shot_label(is_radial, EPI_factor, turbo_factor):
 
 
 @Graph.node(action=ACTION.BOUNDS)
-def set_labels_by_trajectory(controller, shot_label):
-    controller.input.param.shot_ui.label = f'Displayed {shot_label}'
-    controller.input.param.radial_factor.label = f'{shot_label.capitalize()} sampling factor'
-
-
-@Graph.node(action=ACTION.BOUNDS)
 def set_shot_label(controller, shot_label):
     controller.shot_label = shot_label
+    controller.input.param.shot_ui.label = f'Displayed {shot_label}'

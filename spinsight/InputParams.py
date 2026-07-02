@@ -39,7 +39,7 @@ class InputParams(param.Parameterized):
     FOV_P = init_param(param.Selector, 'FOV_P')
     FOV_F = init_param(param.Selector, 'FOV_F')
     phase_oversampling = init_param(param.Selector, 'phase_oversampling')
-    radial_factor = init_param(param.Number, 'radial_factor')
+    radial_oversampling = init_param(param.Selector, 'radial_oversampling')
     matrix_P_ui = init_param(param.Selector, 'matrix_P_ui')
     matrix_F_ui = init_param(param.Selector, 'matrix_F_ui')
     voxel_P = init_param(param.Selector, 'voxel_P')

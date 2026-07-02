@@ -45,15 +45,12 @@ def set_frequency_direction_visibility(controller, is_radial):
 
 @Graph.node(action=ACTION.VISIBILITY)
 def set_phase_oversampling_visibility(controller, is_radial):
-    visible = not is_radial
-    controller.set_visibility('phase_oversampling', visible)
-    if not visible:
-        controller.set_param('phase_oversampling', 1)
+    controller.set_visibility('phase_oversampling', not is_radial)
 
 
 @Graph.node(action=ACTION.VISIBILITY)
-def set_radial_factor_visibility(controller, is_radial):
-    controller.set_visibility('radial_factor', is_radial)
+def set_radial_oversampling_visibility(controller, is_radial):
+    controller.set_visibility('radial_oversampling', is_radial)
 
 
 @Graph.node(action=ACTION.VISIBILITY)
