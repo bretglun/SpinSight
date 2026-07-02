@@ -5,14 +5,14 @@ import warnings
 
 
 @Graph.node()
-def pe_table(num_measured_lines, num_segm, num_shots, EPI_factor, turbo_factor, num_sym_segm, k0_rf_echo_index, reverse_linear_order):
+def pe_table(num_sampled_phase_encodes, num_segm, num_shots, EPI_factor, turbo_factor, num_sym_segm, k0_rf_echo_index, reverse_linear_order):
     if EPI_factor == 1: # (turbo) spin echo
         segment_order = flexible_segment_order(turbo_factor, num_sym_segm, k0_rf_echo_index)
     else: # EPI and GRASE
         segment_order = range(turbo_factor) # linear segment order
     order = -1 if reverse_linear_order else 1
     view_order = np.array(range(EPI_factor))[None, ::order] * turbo_factor + np.array(segment_order)[::order, None]
-    num_lines_per_segment = int(num_measured_lines / num_segm)
+    num_lines_per_segment = int(num_sampled_phase_encodes / num_segm)
     lines = [shot % num_lines_per_segment for shot in range(num_shots)]
     return num_lines_per_segment * view_order + np.array(lines)[:, None, None]
 
@@ -48,56 +48,59 @@ def num_segm(turbo_factor, EPI_factor):
 
 
 @Graph.node()
-def num_sym_segm(num_segm, num_sym_lines, num_measured_lines):
+def num_sym_segm(num_segm, num_sym_lines, num_sampled_phase_encodes):
     # number of k-space segments symmetric about k0:
-    num_sym_segm = num_segm * (num_sym_lines / num_measured_lines)
+    num_sym_segm = num_segm * (num_sym_lines / num_sampled_phase_encodes)
     if (num_sym_segm % 2 == 0):
         return int(num_sym_segm) # k0 lies between two segments
     return int(np.round((num_sym_segm - 1) / 2)) * 2 + 1
 
 
 @Graph.node()
-def num_shots(matrix_P, phase_oversampling, partial_Fourier, turbo_factor, EPI_factor, is_radial, num_blades):
-    return int(np.ceil(matrix_P * phase_oversampling * partial_Fourier / turbo_factor / EPI_factor)) if not is_radial else num_blades
+def num_blades(num_shots, is_radial):
+    return num_shots if is_radial else 1
 
 
 @Graph.node()
-def num_blades(is_radial, matrix, radial_oversampling, turbo_factor, EPI_factor):
-    return int(np.ceil(max(matrix) * radial_oversampling / turbo_factor / EPI_factor * np.pi / 2)) if is_radial else 1
+def num_shots(matrix_P, phase_oversampling, partial_Fourier, turbo_factor, EPI_factor, is_radial, matrix, radial_oversampling):
+    oversampling = radial_oversampling if is_radial else phase_oversampling
+    undersampling = 1 if is_radial else partial_Fourier
+    num_lines_Nyquist = max(matrix) * np.pi / 2 if is_radial else matrix_P # conservative for radial due to uniform angles
+    lines_per_shot = turbo_factor * EPI_factor
+    return int(np.ceil(num_lines_Nyquist * oversampling * undersampling / lines_per_shot))
 
 
 @Graph.node()
-def num_measured_lines(turbo_factor, EPI_factor, num_shots, is_radial):
+def num_sampled_phase_encodes(turbo_factor, EPI_factor, num_shots, is_radial):
     # measured lines per blade
     return turbo_factor * EPI_factor * (num_shots if not is_radial else 1)
 
 
 @Graph.node()
-def num_phase_encodes_full(is_radial, num_measured_lines, matrix_P, phase_oversampling):
-    if not is_radial:
-        # oversampling may be higher than prescribed since num_shots must be integer:
-        return max(num_measured_lines, int(np.ceil(matrix_P * phase_oversampling)))
-    else:
-        return num_measured_lines
+def num_phase_encodes_full(is_radial, num_sampled_phase_encodes, matrix_P, phase_oversampling):
+    if is_radial:
+        return num_sampled_phase_encodes # since no undersampling or phase oversampling
+    # oversampling may be higher than prescribed since num_shots must be integer:
+    return max(num_sampled_phase_encodes, int(np.ceil(matrix_P * phase_oversampling)))
 
 
 @Graph.node()
-def num_sym_lines(num_measured_lines, num_phase_encodes_full):
-    return 2 * num_measured_lines - num_phase_encodes_full
+def num_sym_lines(num_sampled_phase_encodes, num_phase_encodes_full):
+    return 2 * num_sampled_phase_encodes - num_phase_encodes_full
 
 
 @Graph.node()
-def num_blank_lines(num_phase_encodes_full, lines_to_measure):
-    return num_phase_encodes_full - sum(lines_to_measure)
+def num_blank_lines(num_phase_encodes_full, sampling_mask):
+    return num_phase_encodes_full - sum(sampling_mask)
 
 
 @Graph.node()
-def lines_to_measure(num_phase_encodes_full, num_measured_lines):
-    lines_to_measure = np.ones(num_phase_encodes_full, dtype=bool)
+def sampling_mask(num_phase_encodes_full, num_sampled_phase_encodes):
+    sampling_mask = np.ones(num_phase_encodes_full, dtype=bool)
     # undersample by partial Fourier:
-    lines_to_measure[num_measured_lines:] = False
-    assert(sum(lines_to_measure) == num_measured_lines)
-    return lines_to_measure
+    sampling_mask[num_sampled_phase_encodes:] = False
+    assert(sum(sampling_mask) == num_sampled_phase_encodes)
+    return sampling_mask
 
 
 @Graph.node()

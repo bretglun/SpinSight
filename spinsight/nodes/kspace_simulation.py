@@ -102,19 +102,19 @@ def time_relative_inphase(time_after_excitation, is_gradient_echo, spin_echoes, 
 
 
 @Graph.node()
-def spin_echoes(lines_to_measure, pe_table, readtrain_spacing):
-    spin_echoes = np.zeros((sum(lines_to_measure)))
-    for ky in range(sum(lines_to_measure)):
+def spin_echoes(num_sampled_phase_encodes, pe_table, readtrain_spacing):
+    spin_echoes = np.zeros((num_sampled_phase_encodes))
+    for ky in range(num_sampled_phase_encodes):
         shot, rf_echo, gr_echo = np.argwhere(pe_table==ky)[0]
         spin_echoes[ky] = (rf_echo + 1) * readtrain_spacing
     return spin_echoes
 
 
 @Graph.node()
-def time_after_excitation(lines_to_measure, pe_table, readouts, sampling_time, freq_dir, phase_dir):
-    TEs = np.zeros((sum(lines_to_measure)))
-    reverse = np.zeros((sum(lines_to_measure)), dtype=bool)
-    for ky in range(sum(lines_to_measure)):
+def time_after_excitation(num_sampled_phase_encodes, pe_table, readouts, sampling_time, freq_dir, phase_dir):
+    TEs = np.zeros((num_sampled_phase_encodes))
+    reverse = np.zeros((num_sampled_phase_encodes), dtype=bool)
+    for ky in range(num_sampled_phase_encodes):
         shot, rf_echo, gr_echo = np.argwhere(pe_table==ky)[0]
         TEs[ky] = readouts[rf_echo][gr_echo]['center_f']
         reverse[ky] = readouts[rf_echo][gr_echo]['area_f'] < 0
@@ -186,10 +186,10 @@ def k_angles(num_blades):
 
 
 @Graph.node()
-def k_axes(freq_dir, phase_dir, k_read_axis, k_phase_axis, lines_to_measure):
+def k_axes(freq_dir, phase_dir, k_read_axis, k_phase_axis, sampling_mask):
     k_axes = [None]*2
     k_axes[freq_dir] = k_read_axis
-    k_axes[phase_dir] = k_phase_axis[lines_to_measure]
+    k_axes[phase_dir] = k_phase_axis[sampling_mask]
     return k_axes
 
 

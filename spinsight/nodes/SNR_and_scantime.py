@@ -33,8 +33,8 @@ def decayed_signal(signal_level, T2w, reference_tissue, k_read_axis, k_phase_axi
 
 
 @Graph.node()
-def signal_level(k_read_axis, lines_to_measure, num_blades, slice_thickness, FOV, matrix):
-    return np.sqrt(len(k_read_axis) * sum(lines_to_measure) * num_blades) * slice_thickness * np.prod(FOV) / np.prod(matrix)
+def signal_level(k_read_axis, num_sampled_phase_encodes, num_blades, slice_thickness, FOV, matrix):
+    return np.sqrt(len(k_read_axis) * num_sampled_phase_encodes * num_blades) * slice_thickness * np.prod(FOV) / np.prod(matrix)
 
 
 @Graph.node()
