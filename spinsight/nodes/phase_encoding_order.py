@@ -112,7 +112,7 @@ def k0_segment(num_segm, num_sym_segm):
 @Graph.node()
 def k0_echo_indices_linear_order(k0_segment, turbo_factor):
     # (k0_gr_echo_index, k0_rf_echo_index)
-    return [(segment // turbo_factor, segment % turbo_factor) for segment in k0_segment]
+    return {(segment // turbo_factor, segment % turbo_factor) for segment in k0_segment}
 
 
 @Graph.node()

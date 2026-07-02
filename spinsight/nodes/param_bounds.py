@@ -170,7 +170,7 @@ def min_RF_to_readtrain_center(is_gradient_echo, RF_excitation, read_prephaser_f
 
 
 @Graph.node()
-def pixel_bandwidth_bounds(matrix_F, FOV_F, is_gradient_echo, RF_refocusing, turbo_factor, EPI_factor, TE, RF_excitation, refocusing_time, readtrain_spacing, TR, sequence_start, spoiler, k0_echo_indices_linear_order, k0_echo_indices_reverse_linear_order, reverse_linear_order, read_prephaser, phaser_duration, slice_select_excitation, slice_select_rephaser_floating, max_blip_dur, slice_select_refocusing):
+def pixel_bandwidth_bounds(matrix_F, FOV_F, is_gradient_echo, RF_refocusing, turbo_factor, EPI_factor, TE, RF_excitation, refocusing_time, readtrain_spacing, TR, sequence_start, spoiler, k0_echo_indices_linear_order, k0_echo_indices_reverse_linear_order, read_prephaser, phaser_duration, slice_select_excitation, slice_select_rephaser_floating, max_blip_dur, slice_select_refocusing):
     readout_area = 1e3 * matrix_F / (FOV_F * GYRO)
     # min limit imposed by maximum gradient amplitude:
     min_read_duration = readout_area / MAX_AMP
@@ -182,8 +182,8 @@ def pixel_bandwidth_bounds(matrix_F, FOV_F, is_gradient_echo, RF_refocusing, tur
     
     slice_select_rewind_dur = slice_select_excitation['risetime_f'] + slice_select_rephaser_floating['dur_f'] if is_gradient_echo else slice_select_refocusing[0]['risetime_f']
 
-    k0_echo_indices = k0_echo_indices_linear_order if reverse_linear_order else k0_echo_indices_reverse_linear_order
-    
+    k0_echo_indices = k0_echo_indices_linear_order | k0_echo_indices_reverse_linear_order
+
     pixel_bandwidth_values = []
     for pixel_bandwidth in PARAMS['pixel_bandwidth_ui'].objects.values():
         
