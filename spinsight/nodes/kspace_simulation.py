@@ -102,7 +102,9 @@ def time_relative_inphase(time_after_excitation, is_gradient_echo, spin_echoes, 
 
 
 @Graph.node()
-def spin_echoes(num_sampled_phase_encodes, pe_table, readtrain_spacing):
+def spin_echoes(turbo_factor, num_sampled_phase_encodes, TE, pe_table, readtrain_spacing):
+    if turbo_factor == 1:
+        return np.full(num_sampled_phase_encodes, TE)
     spin_echoes = np.zeros((num_sampled_phase_encodes))
     for ky in range(num_sampled_phase_encodes):
         shot, rf_echo, gr_echo = np.argwhere(pe_table==ky)[0]
