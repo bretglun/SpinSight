@@ -22,9 +22,7 @@ def flexible_segment_order(num_segm, num_sym, k0_index):
     
     split_k0 = not(num_sym % 2) # k-space center is between two segments
 
-    if k0_index >= num_segm - split_k0:
-        raise ValueError('The spin echo index of (the first) centermost k-space segment is too high')
-    elif k0_index > num_segm // 2 - split_k0:
+    if k0_index > (num_segm - 1) // 2:
         return flexible_segment_order(num_segm, num_sym, num_segm - 1 - k0_index - split_k0)[::-1]
     
     num_sym_linear = min(num_sym, 2 * k0_index + 1 + split_k0)
