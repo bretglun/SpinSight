@@ -2,7 +2,7 @@ import param
 from functools import partial
 from spinsight.param_utils import snap, filter_objects, value_in_objects, insert_value_in_list_sorted, insert_value_in_dict_sorted, get_object_values
 from spinsight.params import PARAMS
-from spinsight.InputParams import InputParams
+from spinsight.input_params import InputParams
 import warnings
 
 
