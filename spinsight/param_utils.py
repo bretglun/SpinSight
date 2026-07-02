@@ -13,10 +13,18 @@ def snap(value, values, mode='nearest'):
             raise ValueError(f'Invalid mode {mode}')
 
 
+def val_in_bounds(val, minval, maxval):
+    if minval is not None and val < minval:
+        return False
+    if maxval is not None and val > maxval:
+        return False
+    return True
+
+
 def filter_objects(objects, minval=None, maxval=None):
     if isinstance(objects, dict):
-        return {k: v for k, v in objects.items() if (minval or -np.inf) <= v <= (maxval or np.inf)}
-    return [v for v in objects if (minval or -np.inf) <= v <= (maxval or np.inf)]
+        return {k: v for k, v in objects.items() if val_in_bounds(v, minval, maxval)}
+    return [v for v in objects if val_in_bounds(v, minval, maxval)]
 
 
 def value_in_objects(value, objects):

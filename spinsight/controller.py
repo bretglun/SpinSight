@@ -81,6 +81,14 @@ class Controller(param.Parameterized):
         if PARAMS[par.name].objects is not None:
             return self.set_param_discrete_bounds(par, curval, minval, maxval)
         
+        if minval is None:
+            if PARAMS[par_name].bounds is None:
+                return
+            minval = PARAMS[par.name].bounds[0]
+        if maxval is None:
+            if PARAMS[par_name].bounds is None:
+                return
+            maxval = PARAMS[par.name].bounds[1]
         outbound = False
         if curval < minval:
             warnings.warn(f'trying to set {par.name} min bound above current value ({minval} > {curval})')
@@ -106,4 +114,7 @@ class Controller(param.Parameterized):
         return {par: getattr(self.input, par) for par in self.input.param if par != 'name' and not PARAMS[par].derived}
 
     def set_input_params(self, settings):
+        for par in self.input.param:
+            if par!='name':
+                self.set_param_bounds(par)
         self.input.param.update(settings)
