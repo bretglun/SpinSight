@@ -31,11 +31,8 @@ def set_matrix_visibility(controller, matrix_is_input):
 
 
 @Graph.node(action=ACTION.VISIBILITY)
-def set_partial_Fourier_visibility(controller, is_radial):
-    visible = not is_radial
-    controller.set_visibility('partial_Fourier', visible)
-    if not visible:
-        controller.set_param('partial_Fourier', 1)
+def set_partial_Fourier_visibility(controller, is_radial):   
+    controller.set_visibility('partial_Fourier', not is_radial)
 
 
 @Graph.node(action=ACTION.VISIBILITY)
@@ -64,8 +61,8 @@ def set_FA_visibility(controller, sequence_type):
 
 
 @Graph.node(action=ACTION.VISIBILITY)
-def set_turbo_factor_visibility(controller, sequence_type):
-    visible = sequence_type != 'Spoiled Gradient Echo'
+def set_turbo_factor_visibility(controller, is_gradient_echo):
+    visible = not is_gradient_echo
     controller.set_visibility('turbo_factor', visible)
     if not visible:
         controller.set_param('turbo_factor', 1)

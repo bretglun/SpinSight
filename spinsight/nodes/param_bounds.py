@@ -12,13 +12,15 @@ MinMax = namedtuple('MinMax', ['min', 'max'])
 
 
 @Graph.node()
-def max_turbo_factor(matrix, phase_dir, partial_Fourier, EPI_factor):
-    return int(np.floor(matrix[phase_dir] * partial_Fourier / EPI_factor * MAX_PHASE_OVERSAMPLING_FACTOR))
+def max_turbo_factor(matrix, phase_dir, partial_Fourier, EPI_factor, is_radial):
+    undersampling = partial_Fourier if not is_radial else 1
+    return int(np.floor(matrix[phase_dir] * undersampling / EPI_factor * MAX_PHASE_OVERSAMPLING_FACTOR))
 
 
 @Graph.node()
-def max_EPI_factor(matrix, phase_dir, partial_Fourier, turbo_factor):
-    return int(np.floor(matrix[phase_dir] * partial_Fourier / turbo_factor * MAX_PHASE_OVERSAMPLING_FACTOR))
+def max_EPI_factor(matrix, phase_dir, partial_Fourier, turbo_factor, is_radial):
+    undersampling = partial_Fourier if not is_radial else 1
+    return int(np.floor(matrix[phase_dir] * undersampling / turbo_factor * MAX_PHASE_OVERSAMPLING_FACTOR))
 
 
 @Graph.node()
