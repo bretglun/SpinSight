@@ -20,6 +20,8 @@ TISSUES = {
     'Blood':                       {'PD': 1.0  , 'FF': .00, 'T1': {1.5: 1441, 3.0: 1932}, 'T2': {1.5:  290, 3.0:  275}},
     'Stomach':                     {'PD': 1.0  , 'FF': .00, 'T1': {1.5: 3000, 3.0: 3000}, 'T2': {1.5:  800, 3.0:  800}},
     'Perotineum':                  {'PD': 1.0  , 'FF': .00, 'T1': {1.5: 1500, 3.0: 1500}, 'T2': {1.5:   30, 3.0:   30}},
+# Shepp-Logan phantom tissues as defined in:
+# Gach, H., Costin Tanase, and Fernando E. Boada. 2008. “2D & 3D Shepp-Logan Phantom Standards for MRI.” In: Int Conf Syst Eng, 521–26.
     'Shepp-Logan Scalp':           {'PD': 0.8  , 'FF': .00, 'T1': {1.5:  343, 3.0:  377}, 'T2': {1.5:   70, 3.0:   70}},
     'Shepp-Logan Bone and Marrow': {'PD': 0.12 , 'FF': .00, 'T1': {1.5:  552, 3.0:  587}, 'T2': {1.5:   50, 3.0:   50}},
     'Shepp-Logan CSF':             {'PD': 0.98 , 'FF': .00, 'T1': {1.5: 4200, 3.0: 4200}, 'T2': {1.5: 1990, 3.0: 1990}},
@@ -27,9 +29,9 @@ TISSUES = {
     'Shepp-Logan White matter':    {'PD': 0.617, 'FF': .00, 'T1': {1.5:  681, 3.0:  887}, 'T2': {1.5:   80, 3.0:   80}},
     'Shepp-Logan Tumor':           {'PD': 0.95 , 'FF': .00, 'T1': {1.5: 1011, 3.0: 1175}, 'T2': {1.5:  100, 3.0:  100}},
 }
-# SL = Shepp-Logan phantom tissues as defined in:
-# Gach, H., Costin Tanase, and Fernando E. Boada. 2008. “2D & 3D Shepp-Logan Phantom Standards for MRI.” In: Int Conf Syst Eng, 521–26.
 
+# Fat spectral model defined in:
+# Cui C, Wu X, Newell JD, Jacob M. "Fat water decomposition using globally optimal surface estimation (GOOSE) algorithm." Magn Reson Med. 2015 Mar;73(3):1289–99.
 FAT_RESONANCES = {'Fat1': {'shift': 0.9 - 4.7, 'ratio': .087, 'ratio_with_FatSat': .010, 'PD': 1.0, 'T1': {1.5:  290, 3.0:  370}, 'T2': {1.5:  165, 3.0:  130}},
                   'Fat2': {'shift': 1.3 - 4.7, 'ratio': .694, 'ratio_with_FatSat': .033, 'PD': 1.0, 'T1': {1.5:  290, 3.0:  370}, 'T2': {1.5:  165, 3.0:  130}},
                   'Fat3': {'shift': 2.1 - 4.7, 'ratio': .129, 'ratio_with_FatSat': .038, 'PD': 1.0, 'T1': {1.5:  290, 3.0:  370}, 'T2': {1.5:  165, 3.0:  130}},
