@@ -3,20 +3,21 @@ from spinsight import constants, convert, formatting, phantom
 from spinsight.param_utils import snap
 import numpy as np
 import panel as pn
+from panel.widgets.base import Widget
 
 
 @dataclass(frozen=True)
 class ParamSpec:
     label: str
-    bounds: tuple = None
-    objects: list | dict = None
-    step: float = None
+    bounds: tuple | None = None
+    objects: list | dict | None = None
+    step: float | None = None
     default: None = None
     precedence: int = -1
 
     derived: bool = False
-    group: str = None
-    widget: pn.Widget = None
+    group: str | None = None
+    widget: Widget | None = None
 
     def __post_init__(self):
         if self.default is not None and self.objects is not None:
