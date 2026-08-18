@@ -58,8 +58,8 @@ def set_matrix_P(controller, matrix_is_input, isotropic_voxel_size, matrix_P):
 
 
 @Graph.node(action=ACTION.VALUE)
-def adapt_FOV_to_phantom_object(trigger_node, controller, FOV_F, phantom_object, freq_dir, FOV_P, phase_dir):
-    if trigger_node == 'object':
+def adapt_FOV_to_phantom_object(trigger_nodes, controller, FOV_F, phantom_object, freq_dir, FOV_P, phase_dir):
+    if 'object' in trigger_nodes:
         if FOV_F < phantom_object['support'][freq_dir]:
             controller.set_param('FOV_F', phantom_object['support'][freq_dir], mode='ceil')
         if FOV_P < phantom_object['support'][phase_dir]:

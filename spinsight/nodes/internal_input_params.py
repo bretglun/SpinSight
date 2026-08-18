@@ -32,24 +32,24 @@ def isotropic_voxel_size(is_radial):
 
 
 @Graph.node()
-def matrix_F(voxel_size_is_input, FOV_F, voxel_F, matrix_F_ui, isotropic_voxel_size, trigger_node, voxel_P, FOV_P, matrix_P_ui):
-    if isotropic_voxel_size and trigger_node in ['matrix_P_ui', 'voxel_P']:
+def matrix_F(voxel_size_is_input, FOV_F, voxel_F, matrix_F_ui, isotropic_voxel_size, trigger_nodes, voxel_P, FOV_P, matrix_P_ui):
+    if isotropic_voxel_size and (trigger_nodes & {'matrix_P_ui', 'voxel_P'}):
         voxel = voxel_P if voxel_size_is_input else FOV_P / matrix_P_ui
         return int(np.round(FOV_F / voxel))
     return int(np.round(FOV_F / voxel_F)) if voxel_size_is_input else matrix_F_ui
 
 
 @Graph.node()
-def matrix_P(voxel_size_is_input, FOV_P, voxel_P, matrix_P_ui, isotropic_voxel_size, trigger_node, voxel_F, FOV_F, matrix_F_ui):
-    if isotropic_voxel_size and trigger_node in ['matrix_F_ui', 'voxel_F', 'trajectory']:
+def matrix_P(voxel_size_is_input, FOV_P, voxel_P, matrix_P_ui, isotropic_voxel_size, trigger_nodes, voxel_F, FOV_F, matrix_F_ui):
+    if isotropic_voxel_size and (trigger_nodes & {'matrix_F_ui', 'voxel_F', 'trajectory'}):
         voxel = voxel_F if voxel_size_is_input else FOV_F / matrix_F_ui
         return int(np.round(FOV_P / voxel))
     return int(np.round(FOV_P / voxel_P)) if voxel_size_is_input else matrix_P_ui
 
 
 @Graph.node()
-def keep_rec_acq_ratio(trigger_node):
-    return trigger_node not in ['recon_voxel_P', 'recon_voxel_F', 'recon_matrix_P_ui', 'recon_matrix_F_ui']
+def keep_rec_acq_ratio(trigger_nodes):
+    return not (trigger_nodes & {'recon_voxel_P', 'recon_voxel_F', 'recon_matrix_P_ui', 'recon_matrix_F_ui'})
 
 
 @Graph.node()

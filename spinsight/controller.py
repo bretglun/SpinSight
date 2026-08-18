@@ -37,11 +37,10 @@ class Controller(param.Parameterized):
     
     def add_input_watchers(self, graph):
         for par in self.input_nodes():
-            node = graph.nodes[par]
             if par in self.param:
-                self.param.watch(partial(graph.on_change, node), node.name)
+                self.param.watch(graph.update_input, par)
             elif par in self.input.param:
-                self.input.param.watch(partial(graph.on_change, node), node.name)
+                self.input.param.watch(graph.update_input, par)
 
     def set_visibility(self, par_name, visible):
         par = self.input.param[par_name]

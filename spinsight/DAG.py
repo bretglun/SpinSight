@@ -33,7 +33,7 @@ class Graph:
         specs = dict(type(self).node_specs)
         specs['dashboard'] = {'func': lambda: dashboard}
         # special node to track which input node was trigger
-        specs['trigger_node'] = {'func': lambda: 'None'}
+        specs['trigger_nodes'] = {'func': lambda: set()}
         # special controller node
         specs['controller'] = {'func': lambda: controller}
         # add specs for remaining controller param nodes
@@ -53,20 +53,27 @@ class Graph:
                 action_nodes[precedence].append(nodes[name])
         return nodes, action_nodes
     
-    def on_change(self, node, event):
+    def update_input(self, event):
+        self.update_inputs({event.name: event.new})
+
+    def update_inputs(self, updated):
         if not self.processing:
-            self.nodes['trigger_node'].func = lambda: node.name
-            self.nodes['trigger_node'].invalidate()
+            self.nodes['trigger_nodes'].set_constant(set(updated.keys()))
         was_processing = self.processing
         self.processing = True
-        node.invalidate()
+        for input in updated:
+            if input not in self.nodes:
+                raise ValueError(f'Input node {input} not found in graph')
+            if self.nodes[input].parents:
+                raise ValueError(f'Node {input} is not an input node')
+            self.nodes[input].set_constant(updated[input])
         self.flush_actions()
         self.processing = was_processing
     
     def flush_actions(self):
         for precedence in sorted(self.action_nodes):
             for node in self.action_nodes[precedence]:
-                node.value
+                node.value()
 
 class Node:
     
@@ -93,10 +100,9 @@ class Node:
         for child in self.children:
             child.invalidate()
 
-    @property
     def value(self):
         if not self._valid:
-            inputs = [parent.value for parent in self.parents]
+            inputs = [parent.value() for parent in self.parents]
             current_versions = tuple(p.version for p in self.parents)
             if not self.parents or current_versions != self.parent_versions:
                 self.parent_versions = current_versions
@@ -109,6 +115,12 @@ class Node:
         if not equal(self._cache, new):
             self.version += 1
             self._cache = new
+
+    def set_constant(self, value):
+        if self.parents:
+            raise ValueError(f'Cannot set constant value for node {self.name} with parents')
+        self.func = lambda: value
+        self.invalidate()
 
 
 def print_dependency_chains(source, sink, chain=''):
