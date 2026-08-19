@@ -24,9 +24,7 @@ class Controller(param.Parameterized):
         self.update_reference_SNR = True
         
     def input_nodes(self):
-        input_nodes = {par for par in self.input.param if par != 'name'}
-        input_nodes.update(('rec_acq_ratio_P', 'rec_acq_ratio_F', 'update_reference_SNR', 'reference_SNR'))
-        return input_nodes
+        return {p for p in (set(self.input.param) | set(self.param)) if p in self.graph.nodes and not self.graph.nodes[p].parents}
     
     def add_input_watchers(self):
         for par in self.input_nodes():
