@@ -115,7 +115,4 @@ class Controller(param.Parameterized):
         return {par: getattr(self.input, par) for par in self.input.param if par != 'name' and not PARAMS[par].derived}
 
     def set_input_params(self, settings):
-        for par in self.input.param:
-            if par!='name':
-                self.set_param_bounds(par)
-        self.input.param.update(settings)
+        self.graph.update_inputs(settings)
