@@ -22,18 +22,9 @@ class Controller(param.Parameterized):
     
     def set_reference_SNR(self, event=None):
         self.update_reference_SNR = True
-    
-    def get_input_node_specs(self):
-        specs = {}
-        for par in self.input_nodes():
-            if par in self.param:
-                specs[par] = {'func': partial(getattr, self, par)}
-            elif par in self.input.param:
-                specs[par] = {'func': partial(getattr, self.input, par)}
-        return specs
-    
+        
     def input_nodes(self):
-        input_nodes = set(par for par in self.input.param if par != 'name')
+        input_nodes = {par for par in self.input.param if par != 'name'}
         input_nodes.update(('rec_acq_ratio_P', 'rec_acq_ratio_F', 'update_reference_SNR', 'reference_SNR'))
         return input_nodes
     

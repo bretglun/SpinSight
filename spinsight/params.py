@@ -359,6 +359,7 @@ PARAMS = {
 
     'reference_tissue': ParamSpec(
         label = 'Reference tissue',
+        default = 'Gray matter',
         precedence = 2,
     ),
 

@@ -1,6 +1,7 @@
 from spinsight.DAG import Graph
 # Initialize graph node decorators:
 from spinsight.nodes import (
+    input,
     internal_input_params,
     helpers,
     param_bounds,

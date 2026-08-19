@@ -36,8 +36,6 @@ class Graph:
         specs['trigger_nodes'] = {'func': lambda: set()}
         # special controller node
         specs['controller'] = {'func': lambda: controller}
-        # add specs for remaining controller param nodes
-        specs.update(controller.get_input_node_specs())
         return specs
     
     def build_nodes(self, specs):
