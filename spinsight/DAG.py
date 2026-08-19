@@ -50,9 +50,6 @@ class Graph:
                     action_nodes[precedence] = []
                 action_nodes[precedence].append(nodes[name])
         return nodes, action_nodes
-    
-    def update_input(self, event):
-        self.update_inputs({event.name: event.new})
 
     def update_inputs(self, updated):
         if not self.processing:

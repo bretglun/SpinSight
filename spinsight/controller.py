@@ -31,9 +31,13 @@ class Controller(param.Parameterized):
     def add_input_watchers(self):
         for par in self.input_nodes():
             if par in self.param:
-                self.param.watch(self.graph.update_input, par)
+                self.param.watch(self.on_param_change, par)
             elif par in self.input.param:
-                self.input.param.watch(self.graph.update_input, par)
+                self.input.param.watch(self.on_param_change, par)
+
+    def on_param_change(self, event):
+        self.graph.update_inputs({event.name: event.new})
+        self.sync_with_graph()
 
     def set_visibility(self, par_name, visible):
         par = self.input.param[par_name]
@@ -107,3 +111,6 @@ class Controller(param.Parameterized):
 
     def set_input_params(self, settings):
         self.graph.update_inputs(settings)
+
+    def sync_with_graph(self):
+        pass
