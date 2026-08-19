@@ -33,11 +33,6 @@ def kspace(kspace_type, show_processed_kspace, oversampled_recon_matrix, FOV, re
     return hv.Image(ksp, vdims=['magnitude']).opts(xlim=(-lim,lim), ylim=(-lim,lim))
 
 
-@Graph.node(action=ACTION.KSPACE)
-def update_kspace(dashboard, kspace):
-    dashboard.kspace = kspace
-
-
 @Graph.node()
 def k_trajectory(RF_refocusing, frequency_board, phase_board, is_radial, phase_dir, spoke_angle):
     frequency_area = frequency_board['net_gradient']
@@ -69,11 +64,6 @@ def get_k_coords(t, gp, tp, refocus_intervals):
         k[(t>ref_start) & (t<ref_stop)] -= 2 * k_before * (refocus_times - ref_start) / (ref_stop - ref_start)
         k[t>=ref_stop] -= 2 * k_before
     return k
-
-
-@Graph.node(action=ACTION.KSPACE)
-def update_k_trajectory(dashboard, k_trajectory):
-    dashboard.hover.k_trajectory = k_trajectory
 
 
 @Graph.node()

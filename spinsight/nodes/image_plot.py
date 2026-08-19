@@ -11,11 +11,6 @@ def annotated_image(image, FOV_box):
     return image * FOV_box
 
 
-@Graph.node(action=ACTION.IMAGE)
-def update_image(dashboard, annotated_image):
-    dashboard.image = annotated_image
-
-
 @Graph.node()
 def image(image_type, recon_matrix, FOV, image_array):
     operator = OPERATORS[image_type]

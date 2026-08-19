@@ -17,11 +17,6 @@ def sequence_plot(frequency_board, phase_board, slice_board, RF_board, signal_bo
     return hv.Layout(list(board_plots)).cols(1).options(toolbar='below')
 
 
-@Graph.node(action=ACTION.SEQPLOT)
-def update_seqplot(dashboard, sequence_plot):
-    dashboard.sequence_plot = sequence_plot
-
-
 @Graph.node()
 def frequency_board(time_dim, frequency_dim, frequency_objects, TR_span, frequency_hover):
     vdims = [tip[0] for tip in frequency_hover.tooltips]
@@ -209,26 +204,6 @@ def RF_hover(dashboard):
 @Graph.node()
 def signal_hover(dashboard):
     return dashboard.hover.get_hover_tool('signal', ['name', 'center', 'duration'])
-
-
-@Graph.node(action=ACTION.KSPACE)
-def update_frequency_objects(dashboard, frequency_objects):
-    dashboard.hover.objects['frequency'] = frequency_objects
-
-
-@Graph.node(action=ACTION.KSPACE)
-def update_phase_objects(dashboard, phase_objects):
-    dashboard.hover.objects['phase'] = phase_objects
-
-
-@Graph.node(action=ACTION.KSPACE)
-def update_RF_objects(dashboard, RF_objects):
-    dashboard.hover.objects['RF'] = RF_objects
-
-
-@Graph.node(action=ACTION.KSPACE)
-def update_signal_objects(dashboard, signal_objects):
-    dashboard.hover.objects['signal'] = signal_objects
 
 
 def flatten_dicts(list_of_dicts_and_lists):

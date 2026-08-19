@@ -58,7 +58,4 @@ ACTION = SimpleNamespace(
     VISIBILITY = 1,
     BOUNDS = 2,
     VALUE = 3,
-    IMAGE = 4,
-    KSPACE = 5,
-    SEQPLOT = 6,
 )

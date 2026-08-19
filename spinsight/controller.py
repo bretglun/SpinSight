@@ -3,7 +3,7 @@ from functools import partial
 from spinsight.param_utils import snap, filter_objects, value_in_objects, insert_value_in_list_sorted, insert_value_in_dict_sorted, get_object_values
 from spinsight.params import PARAMS
 from spinsight.input_params import InputParams
-from spinsight import simulator
+from spinsight import gui, simulator
 import warnings
 
 
@@ -17,6 +17,7 @@ class Controller(param.Parameterized):
 
     def __init__(self, gui, **params):
         super().__init__(**params)
+        self.gui = gui
         self.input = InputParams()
         self.graph = simulator.make_graph(self, gui)
         self.add_input_watchers()
@@ -116,7 +117,16 @@ class Controller(param.Parameterized):
         return self.graph.nodes[par_name].value()
 
     def sync_with_graph(self):
+        self.update_plots()
         self.update_rec_acq_ratio()
+
+    def update_plots(self):
+        self.gui.image = self.from_graph('annotated_image')
+        self.gui.kspace = self.from_graph('kspace')
+        self.gui.hover.k_trajectory = self.from_graph('k_trajectory')
+        for board in ['frequency', 'phase', 'RF', 'signal']:
+            self.gui.hover.objects[board] = self.from_graph(f'{board}_objects')
+        self.gui.sequence_plot = self.from_graph('sequence_plot')
 
     def update_rec_acq_ratio(self):
         self.rec_acq_ratio_F = self.from_graph('recon_matrix_F') / self.from_graph('matrix_F')
