@@ -15,13 +15,6 @@ def relative_SNR(reference_SNR, SNR):
     return SNR / reference_SNR
 
 
-@Graph.node(action=ACTION.VALUE)
-def set_reference_SNR(update_reference_SNR, controller, SNR):
-    if update_reference_SNR:
-        controller.reference_SNR = SNR
-        controller.update_reference_SNR = False
-
-
 @Graph.node()
 def reference_signal(decayed_signal, PD_and_T1w, reference_tissue):
     return decayed_signal * np.abs(PD_and_T1w[reference_tissue])

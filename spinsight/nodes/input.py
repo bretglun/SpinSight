@@ -243,10 +243,5 @@ def rec_acq_ratio_P():
 
 
 @Graph.node()
-def update_reference_SNR():
-    return False
-
-
-@Graph.node()
 def reference_SNR():
     return 0

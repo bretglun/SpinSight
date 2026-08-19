@@ -12,7 +12,6 @@ class Controller(param.Parameterized):
     rec_acq_ratio_P = param.Number(default=2.0) # reconstructed / acquired matrix_P ratio
     rec_acq_ratio_F = param.Number(default=2.0) # reconstructed / acquired matrix_F ratio
     
-    update_reference_SNR = param.Boolean()
     reference_SNR = param.Number()
 
     def __init__(self, gui, **params):
@@ -24,7 +23,7 @@ class Controller(param.Parameterized):
         self.set_reference_SNR()
     
     def set_reference_SNR(self, event=None):
-        self.update_reference_SNR = True
+        self.reference_SNR = self.from_graph('SNR')
         
     def input_nodes(self):
         return {p for p in (set(self.input.param) | set(self.param)) if p in self.graph.nodes and not self.graph.nodes[p].parents}
