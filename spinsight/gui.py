@@ -30,7 +30,7 @@ class GUI(param.Parameterized):
     relative_SNR = param.String(label='Relative SNR')
     scantime = param.String(label='Scan time')
     FW_shift = param.String(label='Fat/water shift')
-    bandwidth = param.String(label='Bandwidth')
+    pixel_bandwidth = param.String(label='Bandwidth')
     
     def __init__(self, settings_file, start_time, version, lazy_sliders, dark_mode, **params):
         
@@ -171,7 +171,7 @@ class GUI(param.Parameterized):
     def make_info_panel(self, reset_SNR_button):
         return pn.Column(
             pn.Row(self.controller.input.param.reference_tissue, reset_SNR_button),
-            pn.Row(*(self.indicator(par) for par in ['relative_SNR', 'scantime', 'FW_shift', 'bandwidth']))
+            pn.Row(*(self.indicator(par) for par in ['relative_SNR', 'scantime', 'FW_shift', 'pixel_bandwidth']))
         )
     
     def indicator(self, par_name):

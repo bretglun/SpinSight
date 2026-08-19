@@ -18,12 +18,17 @@ def TE(TE_ui, min_TE):
 
 
 @Graph.node()
-def pixel_bandwidth(FOV_BW_is_input, FOV_bandwidth, matrix_F, FW_shift_is_input, FW_shift, field_strength, pixel_bandwidth_ui):
+def pixel_bandwidth(FOV_BW_is_input, FOV_bandwidth, matrix_F, FW_shift_is_input, FW_shift_ui, field_strength, pixel_bandwidth_ui):
     if FOV_BW_is_input:
         return convert.FOV_BW_to_pixel_BW(FOV_bandwidth, matrix_F)
     elif FW_shift_is_input:
-        return convert.shift_to_pixel_BW(FW_shift, field_strength)
+        return convert.shift_to_pixel_BW(FW_shift_ui, field_strength)
     return pixel_bandwidth_ui
+
+
+@Graph.node()
+def FW_shift(pixel_bandwidth, field_strength):
+    return convert.pixel_BW_to_shift(pixel_bandwidth, field_strength)
 
 
 @Graph.node()

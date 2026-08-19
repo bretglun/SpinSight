@@ -15,7 +15,7 @@ def set_FOV_bandwidth_visibility(controller, FOV_BW_is_input):
 
 @Graph.node(action=ACTION.VISIBILITY)
 def set_FW_shift_visibility(controller, FW_shift_is_input):
-    controller.set_visibility('FW_shift', FW_shift_is_input)
+    controller.set_visibility('FW_shift_ui', FW_shift_is_input)
 
 
 @Graph.node(action=ACTION.VISIBILITY)

@@ -110,7 +110,7 @@ PARAMS = {
         group = 'Sequence',
     ),
 
-    'FW_shift': ParamSpec(
+    'FW_shift_ui': ParamSpec(
         label = 'Fat/water shift',
         objects = {formatting.FW_shift(shift): shift for shift in FW_shift_vals},
         default = 0.45,

@@ -43,8 +43,8 @@ def FOV_bandwidth():
 
 
 @Graph.node()
-def FW_shift():
-    return PARAMS['FW_shift'].default
+def FW_shift_ui():
+    return PARAMS['FW_shift_ui'].default
 
 
 @Graph.node()

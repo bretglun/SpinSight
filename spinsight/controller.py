@@ -1,9 +1,8 @@
 import param
-from functools import partial
 from spinsight.param_utils import snap, filter_objects, value_in_objects, insert_value_in_list_sorted, insert_value_in_dict_sorted, get_object_values
 from spinsight.params import PARAMS
 from spinsight.input_params import InputParams
-from spinsight import gui, simulator
+from spinsight import simulator, formatting
 import warnings
 
 
@@ -116,8 +115,13 @@ class Controller(param.Parameterized):
         return self.graph.nodes[par_name].value()
 
     def sync_with_graph(self):
+        self.update_info_params()
         self.update_plots()
         self.update_rec_acq_ratio()
+
+    def update_info_params(self):
+        for par in ['spoke_angle', 'num_shots', 'relative_SNR', 'scantime', 'pixel_bandwidth', 'FW_shift']:
+            setattr(self.gui, par, getattr(formatting, par)(self.from_graph(par)))
 
     def update_plots(self):
         self.gui.image = self.from_graph('annotated_image')

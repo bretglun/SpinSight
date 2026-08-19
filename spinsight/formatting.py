@@ -51,6 +51,10 @@ def spoke_angle(angle):
     return f'{angle:.0f}°'
 
 
+def num_shots(num):
+    return f'{num}'
+
+
 def FOV(fov):
     return f'{fov:.0f} mm'
 

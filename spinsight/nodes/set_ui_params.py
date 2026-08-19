@@ -5,30 +5,9 @@ from spinsight.constants import ACTION
 
 
 @Graph.node(action=ACTION.VALUE)
-def set_spoke_angle(dashboard, spoke_angle):
-    dashboard.spoke_angle = formatting.spoke_angle(spoke_angle)
-
-
-@Graph.node(action=ACTION.VALUE)
-def set_num_shots(dashboard, num_shots):
-    dashboard.num_shots = str(num_shots)
-
-
-@Graph.node(action=ACTION.VALUE)
-def set_relative_SNR(dashboard, relative_SNR):
-    dashboard.relative_SNR = formatting.relative_SNR(relative_SNR)
-
-
-@Graph.node(action=ACTION.VALUE)
-def set_scantime(dashboard, scantime):
-    dashboard.scantime = formatting.scantime(scantime)
-
-
-@Graph.node(action=ACTION.VALUE)
-def set_pixel_bandwidth(controller, pixel_BW_is_input, pixel_bandwidth, dashboard):
+def set_pixel_bandwidth(controller, pixel_BW_is_input, pixel_bandwidth):
     if not pixel_BW_is_input:
         controller.set_param('pixel_bandwidth_ui', pixel_bandwidth)
-    dashboard.bandwidth = formatting.pixel_bandwidth(pixel_bandwidth)
 
 
 @Graph.node(action=ACTION.VALUE)
@@ -38,11 +17,9 @@ def set_FOV_bandwidth(controller, FOV_BW_is_input, pixel_bandwidth, matrix_F):
 
 
 @Graph.node(action=ACTION.VALUE)
-def set_FW_shift(controller, FW_shift_is_input, pixel_bandwidth, field_strength, dashboard):
-    shift = convert.pixel_BW_to_shift(pixel_bandwidth, field_strength)
+def set_FW_shift(controller, FW_shift_is_input, FW_shift):
     if not FW_shift_is_input:
-        controller.set_param('FW_shift', shift)
-    dashboard.FW_shift = formatting.FW_shift(shift)
+        controller.set_param('FW_shift_ui', FW_shift)
 
 
 @Graph.node(action=ACTION.VALUE)

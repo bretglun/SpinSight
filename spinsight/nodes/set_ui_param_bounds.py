@@ -30,7 +30,7 @@ def set_FOV_bandwidth_bounds(controller, FOV_BW_is_input, pixel_bandwidth_bounds
 @Graph.node(action=ACTION.BOUNDS)
 def set_FW_shift_bounds(controller, FW_shift_is_input, pixel_bandwidth_bounds, field_strength):
     if FW_shift_is_input:
-        controller.set_param_bounds('FW_shift', minval=convert.pixel_BW_to_shift(pixel_bandwidth_bounds.max, field_strength), maxval=convert.pixel_BW_to_shift(pixel_bandwidth_bounds.min, field_strength))
+        controller.set_param_bounds('FW_shift_ui', minval=convert.pixel_BW_to_shift(pixel_bandwidth_bounds.max, field_strength), maxval=convert.pixel_BW_to_shift(pixel_bandwidth_bounds.min, field_strength))
 
 
 @Graph.node(action=ACTION.BOUNDS)
