@@ -3,6 +3,7 @@ from functools import partial
 from spinsight.param_utils import snap, filter_objects, value_in_objects, insert_value_in_list_sorted, insert_value_in_dict_sorted, get_object_values
 from spinsight.params import PARAMS
 from spinsight.input_params import InputParams
+from spinsight import simulator
 import warnings
 
 
@@ -14,9 +15,10 @@ class Controller(param.Parameterized):
     update_reference_SNR = param.Boolean()
     reference_SNR = param.Number()
 
-    def __init__(self, **params):
+    def __init__(self, gui, **params):
         super().__init__(**params)
         self.input = InputParams()
+        self.graph = simulator.make_graph(self, gui)
     
     def set_reference_SNR(self, event=None):
         self.update_reference_SNR = True
@@ -35,12 +37,12 @@ class Controller(param.Parameterized):
         input_nodes.update(('rec_acq_ratio_P', 'rec_acq_ratio_F', 'update_reference_SNR', 'reference_SNR'))
         return input_nodes
     
-    def add_input_watchers(self, graph):
+    def add_input_watchers(self):
         for par in self.input_nodes():
             if par in self.param:
-                self.param.watch(graph.update_input, par)
+                self.param.watch(self.graph.update_input, par)
             elif par in self.input.param:
-                self.input.param.watch(graph.update_input, par)
+                self.input.param.watch(self.graph.update_input, par)
 
     def set_visibility(self, par_name, visible):
         par = self.input.param[par_name]

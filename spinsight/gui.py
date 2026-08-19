@@ -4,6 +4,7 @@ import holoviews as hv
 from functools import partial
 import toml
 from spinsight import styles
+from spinsight.controller import Controller
 from spinsight.hover_manager import HoverManager
 from spinsight.params import PARAMS
 from spinsight.styles import INFO_FONT_SIZE, INFO_TITLE_SIZE, INFO_TEXT_COLOR
@@ -31,16 +32,19 @@ class GUI(param.Parameterized):
     FW_shift = param.String(label='Fat/water shift')
     bandwidth = param.String(label='Bandwidth')
     
-    def __init__(self, controller, settings_file, start_time, version, lazy_sliders, dark_mode, **params):
+    def __init__(self, settings_file, start_time, version, lazy_sliders, dark_mode, **params):
         
         super().__init__(**params)
-
-        self.controller = controller
+        
         self.version = version
         self.settings_file = settings_file
         self.start_time = start_time
         
         self.hover = HoverManager()
+
+        self.controller = Controller(self)
+        self.controller.add_input_watchers()
+        self.controller.set_reference_SNR()
 
         pn.config.throttled = lazy_sliders
 
