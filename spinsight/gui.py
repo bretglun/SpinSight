@@ -43,8 +43,6 @@ class GUI(param.Parameterized):
         self.hover = HoverManager()
 
         self.controller = Controller(self)
-        self.controller.add_input_watchers()
-        self.controller.set_reference_SNR()
 
         pn.config.throttled = lazy_sliders
 

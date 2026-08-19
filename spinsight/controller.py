@@ -19,6 +19,8 @@ class Controller(param.Parameterized):
         super().__init__(**params)
         self.input = InputParams()
         self.graph = simulator.make_graph(self, gui)
+        self.add_input_watchers()
+        self.set_reference_SNR()
     
     def set_reference_SNR(self, event=None):
         self.update_reference_SNR = True
