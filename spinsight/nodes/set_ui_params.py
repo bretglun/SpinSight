@@ -128,13 +128,3 @@ def set_trajectory_objects(controller, EPI_factor, turbo_factor):
         controller.input.param.trajectory.objects = PARAMS['trajectory'].objects
         controller.input.trajectory = updated
     controller.input.param.trajectory.objects = [t for t in PARAMS['trajectory'].objects if t != invalid]
-
-
-@Graph.node(action=ACTION.INVISIBLE)
-def set_rec_acq_ratio_F(controller, recon_matrix_F, matrix_F):
-    controller.rec_acq_ratio_F = recon_matrix_F / matrix_F
-
-
-@Graph.node(action=ACTION.INVISIBLE)
-def set_rec_acq_ratio_P(controller, recon_matrix_P, matrix_P):
-    controller.rec_acq_ratio_P = recon_matrix_P / matrix_P

@@ -112,5 +112,12 @@ class Controller(param.Parameterized):
     def set_input_params(self, settings):
         self.graph.update_inputs(settings)
 
+    def from_graph(self, par_name):
+        return self.graph.nodes[par_name].value()
+
     def sync_with_graph(self):
-        pass
+        self.update_rec_acq_ratio()
+
+    def update_rec_acq_ratio(self):
+        self.rec_acq_ratio_F = self.from_graph('recon_matrix_F') / self.from_graph('matrix_F')
+        self.rec_acq_ratio_P = self.from_graph('recon_matrix_P') / self.from_graph('matrix_P')

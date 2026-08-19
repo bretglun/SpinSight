@@ -61,5 +61,4 @@ ACTION = SimpleNamespace(
     IMAGE = 4,
     KSPACE = 5,
     SEQPLOT = 6,
-    INVISIBLE = 7,
 )
