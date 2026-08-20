@@ -1,6 +1,7 @@
 from spinsight import sequence
 from spinsight.styles import BOARD_COLORS, BOARD_PLOT_WIDTH, BOARD_PLOT_HEIGHT, BOARD_PLOT_HEIGHT_LAST, TIME_BOUNDS, G_READ_RANGE, G_PHASE_RANGE, G_SLICE_RANGE, RF_RANGE, SIGNAL_RANGE
 from spinsight.DAG import Graph
+from spinsight.hover_manager import HoverManager
 import holoviews as hv
 from functools import partial
 import numpy as np
@@ -181,12 +182,16 @@ def ADC_dim():
 
 
 @Graph.node()
-def hover_tools(controller):
-    return {'frequency': controller.hover.get_hover_tool('frequency', ['name', 'center', 'duration', 'area']),
-            'phase': controller.hover.get_hover_tool('phase', ['name', 'center', 'duration', 'area']),
-            'slice': controller.hover.get_hover_tool('slice', ['name', 'center', 'duration', 'area']),
-            'RF': controller.hover.get_hover_tool('RF', ['name', 'center', 'duration', 'flip_angle']),
-            'signal': controller.hover.get_hover_tool('signal', ['name', 'center', 'duration'])}
+def hover_manager():
+    return HoverManager()
+
+@Graph.node()
+def hover_tools(hover_manager):
+    return {'frequency': hover_manager.get_hover_tool('frequency', ['name', 'center', 'duration', 'area']),
+            'phase': hover_manager.get_hover_tool('phase', ['name', 'center', 'duration', 'area']),
+            'slice': hover_manager.get_hover_tool('slice', ['name', 'center', 'duration', 'area']),
+            'RF': hover_manager.get_hover_tool('RF', ['name', 'center', 'duration', 'flip_angle']),
+            'signal': hover_manager.get_hover_tool('signal', ['name', 'center', 'duration'])}
 
 
 def flatten_dicts(list_of_dicts_and_lists):

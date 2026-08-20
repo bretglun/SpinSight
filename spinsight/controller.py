@@ -1,10 +1,8 @@
 import param
-from spinsight.nodes.input import do_apodize
 from spinsight.param_utils import snap, filter_objects, value_in_objects, insert_value_in_list_sorted, insert_value_in_dict_sorted, get_object_values
 from spinsight.params import PARAMS
 from spinsight.input_params import InputParams
 from spinsight import simulator, convert, formatting
-from spinsight.hover_manager import HoverManager
 import warnings
 
 
@@ -18,7 +16,6 @@ class Controller(param.Parameterized):
     def __init__(self, gui, **params):
         super().__init__(**params)
         self.gui = gui
-        self.hover = HoverManager()
         self.input = InputParams()
         self.graph = simulator.make_graph(self)
         self.add_input_watchers()
@@ -266,9 +263,10 @@ class Controller(param.Parameterized):
     def update_plots(self):
         self.gui.image = self.from_graph('annotated_image')
         self.gui.kspace = self.from_graph('kspace')
-        self.hover.k_trajectory = self.from_graph('k_trajectory')
+        hover = self.from_graph('hover_manager')
+        hover.k_trajectory = self.from_graph('k_trajectory')
         for board in ['frequency', 'phase', 'RF', 'signal']:
-            self.hover.objects[board] = self.from_graph(f'{board}_objects')
+            hover.objects[board] = self.from_graph(f'{board}_objects')
         self.gui.sequence_plot = self.from_graph('sequence_plot')
 
     def update_rec_acq_ratio(self):

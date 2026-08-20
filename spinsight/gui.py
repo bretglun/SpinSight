@@ -142,7 +142,7 @@ class GUI(param.Parameterized):
     
     def make_kspace_panel(self):
         return pn.Column(
-            hv.DynamicMap(self.display_kspace) * self.controller.hover.k_line, 
+            hv.DynamicMap(self.display_kspace) * self.controller.from_graph('hover_manager').k_line, 
             # self.controller.input.param.kspace_type, 
             pn.Row(self.controller.input.param.show_processed_kspace, self.controller.input.param.kspace_exponent), 
             visible=False
