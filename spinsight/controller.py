@@ -1,8 +1,12 @@
 import param
+from spinsight.nodes.helpers import FOV_BW_is_input, FW_shift_is_input, matrix_is_input, voxel_size_is_input
+from spinsight.nodes.input import parameter_style
+from spinsight.nodes.internal_input_params import TR, isotropic_voxel_size, keep_rec_acq_ratio
+from spinsight.nodes.param_bounds import max_TE
 from spinsight.param_utils import snap, filter_objects, value_in_objects, insert_value_in_list_sorted, insert_value_in_dict_sorted, get_object_values
 from spinsight.params import PARAMS
 from spinsight.input_params import InputParams
-from spinsight import simulator, formatting
+from spinsight import simulator, convert, formatting
 import warnings
 
 
@@ -115,9 +119,63 @@ class Controller(param.Parameterized):
         return self.graph.nodes[par_name].value()
 
     def sync_with_graph(self):
+        self.update_params()
         self.update_info_params()
         self.update_plots()
         self.update_rec_acq_ratio()
+
+    def pixel_BW_is_input(self):
+        return 'PIXEL BW' in self.input.parameter_style.upper()
+
+    def FOV_BW_is_input(self):
+        return 'FOV BW' in self.input.parameter_style.upper()
+
+    def FW_shift_is_input(self):
+        return 'FAT/WATER SHIFT' in self.input.parameter_style.upper()
+
+    def matrix_is_input(self):
+        return 'MATRIX' in self.input.parameter_style.upper()
+
+    def voxel_size_is_input(self):
+        return 'VOXEL SIZE' in self.input.parameter_style.upper()
+
+    def update_params(self):
+        if not self.pixel_BW_is_input():
+            self.set_param('pixel_bandwidth_ui', self.from_graph('pixel_bandwidth'))
+        if not self.FOV_BW_is_input():
+            self.set_param('FOV_bandwidth', convert.pixel_BW_to_FOV_BW(self.from_graph('pixel_bandwidth'), self.from_graph('matrix_F')))
+        if not self.FW_shift_is_input():
+            self.set_param('FW_shift_ui', self.from_graph('FW_shift'))
+        if not self.matrix_is_input() or self.from_graph('isotropic_voxel_size'):
+            self.set_param('matrix_F_ui', self.from_graph('matrix_F'))
+            self.set_param('matrix_P_ui', self.from_graph('matrix_P'))
+        if 'object' in self.from_graph('trigger_nodes'):
+            if self.from_graph('FOV_F') < self.from_graph('phantom_object')['support'][self.from_graph('freq_dir')]:
+                self.set_param('FOV_F', self.from_graph('phantom_object')['support'][self.from_graph('freq_dir')], mode='ceil')
+            if self.from_graph('FOV_P') < self.from_graph('phantom_object')['support'][self.from_graph('phase_dir')]:
+                self.set_param('FOV_P', self.from_graph('phantom_object')['support'][self.from_graph('phase_dir')], mode='ceil')
+        if not self.matrix_is_input() or self.from_graph('keep_rec_acq_ratio'):
+            self.set_param('recon_matrix_F_ui', self.from_graph('recon_matrix_F'))
+            self.set_param('recon_matrix_P_ui', self.from_graph('recon_matrix_P'))
+        if not self.voxel_size_is_input() or self.from_graph('isotropic_voxel_size'):
+            self.set_param('voxel_F', self.from_graph('FOV_F') / self.from_graph('matrix_F'))
+            self.set_param('voxel_P', self.from_graph('FOV_P') / self.from_graph('matrix_P'))
+        if not self.voxel_size_is_input() or self.from_graph('keep_rec_acq_ratio'):
+            self.set_param('recon_voxel_F', self.from_graph('FOV_F') / self.from_graph('recon_matrix_F'))
+            self.set_param('recon_voxel_P', self.from_graph('FOV_P') / self.from_graph('recon_matrix_P'))
+        self.set_param_bounds('TR_ui', minval=self.from_graph('min_TR'))
+        self.set_param('TR_ui', self.from_graph('TR'))
+        self.set_param_bounds('TE_ui', minval=self.from_graph('min_TE'), maxval=self.from_graph('max_TE'))
+        self.set_param('TE_ui', self.from_graph('TE'))
+        self.input.param.shot_ui.bounds = (1, self.from_graph('num_shots'))
+        self.set_param('shot_ui', self.from_graph('shot') + 1)
+
+        # Label radial trajectory 'Radial' or 'PROPELLER' depending on nLines per shot
+        invalid, updated = ('PROPELLER', 'Radial') if (self.from_graph('EPI_factor') * self.from_graph('turbo_factor') == 1) else ('Radial', 'PROPELLER')
+        if self.input.trajectory == invalid:
+            self.input.param.trajectory.objects = PARAMS['trajectory'].objects
+            self.input.trajectory = updated
+        self.input.param.trajectory.objects = [t for t in PARAMS['trajectory'].objects if t != invalid]
 
     def update_info_params(self):
         for par in ['spoke_angle', 'num_shots', 'relative_SNR', 'scantime', 'pixel_bandwidth', 'FW_shift']:

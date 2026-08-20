@@ -18,7 +18,6 @@ from spinsight.nodes import (
     SNR_and_scantime,
     set_ui_param_visibility,
     set_ui_param_bounds,
-    set_ui_params,
 )
 
 

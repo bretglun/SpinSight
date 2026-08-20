@@ -57,5 +57,4 @@ SPOILER_AREA = 30. # uTs/m
 ACTION = SimpleNamespace(
     VISIBILITY = 1,
     BOUNDS = 2,
-    VALUE = 3,
 )
