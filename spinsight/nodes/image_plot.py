@@ -1,5 +1,5 @@
 from spinsight.DAG import Graph
-from spinsight.constants import ACTION, OPERATORS
+from spinsight.constants import OPERATORS
 import holoviews as hv
 import numpy as np
 import xarray as xr

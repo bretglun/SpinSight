@@ -1,4 +1,3 @@
-from spinsight.constants import ACTION
 from spinsight.DAG import Graph
 import numpy as np
 

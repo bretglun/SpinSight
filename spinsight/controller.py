@@ -1,4 +1,5 @@
 import param
+from spinsight.nodes.input import do_apodize
 from spinsight.param_utils import snap, filter_objects, value_in_objects, insert_value_in_list_sorted, insert_value_in_dict_sorted, get_object_values
 from spinsight.params import PARAMS
 from spinsight.input_params import InputParams
@@ -130,11 +131,32 @@ class Controller(param.Parameterized):
         return 'VOXEL SIZE' in self.input.parameter_style.upper()
 
     def sync_with_graph(self):
+        self.update_visibility()
         self.update_bounds()
         self.update_params()
         self.update_info_params()
         self.update_plots()
         self.update_rec_acq_ratio()
+
+    def update_visibility(self):
+        self.set_visibility('pixel_bandwidth_ui', self.pixel_BW_is_input())
+        self.set_visibility('FOV_bandwidth', self.FOV_BW_is_input())
+        self.set_visibility('FW_shift_ui', self.FW_shift_is_input())
+        for voxel_size_param in ['voxel_F', 'voxel_P', 'recon_voxel_F', 'recon_voxel_P']:
+            self.set_visibility(voxel_size_param, self.voxel_size_is_input())
+        for matrix_param in ['matrix_F_ui', 'matrix_P_ui', 'recon_matrix_F_ui', 'recon_matrix_P_ui']:
+            self.set_visibility(matrix_param, self.matrix_is_input())
+        self.set_visibility('partial_Fourier', not self.from_graph('is_radial'))
+        self.set_visibility('frequency_direction', not self.from_graph('is_radial'))
+        self.set_visibility('phase_oversampling', not self.from_graph('is_radial'))
+        self.set_visibility('radial_oversampling', self.from_graph('is_radial'))
+        self.set_visibility('TI', self.from_graph('sequence_type') == 'Inversion Recovery')
+        self.set_visibility('FA', self.from_graph('sequence_type') == 'Spoiled Gradient Echo')
+        self.set_visibility('turbo_factor', not self.from_graph('is_gradient_echo'))
+        if self.from_graph('is_gradient_echo'):
+            self.set_param('turbo_factor', 1)
+        self.set_visibility('homodyne', (self.from_graph('num_blank_lines') > 0 and not self.from_graph('is_radial')))
+        self.set_visibility('apodization_alpha', self.from_graph('do_apodize'))
 
     def update_bounds(self):
         if self.from_graph('sequence_type') == 'Inversion Recovery':

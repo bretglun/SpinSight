@@ -16,7 +16,6 @@ from spinsight.nodes import (
     kspace_plot,
     image_plot,
     SNR_and_scantime,
-    set_ui_param_visibility,
 )
 
 

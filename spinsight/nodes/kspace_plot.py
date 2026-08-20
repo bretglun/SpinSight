@@ -1,5 +1,5 @@
 from spinsight import recon
-from spinsight.constants import ACTION, OPERATORS, GYRO
+from spinsight.constants import OPERATORS, GYRO
 from spinsight.DAG import Graph
 import holoviews as hv
 import xarray as xr

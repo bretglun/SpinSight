@@ -1,5 +1,4 @@
 from spinsight import sequence
-from spinsight.constants import ACTION
 from spinsight.styles import BOARD_COLORS, BOARD_PLOT_WIDTH, BOARD_PLOT_HEIGHT, BOARD_PLOT_HEIGHT_LAST, TIME_BOUNDS, G_READ_RANGE, G_PHASE_RANGE, G_SLICE_RANGE, RF_RANGE, SIGNAL_RANGE
 from spinsight.DAG import Graph
 import holoviews as hv
