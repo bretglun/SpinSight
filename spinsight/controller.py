@@ -17,7 +17,7 @@ class Controller(param.Parameterized):
         super().__init__(**params)
         self.gui = gui
         self.input = InputParams()
-        self.graph = simulator.make_graph(self)
+        self.graph = simulator.make_graph()
         self.add_input_watchers()
         self.set_reference_SNR()
     
