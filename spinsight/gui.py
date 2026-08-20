@@ -5,7 +5,6 @@ from functools import partial
 import toml
 from spinsight import styles
 from spinsight.controller import Controller
-from spinsight.hover_manager import HoverManager
 from spinsight.params import PARAMS
 from spinsight.styles import INFO_FONT_SIZE, INFO_TITLE_SIZE, INFO_TEXT_COLOR
 
@@ -39,8 +38,6 @@ class GUI(param.Parameterized):
         self.version = version
         self.settings_file = settings_file
         self.start_time = start_time
-        
-        self.hover = HoverManager()
 
         self.controller = Controller(self)
 
@@ -145,7 +142,7 @@ class GUI(param.Parameterized):
     
     def make_kspace_panel(self):
         return pn.Column(
-            hv.DynamicMap(self.display_kspace) * self.hover.k_line, 
+            hv.DynamicMap(self.display_kspace) * self.controller.hover.k_line, 
             # self.controller.input.param.kspace_type, 
             pn.Row(self.controller.input.param.show_processed_kspace, self.controller.input.param.kspace_exponent), 
             visible=False

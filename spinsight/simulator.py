@@ -19,5 +19,5 @@ from spinsight.nodes import (
 )
 
 
-def make_graph(controller, dashboard):
-    return Graph(controller, dashboard)
+def make_graph(controller):
+    return Graph(controller)

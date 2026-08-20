@@ -17,52 +17,52 @@ def sequence_plot(frequency_board, phase_board, slice_board, RF_board, signal_bo
 
 
 @Graph.node()
-def frequency_board(time_dim, frequency_dim, frequency_objects, TR_span, frequency_hover):
-    vdims = [tip[0] for tip in frequency_hover.tooltips]
+def frequency_board(time_dim, frequency_dim, frequency_objects, TR_span, hover_tools):
+    vdims = [tip[0] for tip in hover_tools['frequency'].tooltips]
     specs = {'zero_line': hline(time_dim, frequency_dim),
                 'net_gradient': hv.Area(sequence.accumulate_waveforms(frequency_objects, 'frequency'), time_dim, frequency_dim).opts(color=BOARD_COLORS['frequency']),
-                'waveforms': hv.Polygons(frequency_objects, kdims=[time_dim, frequency_dim], vdims=vdims).opts(tools=[frequency_hover], cmap=[BOARD_COLORS['frequency']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=TIME_BOUNDS)]),
+                'waveforms': hv.Polygons(frequency_objects, kdims=[time_dim, frequency_dim], vdims=vdims).opts(tools=[hover_tools['frequency']], cmap=[BOARD_COLORS['frequency']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=TIME_BOUNDS)]),
                 'TR_span': TR_span['frequency']}
     return specs
 
 
 @Graph.node()
-def phase_board(time_dim, phase_dim, phase_objects, TR_span, phase_hover):
-    vdims = [tip[0] for tip in phase_hover.tooltips]
+def phase_board(time_dim, phase_dim, phase_objects, TR_span, hover_tools):
+    vdims = [tip[0] for tip in hover_tools['phase'].tooltips]
     specs = {'zero_lines': hline(time_dim, phase_dim),
                 'net_gradient': hv.Area(sequence.accumulate_waveforms(phase_objects, 'phase'), time_dim, phase_dim).opts(color=BOARD_COLORS['phase']),
-                'waveforms': hv.Polygons(phase_objects, kdims=[time_dim, phase_dim], vdims=vdims).opts(tools=[phase_hover], cmap=[BOARD_COLORS['phase']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=TIME_BOUNDS)]),
+                'waveforms': hv.Polygons(phase_objects, kdims=[time_dim, phase_dim], vdims=vdims).opts(tools=[hover_tools['phase']], cmap=[BOARD_COLORS['phase']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=TIME_BOUNDS)]),
                 'TR_span': TR_span['phase']}
     return specs
 
 
 @Graph.node()
-def slice_board(time_dim, slice_dim, slice_objects, TR_span, slice_hover):
-    vdims = [tip[0] for tip in slice_hover.tooltips]
+def slice_board(time_dim, slice_dim, slice_objects, TR_span, hover_tools):
+    vdims = [tip[0] for tip in hover_tools['slice'].tooltips]
     specs = {'zero_lines': hline(time_dim, slice_dim),
                 'net_gradient': hv.Area(sequence.accumulate_waveforms(slice_objects, 'slice'), time_dim, slice_dim).opts(color=BOARD_COLORS['slice']),
-                'waveforms': hv.Polygons(slice_objects, kdims=[time_dim, slice_dim], vdims=vdims).opts(tools=[slice_hover], cmap=[BOARD_COLORS['slice']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=TIME_BOUNDS)]),
+                'waveforms': hv.Polygons(slice_objects, kdims=[time_dim, slice_dim], vdims=vdims).opts(tools=[hover_tools['slice']], cmap=[BOARD_COLORS['slice']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=TIME_BOUNDS)]),
                 'TR_span': TR_span['slice']}
     return specs
 
 
 @Graph.node()
-def RF_board(time_dim, RF_dim, RF_objects, TR_span, RF_hover):
-    vdims = [tip[0] for tip in RF_hover.tooltips]
+def RF_board(time_dim, RF_dim, RF_objects, TR_span, hover_tools):
+    vdims = [tip[0] for tip in hover_tools['RF'].tooltips]
     specs = {'zero_lines': hline(time_dim, RF_dim),
                 'net_RF': hv.Area(sequence.accumulate_waveforms(RF_objects, 'RF'), time_dim, RF_dim).opts(color=BOARD_COLORS['RF']),
-                'waveforms': hv.Polygons(RF_objects, kdims=[time_dim, RF_dim], vdims=vdims).opts(tools=[RF_hover], cmap=[BOARD_COLORS['RF']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=TIME_BOUNDS)]),
+                'waveforms': hv.Polygons(RF_objects, kdims=[time_dim, RF_dim], vdims=vdims).opts(tools=[hover_tools['RF']], cmap=[BOARD_COLORS['RF']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=TIME_BOUNDS)]),
                 'TR_span': TR_span['RF']}
     return specs
 
 
 @Graph.node()
-def signal_board(time_dim, signal_dim, signal_objects, ADC_objects, TR_span, signal_hover):
-    vdims = [tip[0] for tip in signal_hover.tooltips]
+def signal_board(time_dim, signal_dim, signal_objects, ADC_objects, TR_span, hover_tools):
+    vdims = [tip[0] for tip in hover_tools['signal'].tooltips]
     specs = {'zero_lines': hline(time_dim, signal_dim, yticks=list(zip([0], ' '))),
                 'net_signal': hv.Area(sequence.accumulate_waveforms(signal_objects, 'signal'), time_dim, signal_dim).opts(color=BOARD_COLORS['signal']),
                 'waveforms': hv.Polygons(signal_objects, kdims=[time_dim, signal_dim], vdims='signal').opts(tools=[], cmap=[BOARD_COLORS['signal']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=TIME_BOUNDS)]),
-                'sampling_windows': hv.Rectangles(ADC_objects, kdims=['c1', 'c2', 'c3', 'c4'], vdims=vdims).opts(tools=[signal_hover]),
+                'sampling_windows': hv.Rectangles(ADC_objects, kdims=['c1', 'c2', 'c3', 'c4'], vdims=vdims).opts(tools=[hover_tools['signal']]),
                 'TR_span': TR_span['signal']}
     return specs
 
@@ -181,28 +181,12 @@ def ADC_dim():
 
 
 @Graph.node()
-def frequency_hover(dashboard):
-    return dashboard.hover.get_hover_tool('frequency', ['name', 'center', 'duration', 'area'])
-
-
-@Graph.node()
-def phase_hover(dashboard):
-    return dashboard.hover.get_hover_tool('phase', ['name', 'center', 'duration', 'area'])
-
-
-@Graph.node()
-def slice_hover(dashboard):
-    return dashboard.hover.get_hover_tool('slice', ['name', 'center', 'duration', 'area'])
-
-
-@Graph.node()
-def RF_hover(dashboard):
-    return dashboard.hover.get_hover_tool('RF', ['name', 'center', 'duration', 'flip_angle'])
-
-
-@Graph.node()
-def signal_hover(dashboard):
-    return dashboard.hover.get_hover_tool('signal', ['name', 'center', 'duration'])
+def hover_tools(controller):
+    return {'frequency': controller.hover.get_hover_tool('frequency', ['name', 'center', 'duration', 'area']),
+            'phase': controller.hover.get_hover_tool('phase', ['name', 'center', 'duration', 'area']),
+            'slice': controller.hover.get_hover_tool('slice', ['name', 'center', 'duration', 'area']),
+            'RF': controller.hover.get_hover_tool('RF', ['name', 'center', 'duration', 'flip_angle']),
+            'signal': controller.hover.get_hover_tool('signal', ['name', 'center', 'duration'])}
 
 
 def flatten_dicts(list_of_dicts_and_lists):

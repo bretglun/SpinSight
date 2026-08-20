@@ -18,15 +18,14 @@ class Graph:
             return func
         return decorator
 
-    def __init__(self, controller, dashboard):
+    def __init__(self, controller):
 
-        specs = self.build_node_specs(controller, dashboard)
+        specs = self.build_node_specs(controller)
         self.nodes = self.build_nodes(specs)
     
-    def build_node_specs(self, controller, dashboard):
+    def build_node_specs(self, controller):
         # get node specs from decorators
         specs = dict(type(self).node_specs)
-        specs['dashboard'] = {'func': lambda: dashboard}
         # special node to track which input node was trigger
         specs['trigger_nodes'] = {'func': lambda: set()}
         # special controller node
