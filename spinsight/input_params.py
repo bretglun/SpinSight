@@ -18,9 +18,9 @@ class InputParams(param.Parameterized):
 
     # Sequence
     sequence_type = init_param(param.ObjectSelector, 'sequence_type')
-    pixel_bandwidth_ui = init_param(param.Selector, 'pixel_bandwidth_ui')
+    pixel_bandwidth = init_param(param.Selector, 'pixel_bandwidth')
     FOV_bandwidth = init_param(param.Selector, 'FOV_bandwidth')
-    FW_shift_ui = init_param(param.Selector, 'FW_shift_ui')
+    FW_shift = init_param(param.Selector, 'FW_shift')
     NSA = init_param(param.Integer, 'NSA')
     partial_Fourier = init_param(param.Number, 'partial_Fourier')
     turbo_factor = init_param(param.Integer, 'turbo_factor')

@@ -91,7 +91,7 @@ PARAMS = {
         group = 'Sequence',
     ),
     
-    'pixel_bandwidth_ui': ParamSpec(
+    'pixel_bandwidth': ParamSpec(
         label = 'Bandwidth',
         objects = {formatting.pixel_bandwidth(bw): bw for bw in pbw_vals},
         default = 480,
@@ -110,7 +110,7 @@ PARAMS = {
         group = 'Sequence',
     ),
 
-    'FW_shift_ui': ParamSpec(
+    'FW_shift': ParamSpec(
         label = 'Fat/water shift',
         objects = {formatting.FW_shift(shift): shift for shift in FW_shift_vals},
         default = 0.45,

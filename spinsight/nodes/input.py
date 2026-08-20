@@ -33,18 +33,13 @@ def sequence_type():
 
 
 @Graph.node()
-def pixel_bandwidth_ui():
-    return PARAMS['pixel_bandwidth_ui'].default
+def pixel_bandwidth():
+    return PARAMS['pixel_bandwidth'].default
 
 
 @Graph.node()
 def FOV_bandwidth():
     return PARAMS['FOV_bandwidth'].default
-
-
-@Graph.node()
-def FW_shift_ui():
-    return PARAMS['FW_shift_ui'].default
 
 
 @Graph.node()
@@ -214,4 +209,9 @@ def signal_exponent():
 
 @Graph.node()
 def constant_voxel_bounds():
+    return False
+
+
+@Graph.node()
+def constant_FOV_BW_bounds():
     return False

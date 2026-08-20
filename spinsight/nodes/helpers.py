@@ -43,11 +43,6 @@ def pixel_BW_is_input(parameter_style):
 
 
 @Graph.node()
-def FOV_BW_is_input(parameter_style):
-    return 'FOV BW' in parameter_style.upper()
-
-
-@Graph.node()
 def FW_shift_is_input(parameter_style):
     return 'FAT/WATER SHIFT' in parameter_style.upper()
 

@@ -41,8 +41,14 @@ class Controller(param.Parameterized):
         inputs = {triggered: value}
         if 'parameter_style' in inputs:
             inputs['constant_voxel_bounds'] = 'VOXEL SIZE' in self.input.parameter_style.upper()
-            # etc
+            inputs['constant_FOV_BW_bounds'] = 'FOV BW' in self.input.parameter_style.upper()
             del inputs['parameter_style']
+        if 'FOV_bandwidth' in inputs:
+            inputs['pixel_bandwidth'] = convert.FOV_BW_to_pixel_BW(inputs['FOV_bandwidth'], self.from_graph('matrix_F'))
+            del inputs['FOV_bandwidth']
+        if 'FW_shift' in inputs:
+            inputs['pixel_bandwidth'] = convert.shift_to_pixel_BW(inputs['FW_shift'], self.from_graph('field_strength'))
+            del inputs['FW_shift']
         for dir in ['F', 'P']:
             # replace voxel size input with matrix size
             for pre, post in [('', '_ui'), ('recon_', '')]:
@@ -154,9 +160,9 @@ class Controller(param.Parameterized):
         self.update_rec_acq_ratio()
 
     def update_visibility(self):
-        self.set_visibility('pixel_bandwidth_ui', self.pixel_BW_is_input())
+        self.set_visibility('pixel_bandwidth', self.pixel_BW_is_input())
         self.set_visibility('FOV_bandwidth', self.FOV_BW_is_input())
-        self.set_visibility('FW_shift_ui', self.FW_shift_is_input())
+        self.set_visibility('FW_shift', self.FW_shift_is_input())
         for voxel_size_param in ['voxel_F', 'voxel_P', 'recon_voxel_F', 'recon_voxel_P']:
             self.set_visibility(voxel_size_param, self.voxel_size_is_input())
         for matrix_param in ['matrix_F_ui', 'matrix_P_ui', 'recon_matrix_F', 'recon_matrix_P']:
@@ -178,11 +184,11 @@ class Controller(param.Parameterized):
             self.set_param_bounds('TI', maxval=self.from_graph('max_TI'))
         self.set_param_bounds('slice_thickness', minval=self.from_graph('min_slice_thickness'))
         if self.pixel_BW_is_input():
-            self.set_param_bounds('pixel_bandwidth_ui', minval=self.from_graph('pixel_bandwidth_bounds').min, maxval=self.from_graph('pixel_bandwidth_bounds').max)
+            self.set_param_bounds('pixel_bandwidth', minval=self.from_graph('pixel_bandwidth_bounds').min, maxval=self.from_graph('pixel_bandwidth_bounds').max)
         if self.FOV_BW_is_input():
             self.set_param_bounds('FOV_bandwidth', minval=convert.pixel_BW_to_FOV_BW(self.from_graph('pixel_bandwidth_bounds').min, self.from_graph('matrix_F')), maxval=convert.pixel_BW_to_FOV_BW(self.from_graph('pixel_bandwidth_bounds').max, self.from_graph('matrix_F')))
         if self.FW_shift_is_input():
-            self.set_param_bounds('FW_shift_ui', minval=convert.pixel_BW_to_shift(self.from_graph('pixel_bandwidth_bounds').max, self.from_graph('field_strength')), maxval=convert.pixel_BW_to_shift(self.from_graph('pixel_bandwidth_bounds').min, self.from_graph('field_strength')))
+            self.set_param_bounds('FW_shift', minval=convert.pixel_BW_to_shift(self.from_graph('pixel_bandwidth_bounds').max, self.from_graph('field_strength')), maxval=convert.pixel_BW_to_shift(self.from_graph('pixel_bandwidth_bounds').min, self.from_graph('field_strength')))
         if self.matrix_is_input():
             self.set_param_bounds('matrix_F_ui', minval=self.from_graph('matrix_F_bounds').min, maxval=self.from_graph('matrix_F_bounds').max)
             self.set_param_bounds('matrix_P_ui', minval=self.from_graph('matrix_P_bounds').min, maxval=self.from_graph('matrix_P_bounds').max)
@@ -236,11 +242,11 @@ class Controller(param.Parameterized):
 
     def update_params(self):
         if not self.pixel_BW_is_input():
-            self.set_param('pixel_bandwidth_ui', self.from_graph('pixel_bandwidth'))
+            self.set_param('pixel_bandwidth', self.from_graph('pixel_bandwidth'))
         if not self.FOV_BW_is_input():
             self.set_param('FOV_bandwidth', convert.pixel_BW_to_FOV_BW(self.from_graph('pixel_bandwidth'), self.from_graph('matrix_F')))
         if not self.FW_shift_is_input():
-            self.set_param('FW_shift_ui', self.from_graph('FW_shift'))
+            self.set_param('FW_shift', convert.pixel_BW_to_shift(self.from_graph('pixel_bandwidth'), self.from_graph('field_strength')))
         if not self.matrix_is_input() or self.from_graph('isotropic_voxel_size'):
             self.set_param('matrix_F_ui', self.from_graph('matrix_F'))
             self.set_param('matrix_P_ui', self.from_graph('matrix_P'))
@@ -271,8 +277,9 @@ class Controller(param.Parameterized):
         self.input.param.trajectory.objects = [t for t in PARAMS['trajectory'].objects if t != invalid]
 
     def update_info_params(self):
+        self.gui.FW_shift = formatting.FW_shift(self.input.FW_shift)
         self.gui.relative_SNR = formatting.relative_SNR(self.from_graph('SNR') / self.reference_SNR)
-        for par in ['spoke_angle', 'num_shots', 'scantime', 'pixel_bandwidth', 'FW_shift']:
+        for par in ['spoke_angle', 'num_shots', 'scantime', 'pixel_bandwidth']:
             setattr(self.gui, par, getattr(formatting, par)(self.from_graph(par)))
 
     def update_plots(self):

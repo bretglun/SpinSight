@@ -34,14 +34,14 @@ def min_voxel_P(max_phaser_area):
 
 
 @Graph.node()
-def matrix_F_bounds(constant_voxel_bounds, min_voxel_F, FOV_F, FOV_BW_is_input, FOV_bandwidth, pixel_bandwidth_bounds):
+def matrix_F_bounds(constant_voxel_bounds, min_voxel_F, FOV_F, constant_FOV_BW_bounds, matrix_F, pixel_bandwidth, pixel_bandwidth_bounds):
     min_matrix_F = [PARAMS['matrix_F_ui'].objects[0]]
     max_matrix_F = [PARAMS['matrix_F_ui'].objects[-1]]
     if not constant_voxel_bounds:
         max_matrix_F.append(FOV_F / min_voxel_F)
-    if FOV_BW_is_input: # constant FOV BW puts contraints on matrix_F
-        min_matrix_F.append(FOV_bandwidth * 2e3 / pixel_bandwidth_bounds.max)
-        max_matrix_F.append(FOV_bandwidth * 2e3 / pixel_bandwidth_bounds.min)
+    if constant_FOV_BW_bounds: # constant FOV BW puts contraints on matrix_F
+        min_matrix_F.append(matrix_F * pixel_bandwidth / pixel_bandwidth_bounds.max)
+        max_matrix_F.append(matrix_F * pixel_bandwidth / pixel_bandwidth_bounds.min)
     return MinMax(max(min_matrix_F), min(max_matrix_F))
 
 
@@ -188,7 +188,7 @@ def pixel_bandwidth_bounds(matrix_F, FOV_F, is_gradient_echo, RF_refocusing, tur
     k0_echo_indices = k0_echo_indices_linear_order | k0_echo_indices_reverse_linear_order
 
     pixel_bandwidth_values = []
-    for pixel_bandwidth in PARAMS['pixel_bandwidth_ui'].objects.values():
+    for pixel_bandwidth in PARAMS['pixel_bandwidth'].objects.values():
         
         read_duration = 1e3 / pixel_bandwidth
         
