@@ -35,18 +35,3 @@ def matrix(matrix_F, matrix_P, freq_dir):
 @Graph.node()
 def recon_matrix(recon_matrix_P, recon_matrix_F, freq_dir, do_zerofill, matrix):
     return ([recon_matrix_P, recon_matrix_F] if freq_dir else [recon_matrix_F, recon_matrix_P]) if do_zerofill else matrix
-
-
-@Graph.node()
-def pixel_BW_is_input(parameter_style):
-    return 'PIXEL BW' in parameter_style.upper()
-
-
-@Graph.node()
-def FW_shift_is_input(parameter_style):
-    return 'FAT/WATER SHIFT' in parameter_style.upper()
-
-
-@Graph.node()
-def matrix_is_input(parameter_style):
-    return 'MATRIX' in parameter_style.upper()

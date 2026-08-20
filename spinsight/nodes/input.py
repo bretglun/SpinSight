@@ -13,11 +13,6 @@ def field_strength():
 
 
 @Graph.node()
-def parameter_style():
-    return PARAMS['parameter_style'].default
-
-
-@Graph.node()
 def min_voxel_size():
     return PARAMS['min_voxel_size'].default
 
