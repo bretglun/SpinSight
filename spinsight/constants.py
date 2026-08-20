@@ -56,5 +56,4 @@ SPOILER_AREA = 30. # uTs/m
 # Action node precedences
 ACTION = SimpleNamespace(
     VISIBILITY = 1,
-    BOUNDS = 2,
 )

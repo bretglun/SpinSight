@@ -1,8 +1,4 @@
 import param
-from spinsight.nodes.helpers import FOV_BW_is_input, FW_shift_is_input, matrix_is_input, voxel_size_is_input
-from spinsight.nodes.input import parameter_style
-from spinsight.nodes.internal_input_params import TR, isotropic_voxel_size, keep_rec_acq_ratio
-from spinsight.nodes.param_bounds import max_TE
 from spinsight.param_utils import snap, filter_objects, value_in_objects, insert_value_in_list_sorted, insert_value_in_dict_sorted, get_object_values
 from spinsight.params import PARAMS
 from spinsight.input_params import InputParams
@@ -118,12 +114,6 @@ class Controller(param.Parameterized):
     def from_graph(self, par_name):
         return self.graph.nodes[par_name].value()
 
-    def sync_with_graph(self):
-        self.update_params()
-        self.update_info_params()
-        self.update_plots()
-        self.update_rec_acq_ratio()
-
     def pixel_BW_is_input(self):
         return 'PIXEL BW' in self.input.parameter_style.upper()
 
@@ -138,6 +128,74 @@ class Controller(param.Parameterized):
 
     def voxel_size_is_input(self):
         return 'VOXEL SIZE' in self.input.parameter_style.upper()
+
+    def sync_with_graph(self):
+        self.update_bounds()
+        self.update_params()
+        self.update_info_params()
+        self.update_plots()
+        self.update_rec_acq_ratio()
+
+    def update_bounds(self):
+        if self.from_graph('sequence_type') == 'Inversion Recovery':
+            self.set_param_bounds('TI', maxval=self.from_graph('max_TI'))
+        self.set_param_bounds('slice_thickness', minval=self.from_graph('min_slice_thickness'))
+        if self.pixel_BW_is_input():
+            self.set_param_bounds('pixel_bandwidth_ui', minval=self.from_graph('pixel_bandwidth_bounds').min, maxval=self.from_graph('pixel_bandwidth_bounds').max)
+        if self.FOV_BW_is_input():
+            self.set_param_bounds('FOV_bandwidth', minval=convert.pixel_BW_to_FOV_BW(self.from_graph('pixel_bandwidth_bounds').min, self.from_graph('matrix_F')), maxval=convert.pixel_BW_to_FOV_BW(self.from_graph('pixel_bandwidth_bounds').max, self.from_graph('matrix_F')))
+        if self.FW_shift_is_input():
+            self.set_param_bounds('FW_shift_ui', minval=convert.pixel_BW_to_shift(self.from_graph('pixel_bandwidth_bounds').max, self.from_graph('field_strength')), maxval=convert.pixel_BW_to_shift(self.from_graph('pixel_bandwidth_bounds').min, self.from_graph('field_strength')))
+        if self.matrix_is_input():
+            self.set_param_bounds('matrix_F_ui', minval=self.from_graph('matrix_F_bounds').min, maxval=self.from_graph('matrix_F_bounds').max)
+            self.set_param_bounds('matrix_P_ui', minval=self.from_graph('matrix_P_bounds').min, maxval=self.from_graph('matrix_P_bounds').max)
+            self.set_param_bounds('recon_matrix_F_ui', minval=self.from_graph('recon_matrix_F_bounds').min, maxval=self.from_graph('recon_matrix_F_bounds').max)
+            self.set_param_bounds('recon_matrix_P_ui', minval=self.from_graph('recon_matrix_P_bounds').min, maxval=self.from_graph('recon_matrix_P_bounds').max)
+        self.set_param_bounds('FOV_F', minval=self.from_graph('FOV_F_bounds').min, maxval=self.from_graph('FOV_F_bounds').max)
+        self.set_param_bounds('FOV_P', minval=self.from_graph('FOV_P_bounds').min, maxval=self.from_graph('FOV_P_bounds').max)
+        if self.voxel_size_is_input():
+            self.set_param_bounds('voxel_F', minval=self.from_graph('FOV_F')/self.from_graph('matrix_F_bounds').max, maxval=self.from_graph('FOV_F')/self.from_graph('matrix_F_bounds').min)
+            self.set_param_bounds('voxel_P', minval=self.from_graph('FOV_P')/self.from_graph('matrix_P_bounds').max, maxval=self.from_graph('FOV_P')/self.from_graph('matrix_P_bounds').min)
+            self.set_param_bounds('recon_voxel_F', minval=self.from_graph('FOV_F')/self.from_graph('recon_matrix_F_bounds').max, maxval=self.from_graph('FOV_F')/self.from_graph('recon_matrix_F_bounds').min)
+            self.set_param_bounds('recon_voxel_P', minval=self.from_graph('FOV_P')/self.from_graph('recon_matrix_P_bounds').max, maxval=self.from_graph('FOV_P')/self.from_graph('recon_matrix_P_bounds').min)
+    
+        self.update_turbo_factor_bounds()
+        self.update_EPI_factor_bounds()
+
+        self.input.param.reference_tissue.objects = self.from_graph('tissues')
+        if 'object' in self.from_graph('trigger_nodes') and 'reference_tissue' not in self.from_graph('trigger_nodes'):
+            self.input.reference_tissue = self.from_graph('tissues')[0]
+
+        self.set_x_y_labels()
+
+        self.shot_label = 'shot' if not self.from_graph('is_radial') else 'spoke' if (self.from_graph('EPI_factor') * self.from_graph('turbo_factor') == 1) else 'blade'
+        self.input.param.shot_ui.label = f'Displayed {self.shot_label}'
+
+    def update_turbo_factor_bounds(self):
+        # turbo_factor must equal 1 when the EPI_factor is even
+        if not self.input.EPI_factor%2:
+            self.input.param.turbo_factor.bounds = (1, 1)
+            self.input.param.turbo_factor.constant = True
+            return
+        self.input.param.turbo_factor.bounds = (1, min(self.from_graph('max_turbo_factor'), PARAMS['turbo_factor'].bounds[-1]))
+        self.input.param.turbo_factor.constant = False
+
+    def update_EPI_factor_bounds(self):
+        self.set_param_bounds('EPI_factor', maxval=self.from_graph('max_EPI_factor'))
+        # EPI_factor must be odd for turbo spin echo (GRASE)
+        if self.input.turbo_factor > 1:
+            self.input.param.EPI_factor.objects = [v for v in self.input.param.EPI_factor.objects if v%2]
+
+    def set_x_y_labels(self):
+        frequency_direction = self.from_graph('frequency_direction')
+        for p in ['FOV_F', 'FOV_P', 'matrix_F_ui', 'matrix_P_ui', 'recon_matrix_F_ui', 'recon_matrix_P_ui']:
+            par = self.input.param[p]
+            if (' y' in par.label) and (('_F' in par.name and frequency_direction=='left-right') or
+                                        ('_P' in par.name and frequency_direction=='anterior-posterior')):
+                par.label = par.label.replace(' y', ' x')
+            elif (' x' in par.label) and (('_P' in par.name and frequency_direction=='left-right') or
+                                        ('_F' in par.name and frequency_direction=='anterior-posterior')):
+                par.label = par.label.replace(' x', ' y')
 
     def update_params(self):
         if not self.pixel_BW_is_input():

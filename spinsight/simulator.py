@@ -17,7 +17,6 @@ from spinsight.nodes import (
     image_plot,
     SNR_and_scantime,
     set_ui_param_visibility,
-    set_ui_param_bounds,
 )
 
 
