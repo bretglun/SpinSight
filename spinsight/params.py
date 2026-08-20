@@ -339,18 +339,6 @@ PARAMS = {
         default = 2.0,
     ),
 
-    'rec_acq_ratio_P': ParamSpec(
-        label = 'Reconstructed / acquired matrix_P ratio',
-        default = 2.0,
-        derived = True,
-    ),
-
-    'rec_acq_ratio_F': ParamSpec(
-        label = 'Reconstructed / acquired matrix_F ratio',
-        default = 2.0,
-        derived = True,
-    ),
-
     'show_FOV': ParamSpec(
         label = 'Show FOV',
         default = False,

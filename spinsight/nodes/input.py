@@ -230,13 +230,3 @@ def shot_ui():
 @Graph.node()
 def signal_exponent():
     return PARAMS['signal_exponent'].default
-
-
-@Graph.node()
-def rec_acq_ratio_F():
-    return PARAMS['rec_acq_ratio_F'].default
-
-
-@Graph.node()
-def rec_acq_ratio_P():
-    return PARAMS['rec_acq_ratio_P'].default

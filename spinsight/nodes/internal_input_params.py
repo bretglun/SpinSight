@@ -53,23 +53,14 @@ def matrix_P(voxel_size_is_input, FOV_P, voxel_P, matrix_P_ui, isotropic_voxel_s
 
 
 @Graph.node()
-def keep_rec_acq_ratio(trigger_nodes):
-    return not (trigger_nodes & {'recon_voxel_P', 'recon_voxel_F', 'recon_matrix_P_ui', 'recon_matrix_F_ui'})
-
-
-@Graph.node()
-def recon_matrix_F(keep_rec_acq_ratio, matrix_F, rec_acq_ratio_F, voxel_size_is_input, FOV_F, recon_voxel_F, recon_matrix_F_ui):
-    if keep_rec_acq_ratio:
-        return int(matrix_F * rec_acq_ratio_F)
+def recon_matrix_F(voxel_size_is_input, FOV_F, recon_voxel_F, recon_matrix_F_ui):
     if voxel_size_is_input:
         return int(np.round(FOV_F / recon_voxel_F))
     return recon_matrix_F_ui
 
 
 @Graph.node()
-def recon_matrix_P(keep_rec_acq_ratio, matrix_P, rec_acq_ratio_P, voxel_size_is_input, FOV_P, recon_voxel_P, recon_matrix_P_ui):
-    if keep_rec_acq_ratio:
-        return int(matrix_P * rec_acq_ratio_P)
+def recon_matrix_P(voxel_size_is_input, FOV_P, recon_voxel_P, recon_matrix_P_ui):
     if voxel_size_is_input:
         return int(np.round(FOV_P / recon_voxel_P))
     return recon_matrix_P_ui

@@ -4,12 +4,13 @@ from spinsight.params import PARAMS
 from spinsight.input_params import InputParams
 from spinsight import simulator, convert, formatting
 import warnings
+import numpy as np
 
 
 class Controller(param.Parameterized):
     shot_label = param.String() # shot/spoke/blade label
-    rec_acq_ratio_P = param.Number(default=2.0) # reconstructed / acquired matrix_P ratio
-    rec_acq_ratio_F = param.Number(default=2.0) # reconstructed / acquired matrix_F ratio
+    rec_acq_ratio_P = param.Number() # reconstructed / acquired matrix_P ratio
+    rec_acq_ratio_F = param.Number() # reconstructed / acquired matrix_F ratio
     
     reference_SNR = param.Number()
 
@@ -26,7 +27,7 @@ class Controller(param.Parameterized):
         self.reference_SNR = self.from_graph('SNR')
         
     def input_nodes(self):
-        return {p for p in (set(self.input.param) | set(self.param)) if p in self.graph.nodes and not self.graph.nodes[p].parents}
+        return {p for p in self.input.param if p in self.graph.nodes and not self.graph.nodes[p].parents}
     
     def add_input_watchers(self):
         for par in self.input_nodes():
@@ -36,8 +37,17 @@ class Controller(param.Parameterized):
                 self.input.param.watch(self.on_param_change, par)
 
     def on_param_change(self, event):
-        self.graph.update_inputs({event.name: event.new})
+        self.graph.update_inputs(self.inputs_to_update(event.name, event.new))
         self.sync_with_graph()
+    
+    def inputs_to_update(self, triggered, value):
+        inputs = {triggered: value}
+        # handle voxel etc
+        for dir in ['F', 'P']:
+            # maintain constant rec/acq ratio when acq matrix is changed
+            if f'matrix_{dir}_ui' in inputs:
+                inputs[f'recon_matrix_{dir}_ui'] = int(np.round(inputs[f'matrix_{dir}_ui'] * getattr(self, f'rec_acq_ratio_{dir}')))
+        return inputs
 
     def set_visibility(self, par_name, visible):
         par = self.input.param[par_name]
@@ -234,15 +244,13 @@ class Controller(param.Parameterized):
                 self.set_param('FOV_F', self.from_graph('phantom_object')['support'][self.from_graph('freq_dir')], mode='ceil')
             if self.from_graph('FOV_P') < self.from_graph('phantom_object')['support'][self.from_graph('phase_dir')]:
                 self.set_param('FOV_P', self.from_graph('phantom_object')['support'][self.from_graph('phase_dir')], mode='ceil')
-        if not self.matrix_is_input() or self.from_graph('keep_rec_acq_ratio'):
-            self.set_param('recon_matrix_F_ui', self.from_graph('recon_matrix_F'))
-            self.set_param('recon_matrix_P_ui', self.from_graph('recon_matrix_P'))
+        self.set_param('recon_matrix_F_ui', self.from_graph('recon_matrix_F'))
+        self.set_param('recon_matrix_P_ui', self.from_graph('recon_matrix_P'))
         if not self.voxel_size_is_input() or self.from_graph('isotropic_voxel_size'):
             self.set_param('voxel_F', self.from_graph('FOV_F') / self.from_graph('matrix_F'))
             self.set_param('voxel_P', self.from_graph('FOV_P') / self.from_graph('matrix_P'))
-        if not self.voxel_size_is_input() or self.from_graph('keep_rec_acq_ratio'):
-            self.set_param('recon_voxel_F', self.from_graph('FOV_F') / self.from_graph('recon_matrix_F'))
-            self.set_param('recon_voxel_P', self.from_graph('FOV_P') / self.from_graph('recon_matrix_P'))
+        self.set_param('recon_voxel_F', self.from_graph('FOV_F') / self.from_graph('recon_matrix_F'))
+        self.set_param('recon_voxel_P', self.from_graph('FOV_P') / self.from_graph('recon_matrix_P'))
         self.set_param_bounds('TR_ui', minval=self.from_graph('min_TR'))
         self.set_param('TR_ui', self.from_graph('TR'))
         self.set_param_bounds('TE_ui', minval=self.from_graph('min_TE'), maxval=self.from_graph('max_TE'))
