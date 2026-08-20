@@ -55,8 +55,3 @@ def FW_shift_is_input(parameter_style):
 @Graph.node()
 def matrix_is_input(parameter_style):
     return 'MATRIX' in parameter_style.upper()
-
-
-@Graph.node()
-def voxel_size_is_input(parameter_style):
-    return 'VOXEL SIZE' in parameter_style.upper()

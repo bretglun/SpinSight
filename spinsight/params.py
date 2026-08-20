@@ -287,7 +287,7 @@ PARAMS = {
         group = 'Geometry',
     ),
 
-    'recon_matrix_P_ui': ParamSpec(
+    'recon_matrix_P': ParamSpec(
         label = 'Reconstruction matrix x',
         objects = recon_matrix_vals,
         default = 360,
@@ -296,7 +296,7 @@ PARAMS = {
         group = 'Geometry',
     ),
 
-    'recon_matrix_F_ui': ParamSpec(
+    'recon_matrix_F': ParamSpec(
         label = 'Reconstruction matrix y',
         objects = recon_matrix_vals,
         default = 360,

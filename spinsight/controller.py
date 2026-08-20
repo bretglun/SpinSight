@@ -30,11 +30,8 @@ class Controller(param.Parameterized):
         return {p for p in self.input.param if p in self.graph.nodes and not self.graph.nodes[p].parents}
     
     def add_input_watchers(self):
-        for par in self.input_nodes():
-            if par in self.param:
-                self.param.watch(self.on_param_change, par)
-            elif par in self.input.param:
-                self.input.param.watch(self.on_param_change, par)
+        for par in self.input.param:
+            self.input.param.watch(self.on_param_change, par)
 
     def on_param_change(self, event):
         self.graph.update_inputs(self.inputs_to_update(event.name, event.new))
@@ -42,11 +39,19 @@ class Controller(param.Parameterized):
     
     def inputs_to_update(self, triggered, value):
         inputs = {triggered: value}
-        # handle voxel etc
+        if 'parameter_style' in inputs:
+            inputs['constant_voxel_bounds'] = 'VOXEL SIZE' in self.input.parameter_style.upper()
+            # etc
+            del inputs['parameter_style']
         for dir in ['F', 'P']:
+            # replace voxel size input with matrix size
+            for pre, post in [('', '_ui'), ('recon_', '')]:
+                if f'{pre}voxel_{dir}' in inputs:
+                    inputs[f'{pre}matrix_{dir}{post}'] = int(np.round(self.from_graph(f'FOV_{dir}') / inputs[f'{pre}voxel_{dir}']))
+                    del inputs[f'{pre}voxel_{dir}']
             # maintain constant rec/acq ratio when acq matrix is changed
             if f'matrix_{dir}_ui' in inputs:
-                inputs[f'recon_matrix_{dir}_ui'] = int(np.round(inputs[f'matrix_{dir}_ui'] * getattr(self, f'rec_acq_ratio_{dir}')))
+                inputs[f'recon_matrix_{dir}'] = int(np.round(inputs[f'matrix_{dir}_ui'] * getattr(self, f'rec_acq_ratio_{dir}')))
         return inputs
 
     def set_visibility(self, par_name, visible):
@@ -154,7 +159,7 @@ class Controller(param.Parameterized):
         self.set_visibility('FW_shift_ui', self.FW_shift_is_input())
         for voxel_size_param in ['voxel_F', 'voxel_P', 'recon_voxel_F', 'recon_voxel_P']:
             self.set_visibility(voxel_size_param, self.voxel_size_is_input())
-        for matrix_param in ['matrix_F_ui', 'matrix_P_ui', 'recon_matrix_F_ui', 'recon_matrix_P_ui']:
+        for matrix_param in ['matrix_F_ui', 'matrix_P_ui', 'recon_matrix_F', 'recon_matrix_P']:
             self.set_visibility(matrix_param, self.matrix_is_input())
         self.set_visibility('partial_Fourier', not self.from_graph('is_radial'))
         self.set_visibility('frequency_direction', not self.from_graph('is_radial'))
@@ -181,8 +186,8 @@ class Controller(param.Parameterized):
         if self.matrix_is_input():
             self.set_param_bounds('matrix_F_ui', minval=self.from_graph('matrix_F_bounds').min, maxval=self.from_graph('matrix_F_bounds').max)
             self.set_param_bounds('matrix_P_ui', minval=self.from_graph('matrix_P_bounds').min, maxval=self.from_graph('matrix_P_bounds').max)
-            self.set_param_bounds('recon_matrix_F_ui', minval=self.from_graph('recon_matrix_F_bounds').min, maxval=self.from_graph('recon_matrix_F_bounds').max)
-            self.set_param_bounds('recon_matrix_P_ui', minval=self.from_graph('recon_matrix_P_bounds').min, maxval=self.from_graph('recon_matrix_P_bounds').max)
+            self.set_param_bounds('recon_matrix_F', minval=self.from_graph('recon_matrix_F_bounds').min, maxval=self.from_graph('recon_matrix_F_bounds').max)
+            self.set_param_bounds('recon_matrix_P', minval=self.from_graph('recon_matrix_P_bounds').min, maxval=self.from_graph('recon_matrix_P_bounds').max)
         self.set_param_bounds('FOV_F', minval=self.from_graph('FOV_F_bounds').min, maxval=self.from_graph('FOV_F_bounds').max)
         self.set_param_bounds('FOV_P', minval=self.from_graph('FOV_P_bounds').min, maxval=self.from_graph('FOV_P_bounds').max)
         if self.voxel_size_is_input():
@@ -220,7 +225,7 @@ class Controller(param.Parameterized):
 
     def set_x_y_labels(self):
         frequency_direction = self.from_graph('frequency_direction')
-        for p in ['FOV_F', 'FOV_P', 'matrix_F_ui', 'matrix_P_ui', 'recon_matrix_F_ui', 'recon_matrix_P_ui']:
+        for p in ['FOV_F', 'FOV_P', 'matrix_F_ui', 'matrix_P_ui', 'recon_matrix_F', 'recon_matrix_P']:
             par = self.input.param[p]
             if (' y' in par.label) and (('_F' in par.name and frequency_direction=='left-right') or
                                         ('_P' in par.name and frequency_direction=='anterior-posterior')):
@@ -244,8 +249,8 @@ class Controller(param.Parameterized):
                 self.set_param('FOV_F', self.from_graph('phantom_object')['support'][self.from_graph('freq_dir')], mode='ceil')
             if self.from_graph('FOV_P') < self.from_graph('phantom_object')['support'][self.from_graph('phase_dir')]:
                 self.set_param('FOV_P', self.from_graph('phantom_object')['support'][self.from_graph('phase_dir')], mode='ceil')
-        self.set_param('recon_matrix_F_ui', self.from_graph('recon_matrix_F'))
-        self.set_param('recon_matrix_P_ui', self.from_graph('recon_matrix_P'))
+        self.set_param('recon_matrix_F', self.from_graph('recon_matrix_F'))
+        self.set_param('recon_matrix_P', self.from_graph('recon_matrix_P'))
         if not self.voxel_size_is_input() or self.from_graph('isotropic_voxel_size'):
             self.set_param('voxel_F', self.from_graph('FOV_F') / self.from_graph('matrix_F'))
             self.set_param('voxel_P', self.from_graph('FOV_P') / self.from_graph('matrix_P'))

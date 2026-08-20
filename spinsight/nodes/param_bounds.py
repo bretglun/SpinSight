@@ -34,10 +34,10 @@ def min_voxel_P(max_phaser_area):
 
 
 @Graph.node()
-def matrix_F_bounds(voxel_size_is_input, min_voxel_F, FOV_F, FOV_BW_is_input, FOV_bandwidth, pixel_bandwidth_bounds):
+def matrix_F_bounds(constant_voxel_bounds, min_voxel_F, FOV_F, FOV_BW_is_input, FOV_bandwidth, pixel_bandwidth_bounds):
     min_matrix_F = [PARAMS['matrix_F_ui'].objects[0]]
     max_matrix_F = [PARAMS['matrix_F_ui'].objects[-1]]
-    if not voxel_size_is_input:
+    if not constant_voxel_bounds:
         max_matrix_F.append(FOV_F / min_voxel_F)
     if FOV_BW_is_input: # constant FOV BW puts contraints on matrix_F
         min_matrix_F.append(FOV_bandwidth * 2e3 / pixel_bandwidth_bounds.max)
@@ -46,49 +46,51 @@ def matrix_F_bounds(voxel_size_is_input, min_voxel_F, FOV_F, FOV_BW_is_input, FO
 
 
 @Graph.node()
-def matrix_P_bounds(voxel_size_is_input, min_voxel_P, FOV_P):
+def matrix_P_bounds(constant_voxel_bounds, min_voxel_P, FOV_P):
     min_matrix_P = [PARAMS['matrix_P_ui'].objects[0]]
     max_matrix_P = [PARAMS['matrix_P_ui'].objects[-1]]
-    if not voxel_size_is_input:
+    if not constant_voxel_bounds:
         max_matrix_P.append(FOV_P / min_voxel_P)
     return MinMax(max(min_matrix_P), min(max_matrix_P))
 
 
 @Graph.node()
 def recon_matrix_F_bounds(matrix_F):
-    min_recon_matrix_F = [PARAMS['recon_matrix_F_ui'].objects[0]]
-    max_recon_matrix_F = [PARAMS['recon_matrix_F_ui'].objects[-1]]
+    min_recon_matrix_F = [PARAMS['recon_matrix_F'].objects[0]]
+    max_recon_matrix_F = [PARAMS['recon_matrix_F'].objects[-1]]
     min_recon_matrix_F.append(matrix_F)
     return MinMax(max(min_recon_matrix_F),min(max_recon_matrix_F))
 
 
 @Graph.node()
 def recon_matrix_P_bounds(matrix_P):
-    min_recon_matrix_P = [PARAMS['recon_matrix_P_ui'].objects[0]]
-    max_recon_matrix_P = [PARAMS['recon_matrix_P_ui'].objects[-1]]
+    min_recon_matrix_P = [PARAMS['recon_matrix_P'].objects[0]]
+    max_recon_matrix_P = [PARAMS['recon_matrix_P'].objects[-1]]
     min_recon_matrix_P.append(matrix_P)
     return MinMax(max(min_recon_matrix_P),min(max_recon_matrix_P))
 
 
 @Graph.node()
-def FOV_F_bounds(matrix_F, min_voxel_F, voxel_size_is_input, voxel_F, matrix_F_bounds, recon_voxel_F, recon_matrix_F_bounds):
+def FOV_F_bounds(matrix_F, min_voxel_F, constant_voxel_bounds, FOV_F, matrix_F_bounds):
     min_FOV_F = [list(PARAMS['FOV_F'].objects.values())[0]]
     max_FOV_F = [list(PARAMS['FOV_F'].objects.values())[-1]]
-    if voxel_size_is_input: # constant voxel size puts constraints on FOV
-        min_FOV_F.append(voxel_F * matrix_F_bounds.min)
-        max_FOV_F.append(voxel_F * matrix_F_bounds.max)
+    if constant_voxel_bounds: # constant voxel size puts constraints on FOV
+        voxel = FOV_F / matrix_F
+        min_FOV_F.append(voxel * matrix_F_bounds.min)
+        max_FOV_F.append(voxel * matrix_F_bounds.max)
     else:
         min_FOV_F.append(min_voxel_F * matrix_F)
     return MinMax(max(min_FOV_F), min(max_FOV_F))
 
 
 @Graph.node()
-def FOV_P_bounds(matrix_P, min_voxel_P, voxel_size_is_input, matrix_P_bounds, voxel_P, recon_voxel_P, recon_matrix_P_bounds):
+def FOV_P_bounds(matrix_P, min_voxel_P, constant_voxel_bounds, FOV_P, matrix_P_bounds):
     min_FOV_P = [list(PARAMS['FOV_P'].objects.values())[0]]
     max_FOV_P = [list(PARAMS['FOV_P'].objects.values())[-1]]
-    if voxel_size_is_input: # constant voxel size puts constraints on FOV
-        min_FOV_P.append(voxel_P * matrix_P_bounds.min)
-        max_FOV_P.append(voxel_P * matrix_P_bounds.max)
+    if constant_voxel_bounds: # constant voxel size puts constraints on FOV
+        voxel = FOV_P / matrix_P
+        min_FOV_P.append(voxel * matrix_P_bounds.min)
+        max_FOV_P.append(voxel * matrix_P_bounds.max)
     else:
         min_FOV_P.append(min_voxel_P * matrix_P)
     return MinMax(max(min_FOV_P), min(max_FOV_P))
@@ -134,6 +136,7 @@ def min_refocusing_time(is_gradient_echo, RF_excitation, RF_refocusing_floating,
         read_prephaser_floating['dur_f'], 
         slice_select_excitation['risetime_f'] + slice_select_rephaser_floating['dur_f'] + (slice_select_refocusing_floating[0]['risetime_f'])
         )
+
 
 @Graph.node()
 def max_TE(TR, sequence_start, spoiler_floating, readout_risetime, gre_echo_train_dur, EPI_factor, turbo_factor, k0_echo_indices_linear_order, k0_echo_indices_reverse_linear_order, gr_echo_spacing):

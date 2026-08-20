@@ -133,33 +133,13 @@ def matrix_F_ui():
 
 
 @Graph.node()
-def voxel_P():
-    return PARAMS['voxel_P'].default
+def recon_matrix_P():
+    return PARAMS['recon_matrix_P'].default
 
 
 @Graph.node()
-def voxel_F():
-    return PARAMS['voxel_F'].default
-
-
-@Graph.node()
-def recon_matrix_P_ui():
-    return PARAMS['recon_matrix_P_ui'].default
-
-
-@Graph.node()
-def recon_matrix_F_ui():
-    return PARAMS['recon_matrix_F_ui'].default
-
-
-@Graph.node()
-def recon_voxel_P():
-    return PARAMS['recon_voxel_P'].default
-
-
-@Graph.node()
-def recon_voxel_F():
-    return PARAMS['recon_voxel_F'].default
+def recon_matrix_F():
+    return PARAMS['recon_matrix_F'].default
 
 
 @Graph.node()
@@ -230,3 +210,8 @@ def shot_ui():
 @Graph.node()
 def signal_exponent():
     return PARAMS['signal_exponent'].default
+
+
+@Graph.node()
+def constant_voxel_bounds():
+    return False
