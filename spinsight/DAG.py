@@ -8,13 +8,12 @@ class Graph:
     node_specs = {}
 
     @classmethod
-    def node(cls, action=False):
+    def node(cls):
         def decorator(func):
             func_params = [p.name for p in inspect.signature(func).parameters.values()]
             cls.node_specs[func.__name__] = {
                 'func': func,
-                'parents': [p for p in func_params if p != 'self'],
-                'action_precedence': action # order for action node to be flushed
+                'parents': [p for p in func_params if p != 'self']
             }
             return func
         return decorator
@@ -22,11 +21,7 @@ class Graph:
     def __init__(self, controller, dashboard):
 
         specs = self.build_node_specs(controller, dashboard)
-        self.nodes, self.action_nodes = self.build_nodes(specs)
-        
-        self.processing = False
-
-        self.flush_actions()
+        self.nodes = self.build_nodes(specs)
     
     def build_node_specs(self, controller, dashboard):
         # get node specs from decorators
@@ -39,36 +34,22 @@ class Graph:
         return specs
     
     def build_nodes(self, specs):
-        nodes, action_nodes = {}, {}
+        nodes = {}
         for name in topological_order(specs):
             nodes[name] = Node(name, specs[name].get('func', None))
             for parent in specs[name].get('parents', []):
                 nodes[name].attach(nodes[parent])
-            if specs[name].get('action_precedence', False):
-                precedence = specs[name].get('action_precedence')
-                if precedence not in action_nodes:
-                    action_nodes[precedence] = []
-                action_nodes[precedence].append(nodes[name])
-        return nodes, action_nodes
+        return nodes
 
     def update_inputs(self, updated):
-        if not self.processing:
-            self.nodes['trigger_nodes'].set_constant(set(updated.keys()))
-        was_processing = self.processing
-        self.processing = True
+        self.nodes['trigger_nodes'].set_constant(set(updated.keys()))
         for input in updated:
             if input not in self.nodes:
                 raise ValueError(f'Input node {input} not found in graph')
             if self.nodes[input].parents:
                 raise ValueError(f'Node {input} is not an input node')
             self.nodes[input].set_constant(updated[input])
-        self.flush_actions()
-        self.processing = was_processing
-    
-    def flush_actions(self):
-        for precedence in sorted(self.action_nodes):
-            for node in self.action_nodes[precedence]:
-                node.value()
+
 
 class Node:
     
