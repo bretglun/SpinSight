@@ -157,7 +157,7 @@ class GUI(param.Parameterized):
         return pn.Column(
             hv.DynamicMap(self.display_sequence_plot), 
             pn.Row(
-                self.make_param_panel('shot_ui'),
+                self.make_param_panel('shot'),
                 shot_angle_info, 
                 num_shots_info, 
                 self.make_param_panel('signal_exponent')

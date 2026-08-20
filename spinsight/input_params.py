@@ -28,8 +28,8 @@ class InputParams(param.Parameterized):
 
     # Contrast
     FatSat = init_param(param.Boolean, 'FatSat')
-    TR_ui = init_param(param.Selector, 'TR_ui')
-    TE_ui = init_param(param.Selector, 'TE_ui')
+    TR = init_param(param.Selector, 'TR')
+    TE = init_param(param.Selector, 'TE')
     TI = init_param(param.Selector, 'TI')
     FA = init_param(param.Selector, 'FA')
     
@@ -40,8 +40,8 @@ class InputParams(param.Parameterized):
     FOV_F = init_param(param.Selector, 'FOV_F')
     phase_oversampling = init_param(param.Selector, 'phase_oversampling')
     radial_oversampling = init_param(param.Selector, 'radial_oversampling')
-    matrix_P_ui = init_param(param.Selector, 'matrix_P_ui')
-    matrix_F_ui = init_param(param.Selector, 'matrix_F_ui')
+    matrix_P = init_param(param.Selector, 'matrix_P')
+    matrix_F = init_param(param.Selector, 'matrix_F')
     voxel_P = init_param(param.Selector, 'voxel_P')
     voxel_F = init_param(param.Selector, 'voxel_F')
     recon_matrix_P = init_param(param.Selector, 'recon_matrix_P')
@@ -70,5 +70,5 @@ class InputParams(param.Parameterized):
     do_zerofill = init_param(param.Boolean, 'do_zerofill')
     
     # Sequence plot
-    shot_ui = init_param(param.Integer, 'shot_ui')
+    shot = init_param(param.Integer, 'shot')
     signal_exponent = init_param(param.Number, 'signal_exponent')

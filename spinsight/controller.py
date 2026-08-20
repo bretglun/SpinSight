@@ -51,13 +51,13 @@ class Controller(param.Parameterized):
             del inputs['FW_shift']
         for dir in ['F', 'P']:
             # replace voxel size input with matrix size
-            for pre, post in [('', '_ui'), ('recon_', '')]:
-                if f'{pre}voxel_{dir}' in inputs:
-                    inputs[f'{pre}matrix_{dir}{post}'] = int(np.round(self.from_graph(f'FOV_{dir}') / inputs[f'{pre}voxel_{dir}']))
-                    del inputs[f'{pre}voxel_{dir}']
+            for prefix in ['', 'recon_']:
+                if f'{prefix}voxel_{dir}' in inputs:
+                    inputs[f'{prefix}matrix_{dir}'] = int(np.round(self.from_graph(f'FOV_{dir}') / inputs[f'{prefix}voxel_{dir}']))
+                    del inputs[f'{prefix}voxel_{dir}']
             # maintain constant rec/acq ratio when acq matrix is changed
-            if f'matrix_{dir}_ui' in inputs:
-                inputs[f'recon_matrix_{dir}'] = int(np.round(inputs[f'matrix_{dir}_ui'] * getattr(self, f'rec_acq_ratio_{dir}')))
+            if f'matrix_{dir}' in inputs:
+                inputs[f'recon_matrix_{dir}'] = int(np.round(inputs[f'matrix_{dir}'] * getattr(self, f'rec_acq_ratio_{dir}')))
         return inputs
 
     def set_visibility(self, par_name, visible):
@@ -165,7 +165,7 @@ class Controller(param.Parameterized):
         self.set_visibility('FW_shift', self.FW_shift_is_input())
         for voxel_size_param in ['voxel_F', 'voxel_P', 'recon_voxel_F', 'recon_voxel_P']:
             self.set_visibility(voxel_size_param, self.voxel_size_is_input())
-        for matrix_param in ['matrix_F_ui', 'matrix_P_ui', 'recon_matrix_F', 'recon_matrix_P']:
+        for matrix_param in ['matrix_F', 'matrix_P', 'recon_matrix_F', 'recon_matrix_P']:
             self.set_visibility(matrix_param, self.matrix_is_input())
         self.set_visibility('partial_Fourier', not self.from_graph('is_radial'))
         self.set_visibility('frequency_direction', not self.from_graph('is_radial'))
@@ -190,8 +190,8 @@ class Controller(param.Parameterized):
         if self.FW_shift_is_input():
             self.set_param_bounds('FW_shift', minval=convert.pixel_BW_to_shift(self.from_graph('pixel_bandwidth_bounds').max, self.from_graph('field_strength')), maxval=convert.pixel_BW_to_shift(self.from_graph('pixel_bandwidth_bounds').min, self.from_graph('field_strength')))
         if self.matrix_is_input():
-            self.set_param_bounds('matrix_F_ui', minval=self.from_graph('matrix_F_bounds').min, maxval=self.from_graph('matrix_F_bounds').max)
-            self.set_param_bounds('matrix_P_ui', minval=self.from_graph('matrix_P_bounds').min, maxval=self.from_graph('matrix_P_bounds').max)
+            self.set_param_bounds('matrix_F', minval=self.from_graph('matrix_F_bounds').min, maxval=self.from_graph('matrix_F_bounds').max)
+            self.set_param_bounds('matrix_P', minval=self.from_graph('matrix_P_bounds').min, maxval=self.from_graph('matrix_P_bounds').max)
             self.set_param_bounds('recon_matrix_F', minval=self.from_graph('recon_matrix_F_bounds').min, maxval=self.from_graph('recon_matrix_F_bounds').max)
             self.set_param_bounds('recon_matrix_P', minval=self.from_graph('recon_matrix_P_bounds').min, maxval=self.from_graph('recon_matrix_P_bounds').max)
         self.set_param_bounds('FOV_F', minval=self.from_graph('FOV_F_bounds').min, maxval=self.from_graph('FOV_F_bounds').max)
@@ -212,7 +212,7 @@ class Controller(param.Parameterized):
         self.set_x_y_labels()
 
         self.shot_label = 'shot' if not self.from_graph('is_radial') else 'spoke' if (self.from_graph('EPI_factor') * self.from_graph('turbo_factor') == 1) else 'blade'
-        self.input.param.shot_ui.label = f'Displayed {self.shot_label}'
+        self.input.param.shot.label = f'Displayed {self.shot_label}'
 
     def update_turbo_factor_bounds(self):
         # turbo_factor must equal 1 when the EPI_factor is even
@@ -231,7 +231,7 @@ class Controller(param.Parameterized):
 
     def set_x_y_labels(self):
         frequency_direction = self.from_graph('frequency_direction')
-        for p in ['FOV_F', 'FOV_P', 'matrix_F_ui', 'matrix_P_ui', 'recon_matrix_F', 'recon_matrix_P']:
+        for p in ['FOV_F', 'FOV_P', 'matrix_F', 'matrix_P', 'recon_matrix_F', 'recon_matrix_P']:
             par = self.input.param[p]
             if (' y' in par.label) and (('_F' in par.name and frequency_direction=='left-right') or
                                         ('_P' in par.name and frequency_direction=='anterior-posterior')):
@@ -248,8 +248,8 @@ class Controller(param.Parameterized):
         if not self.FW_shift_is_input():
             self.set_param('FW_shift', convert.pixel_BW_to_shift(self.from_graph('pixel_bandwidth'), self.from_graph('field_strength')))
         if not self.matrix_is_input() or self.from_graph('isotropic_voxel_size'):
-            self.set_param('matrix_F_ui', self.from_graph('matrix_F'))
-            self.set_param('matrix_P_ui', self.from_graph('matrix_P'))
+            self.set_param('matrix_F', self.from_graph('matrix_F'))
+            self.set_param('matrix_P', self.from_graph('matrix_P'))
         if 'object' in self.from_graph('trigger_nodes'):
             if self.from_graph('FOV_F') < self.from_graph('phantom_object')['support'][self.from_graph('freq_dir')]:
                 self.set_param('FOV_F', self.from_graph('phantom_object')['support'][self.from_graph('freq_dir')], mode='ceil')
@@ -262,12 +262,12 @@ class Controller(param.Parameterized):
             self.set_param('voxel_P', self.from_graph('FOV_P') / self.from_graph('matrix_P'))
         self.set_param('recon_voxel_F', self.from_graph('FOV_F') / self.from_graph('recon_matrix_F'))
         self.set_param('recon_voxel_P', self.from_graph('FOV_P') / self.from_graph('recon_matrix_P'))
-        self.set_param_bounds('TR_ui', minval=self.from_graph('min_TR'))
-        self.set_param('TR_ui', self.from_graph('TR'))
-        self.set_param_bounds('TE_ui', minval=self.from_graph('min_TE'), maxval=self.from_graph('max_TE'))
-        self.set_param('TE_ui', self.from_graph('TE'))
-        self.input.param.shot_ui.bounds = (1, self.from_graph('num_shots'))
-        self.set_param('shot_ui', self.from_graph('shot') + 1)
+        self.set_param_bounds('TR', minval=self.from_graph('min_TR'))
+        self.set_param('TR', self.from_graph('TR'))
+        self.set_param_bounds('TE', minval=self.from_graph('min_TE'), maxval=self.from_graph('max_TE'))
+        self.set_param('TE', self.from_graph('TE'))
+        self.input.param.shot.bounds = (1, self.from_graph('num_shots'))
+        self.set_param('shot', self.from_graph('shot') + 1)
 
         # Label radial trajectory 'Radial' or 'PROPELLER' depending on nLines per shot
         invalid, updated = ('PROPELLER', 'Radial') if (self.from_graph('EPI_factor') * self.from_graph('turbo_factor') == 1) else ('Radial', 'PROPELLER')

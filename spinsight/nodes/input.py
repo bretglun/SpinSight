@@ -68,13 +68,13 @@ def FatSat():
 
 
 @Graph.node()
-def TR_ui():
-    return PARAMS['TR_ui'].default
+def TR_prescribed():
+    return PARAMS['TR'].default
 
 
 @Graph.node()
-def TE_ui():
-    return PARAMS['TE_ui'].default
+def TE_prescribed():
+    return PARAMS['TE'].default
 
 
 @Graph.node()
@@ -118,13 +118,13 @@ def radial_oversampling():
 
 
 @Graph.node()
-def matrix_P_ui():
-    return PARAMS['matrix_P_ui'].default
+def matrix_P_prescribed():
+    return PARAMS['matrix_P'].default
 
 
 @Graph.node()
-def matrix_F_ui():
-    return PARAMS['matrix_F_ui'].default
+def matrix_F_prescribed():
+    return PARAMS['matrix_F'].default
 
 
 @Graph.node()
@@ -198,8 +198,8 @@ def do_zerofill():
 
 
 @Graph.node()
-def shot_ui():
-    return PARAMS['shot_ui'].default
+def shot_prescribed():
+    return PARAMS['shot'].default
 
 
 @Graph.node()

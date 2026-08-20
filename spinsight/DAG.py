@@ -40,12 +40,14 @@ class Graph:
 
     def update_inputs(self, updated):
         self.nodes['trigger_nodes'].set_constant(set(updated.keys()))
-        for input in updated:
+        for input, value in updated.items():
             if input not in self.nodes:
                 raise ValueError(f'Input node {input} not found in graph')
             if self.nodes[input].parents:
-                raise ValueError(f'Node {input} is not an input node')
-            self.nodes[input].set_constant(updated[input])
+                if (input + '_prescribed') not in self.nodes:
+                    raise ValueError(f'Node {input} is not an input node')
+                input += '_prescribed'
+            self.nodes[input].set_constant(value)
 
 
 class Node:

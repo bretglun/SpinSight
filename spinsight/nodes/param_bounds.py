@@ -35,8 +35,8 @@ def min_voxel_P(max_phaser_area):
 
 @Graph.node()
 def matrix_F_bounds(constant_voxel_bounds, min_voxel_F, FOV_F, constant_FOV_BW_bounds, matrix_F, pixel_bandwidth, pixel_bandwidth_bounds):
-    min_matrix_F = [PARAMS['matrix_F_ui'].objects[0]]
-    max_matrix_F = [PARAMS['matrix_F_ui'].objects[-1]]
+    min_matrix_F = [PARAMS['matrix_F'].objects[0]]
+    max_matrix_F = [PARAMS['matrix_F'].objects[-1]]
     if not constant_voxel_bounds:
         max_matrix_F.append(FOV_F / min_voxel_F)
     if constant_FOV_BW_bounds: # constant FOV BW puts contraints on matrix_F
@@ -47,8 +47,8 @@ def matrix_F_bounds(constant_voxel_bounds, min_voxel_F, FOV_F, constant_FOV_BW_b
 
 @Graph.node()
 def matrix_P_bounds(constant_voxel_bounds, min_voxel_P, FOV_P):
-    min_matrix_P = [PARAMS['matrix_P_ui'].objects[0]]
-    max_matrix_P = [PARAMS['matrix_P_ui'].objects[-1]]
+    min_matrix_P = [PARAMS['matrix_P'].objects[0]]
+    max_matrix_P = [PARAMS['matrix_P'].objects[-1]]
     if not constant_voxel_bounds:
         max_matrix_P.append(FOV_P / min_voxel_P)
     return MinMax(max(min_matrix_P), min(max_matrix_P))

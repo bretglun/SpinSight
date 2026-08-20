@@ -161,7 +161,7 @@ PARAMS = {
         group = 'Contrast',
     ),
 
-    'TR_ui': ParamSpec(
+    'TR': ParamSpec(
         label = 'TR',
         objects = {formatting.Ts(tr): tr for tr in TR_vals},
         default = 9000,
@@ -170,7 +170,7 @@ PARAMS = {
         group = 'Contrast',
     ),
 
-    'TE_ui': ParamSpec(
+    'TE': ParamSpec(
         label = 'TE',
         objects = {formatting.Ts(te): te for te in TE_vals},
         default = 12,
@@ -249,7 +249,7 @@ PARAMS = {
         group = 'Geometry',
     ),
 
-    'matrix_P_ui': ParamSpec(
+    'matrix_P': ParamSpec(
         label = 'Acquisition matrix x',
         objects = matrix_vals,
         default = 180,
@@ -258,7 +258,7 @@ PARAMS = {
         group = 'Geometry',
     ),
 
-    'matrix_F_ui': ParamSpec(
+    'matrix_F': ParamSpec(
         label = 'Acquisition matrix y',
         objects = matrix_vals,
         default = 180,
@@ -407,7 +407,7 @@ PARAMS = {
         group = 'Post-processing',
     ),
 
-    'shot_ui': ParamSpec(
+    'shot': ParamSpec(
         label = 'Displayed shot',
         default = 1,
         precedence = 1,
