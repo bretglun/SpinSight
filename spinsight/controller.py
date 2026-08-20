@@ -20,6 +20,7 @@ class Controller(param.Parameterized):
         self.graph = simulator.make_graph()
         self.add_input_watchers()
         self.set_reference_SNR()
+        self.sync_with_graph()
     
     def set_reference_SNR(self, event=None):
         self.reference_SNR = self.from_graph('SNR')
@@ -257,7 +258,8 @@ class Controller(param.Parameterized):
         self.input.param.trajectory.objects = [t for t in PARAMS['trajectory'].objects if t != invalid]
 
     def update_info_params(self):
-        for par in ['spoke_angle', 'num_shots', 'relative_SNR', 'scantime', 'pixel_bandwidth', 'FW_shift']:
+        self.gui.relative_SNR = formatting.relative_SNR(self.from_graph('SNR') / self.reference_SNR)
+        for par in ['spoke_angle', 'num_shots', 'scantime', 'pixel_bandwidth', 'FW_shift']:
             setattr(self.gui, par, getattr(formatting, par)(self.from_graph(par)))
 
     def update_plots(self):

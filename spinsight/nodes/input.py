@@ -240,8 +240,3 @@ def rec_acq_ratio_F():
 @Graph.node()
 def rec_acq_ratio_P():
     return PARAMS['rec_acq_ratio_P'].default
-
-
-@Graph.node()
-def reference_SNR():
-    return 0

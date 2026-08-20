@@ -8,13 +8,6 @@ def SNR(reference_signal, noise_std):
 
 
 @Graph.node()
-def relative_SNR(reference_SNR, SNR):
-    if not reference_SNR:
-        return 1.0
-    return SNR / reference_SNR
-
-
-@Graph.node()
 def reference_signal(decayed_signal, PD_and_T1w, reference_tissue):
     return decayed_signal * np.abs(PD_and_T1w[reference_tissue])
 
