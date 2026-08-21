@@ -23,19 +23,11 @@ def isotropic_voxel_size(is_radial):
 
 
 @Graph.node()
-def matrix_F(FOV_F, matrix_F_prescribed, isotropic_voxel_size, trigger_nodes, FOV_P, matrix_P_prescribed):
-    if isotropic_voxel_size and (trigger_nodes & {'matrix_P'}):
-        voxel = FOV_P / matrix_P_prescribed
+def matrix_F(FOV_F, matrix_F_prescribed, isotropic_voxel_size, FOV_P, matrix_P):
+    if isotropic_voxel_size:
+        voxel = FOV_P / matrix_P
         return int(np.round(FOV_F / voxel))
     return matrix_F_prescribed
-
-
-@Graph.node()
-def matrix_P(FOV_P, matrix_P_prescribed, isotropic_voxel_size, trigger_nodes, FOV_F, matrix_F_prescribed):
-    if isotropic_voxel_size and (trigger_nodes & {'matrix_F', 'trajectory'}):
-        voxel = FOV_F / matrix_F_prescribed
-        return int(np.round(FOV_P / voxel))
-    return matrix_P_prescribed
 
 
 @Graph.node()

@@ -61,6 +61,10 @@ class Controller(param.Parameterized):
                 if f'{prefix}voxel_{dir}' in inputs:
                     inputs[f'{prefix}matrix_{dir}'] = int(np.round(self.from_graph(f'FOV_{dir}') / inputs[f'{prefix}voxel_{dir}']))
                     del inputs[f'{prefix}voxel_{dir}']
+        if self.isotropic_voxel_size() and 'matrix_F' in inputs:
+            voxel_size = self.input.FOV_F / inputs['matrix_F']
+            inputs['matrix_P'] = int(np.round(self.input.FOV_P / voxel_size))
+        for dir in ['F', 'P']:
             # maintain constant rec/acq ratio when acq matrix is changed
             if f'matrix_{dir}' in inputs:
                 inputs[f'recon_matrix_{dir}'] = int(np.round(inputs[f'matrix_{dir}'] * getattr(self, f'rec_acq_ratio_{dir}')))
@@ -156,6 +160,9 @@ class Controller(param.Parameterized):
 
     def voxel_size_is_input(self):
         return 'VOXEL SIZE' in self.input.parameter_style.upper()
+
+    def isotropic_voxel_size(self):
+        return self.input.trajectory in ['Radial', 'PROPELLER']
 
     def sync_with_graph(self):
         self.propagate_changes = False

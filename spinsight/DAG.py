@@ -25,10 +25,7 @@ class Graph:
     
     def build_node_specs(self):
         # get node specs from decorators
-        specs = dict(type(self).node_specs)
-        # special node to track which input node was trigger
-        specs['trigger_nodes'] = {'func': lambda: set()}
-        return specs
+        return dict(type(self).node_specs)
     
     def build_nodes(self, specs):
         nodes = {}
@@ -39,7 +36,6 @@ class Graph:
         return nodes
 
     def update_inputs(self, updated):
-        self.nodes['trigger_nodes'].set_constant(set(updated.keys()))
         for input, value in updated.items():
             if input not in self.nodes:
                 raise ValueError(f'Input node {input} not found in graph')

@@ -113,7 +113,7 @@ def radial_oversampling():
 
 
 @Graph.node()
-def matrix_P_prescribed():
+def matrix_P():
     return PARAMS['matrix_P'].default
 
 
