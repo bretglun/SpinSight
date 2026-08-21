@@ -138,10 +138,11 @@ class Controller(param.Parameterized):
         par.objects = objects
     
     def get_input_params(self):
-        return {par: getattr(self.input, par) for par in self.input.param if par != 'name' and not PARAMS[par].derived}
+        return {par: getattr(self.input, par) for par in self.input_nodes() if self.input.param[par].precedence >= 0}
 
     def set_input_params(self, settings):
         self.graph.update_inputs(settings)
+        self.sync_with_graph()
 
     def from_graph(self, par_name):
         return self.graph.nodes[par_name].value()

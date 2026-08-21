@@ -14,8 +14,6 @@ class ParamSpec:
     step: float | None = None
     default: None = None
     precedence: int = -1
-
-    derived: bool = False
     group: str | None = None
     widget: Widget | None = None
 
@@ -105,7 +103,6 @@ PARAMS = {
         objects = {formatting.FOV_bandwidth(fovbw): fovbw for fovbw in fov_bw_vals},
         default = 43.2,
         precedence = 2,
-        derived = True,
         widget = pn.widgets.DiscreteSlider,
         group = 'Sequence',
     ),
@@ -115,7 +112,6 @@ PARAMS = {
         objects = {formatting.FW_shift(shift): shift for shift in FW_shift_vals},
         default = 0.45,
         precedence = 2,
-        derived = True,
         widget = pn.widgets.DiscreteSlider,
         group = 'Sequence',
     ),
@@ -272,7 +268,6 @@ PARAMS = {
         objects =  {formatting.voxel_size(voxel): voxel for voxel in voxel_vals},
         default = 1.333, 
         precedence = 4,
-        derived = True,
         widget = pn.widgets.DiscreteSlider,
         group = 'Geometry',
     ),
@@ -282,7 +277,6 @@ PARAMS = {
         objects =  {formatting.voxel_size(voxel): voxel for voxel in voxel_vals},
         default = 1.333, 
         precedence = 4,
-        derived = True,
         widget = pn.widgets.DiscreteSlider,
         group = 'Geometry',
     ),
@@ -309,7 +303,6 @@ PARAMS = {
         label = 'Reconstructed voxel size x',
         objects =  {formatting.voxel_size(voxel): voxel for voxel in recon_voxel_vals},
         precedence = 5,
-        derived = True,
         widget = pn.widgets.DiscreteSlider,
         group = 'Geometry',
     ),
@@ -318,7 +311,6 @@ PARAMS = {
         label = 'Reconstructed voxel size y',
         objects =  {formatting.voxel_size(voxel): voxel for voxel in recon_voxel_vals},
         precedence = 5,
-        derived = True,
         widget = pn.widgets.DiscreteSlider,
         group = 'Geometry',
     ),

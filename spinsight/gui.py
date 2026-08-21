@@ -219,7 +219,7 @@ class GUI(param.Parameterized):
         print('Saving settings to file', self.settings_file)
         settings = self.controller.get_input_params()
         with open(self.settings_file, 'w') as f:
-            toml.dump(settings, f)
+            toml.dump(dict(sorted(settings.items())), f)
     
     def make_reset_SNR_button(self):
         reset_SNR_button = pn.widgets.Button(name='Set reference SNR')
