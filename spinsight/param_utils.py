@@ -2,6 +2,8 @@ import numpy as np
 
 
 def snap(value, values, mode='nearest'):
+    if value in values:
+        return value
     match mode:
         case 'nearest':
             return min(values, key=lambda x: abs(x-value), default=None)
