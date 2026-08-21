@@ -12,9 +12,18 @@ MinMax = namedtuple('MinMax', ['min', 'max'])
 
 
 @Graph.node()
-def max_turbo_factor(matrix, phase_dir, partial_Fourier, EPI_factor, is_radial):
-    undersampling = partial_Fourier if not is_radial else 1
-    return int(np.floor(matrix[phase_dir] * undersampling / EPI_factor * MAX_PHASE_OVERSAMPLING_FACTOR))
+def shot_bounds(num_shots):
+    return MinMax(0, num_shots - 1)
+
+
+@Graph.node()
+def turbo_factor_bounds(matrix, phase_dir, partial_Fourier, EPI_factor, is_radial):
+    if EPI_factor % 2:
+        undersampling = partial_Fourier if not is_radial else 1
+        max_turbo_factor = int(np.floor(matrix[phase_dir] * undersampling / EPI_factor * MAX_PHASE_OVERSAMPLING_FACTOR))
+    else: # EPI_factor must be odd for turbo spin echo (GRASE)
+        max_turbo_factor = 1
+    return MinMax(1, max_turbo_factor)
 
 
 @Graph.node()
@@ -49,65 +58,47 @@ def min_voxel_P(min_voxel_F_aniso, min_voxel_P_aniso, isotropic_voxel_size):
 
 @Graph.node()
 def matrix_F_bounds(constant_voxel_bounds, min_voxel_F, FOV_F, constant_FOV_BW_bounds, matrix_F, pixel_bandwidth, pixel_bandwidth_bounds):
-    min_matrix_F = [PARAMS['matrix_F'].objects[0]]
-    max_matrix_F = [PARAMS['matrix_F'].objects[-1]]
+    min_matrix_F = [1]
+    max_matrix_F = []
     if not constant_voxel_bounds:
         max_matrix_F.append(FOV_F / min_voxel_F)
     if constant_FOV_BW_bounds: # constant FOV BW puts contraints on matrix_F
         min_matrix_F.append(matrix_F * pixel_bandwidth / pixel_bandwidth_bounds.max)
         max_matrix_F.append(matrix_F * pixel_bandwidth / pixel_bandwidth_bounds.min)
-    return MinMax(max(min_matrix_F), min(max_matrix_F))
+    return MinMax(max(min_matrix_F), min(max_matrix_F) if max_matrix_F else None)
 
 
 @Graph.node()
 def matrix_P_bounds(constant_voxel_bounds, min_voxel_P, FOV_P):
-    min_matrix_P = [PARAMS['matrix_P'].objects[0]]
-    max_matrix_P = [PARAMS['matrix_P'].objects[-1]]
-    if not constant_voxel_bounds:
-        max_matrix_P.append(FOV_P / min_voxel_P)
-    return MinMax(max(min_matrix_P), min(max_matrix_P))
+    if constant_voxel_bounds:
+        return MinMax(1, None)
+    return MinMax(1, FOV_P / min_voxel_P)
 
 
 @Graph.node()
 def recon_matrix_F_bounds(matrix_F):
-    min_recon_matrix_F = [PARAMS['recon_matrix_F'].objects[0]]
-    max_recon_matrix_F = [PARAMS['recon_matrix_F'].objects[-1]]
-    min_recon_matrix_F.append(matrix_F)
-    return MinMax(max(min_recon_matrix_F),min(max_recon_matrix_F))
+    return MinMax(matrix_F, None)
 
 
 @Graph.node()
 def recon_matrix_P_bounds(matrix_P):
-    min_recon_matrix_P = [PARAMS['recon_matrix_P'].objects[0]]
-    max_recon_matrix_P = [PARAMS['recon_matrix_P'].objects[-1]]
-    min_recon_matrix_P.append(matrix_P)
-    return MinMax(max(min_recon_matrix_P),min(max_recon_matrix_P))
+    return MinMax(matrix_P, None)
 
 
 @Graph.node()
 def FOV_F_bounds(matrix_F, min_voxel_F, constant_voxel_bounds, FOV_F, matrix_F_bounds):
-    min_FOV_F = [list(PARAMS['FOV_F'].objects.values())[0]]
-    max_FOV_F = [list(PARAMS['FOV_F'].objects.values())[-1]]
     if constant_voxel_bounds: # constant voxel size puts constraints on FOV
         voxel = FOV_F / matrix_F
-        min_FOV_F.append(voxel * matrix_F_bounds.min)
-        max_FOV_F.append(voxel * matrix_F_bounds.max)
-    else:
-        min_FOV_F.append(min_voxel_F * matrix_F)
-    return MinMax(max(min_FOV_F), min(max_FOV_F))
+        return MinMax(*(voxel * matrix_F if matrix_F is not None else None for matrix_F in matrix_F_bounds))
+    return MinMax(min_voxel_F * matrix_F, None)
 
 
 @Graph.node()
 def FOV_P_bounds(matrix_P, min_voxel_P, constant_voxel_bounds, FOV_P, matrix_P_bounds):
-    min_FOV_P = [list(PARAMS['FOV_P'].objects.values())[0]]
-    max_FOV_P = [list(PARAMS['FOV_P'].objects.values())[-1]]
     if constant_voxel_bounds: # constant voxel size puts constraints on FOV
         voxel = FOV_P / matrix_P
-        min_FOV_P.append(voxel * matrix_P_bounds.min)
-        max_FOV_P.append(voxel * matrix_P_bounds.max)
-    else:
-        min_FOV_P.append(min_voxel_P * matrix_P)
-    return MinMax(max(min_FOV_P), min(max_FOV_P))
+        return MinMax(*(voxel * matrix_P if matrix_P is not None else None for matrix_P in matrix_P_bounds))
+    return MinMax(min_voxel_P * matrix_P, None)
 
 
 @Graph.node()
@@ -116,10 +107,16 @@ def min_TR(spoiler, sequence_start):
 
 
 @Graph.node()
-def max_TI(TR, spoiler, slice_select_inversion_floating):
+def TR_bounds(min_TR):
+    return MinMax(min_TR, None)
+
+
+@Graph.node()
+def TI_bounds(TR, spoiler, slice_select_inversion_floating):
     if slice_select_inversion_floating is None:
         return None
-    return TR - spoiler['time'][-1] - slice_select_inversion_floating['dur_f'] / 2
+    max_TI = TR - spoiler['time'][-1] - slice_select_inversion_floating['dur_f'] / 2
+    return MinMax(None, max_TI)
 
 
 @Graph.node()
@@ -166,6 +163,11 @@ def max_TE(TR, sequence_start, spoiler_floating, readout_risetime, gre_echo_trai
             TE = readtrain_center + readtrain_shift(gr_echo_spacing, gr_index, EPI_factor)
             max_TE_cands.append(TE)
     return max(max_TE_cands)
+
+
+@Graph.node()
+def TE_bounds(min_TE, max_TE):
+    return MinMax(min_TE, max_TE)
 
 
 @Graph.node()
@@ -243,6 +245,11 @@ def pixel_bandwidth_bounds(matrix_F, FOV_F, is_gradient_echo, RF_refocusing, tur
             pixel_bandwidth_values.append(pixel_bandwidth)
 
     return MinMax(min(pixel_bandwidth_values, default=np.inf), max(pixel_bandwidth_values, default=-np.inf))
+
+
+@Graph.node()
+def slice_thickness_bounds(min_slice_thickness):
+    return MinMax(min_slice_thickness, None)
 
 
 @Graph.node()

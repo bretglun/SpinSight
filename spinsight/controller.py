@@ -118,25 +118,20 @@ class Controller(param.Parameterized):
         if PARAMS[par.name].objects is not None:
             return self.set_param_discrete_bounds(par, curval, minval, maxval)
         
-        if minval is None:
-            if PARAMS[par_name].bounds is None:
-                return
-            minval = PARAMS[par.name].bounds[0]
-        if maxval is None:
-            if PARAMS[par_name].bounds is None:
-                return
-            maxval = PARAMS[par.name].bounds[1]
-        outbound = False
-        if curval < minval:
-            warnings.warn(f'trying to set {par.name} min bound above current value ({minval} > {curval})')
-            outbound = True
-        if curval > maxval:
-            warnings.warn(f'trying to set {par.name} max bound below current value ({maxval} < {curval})')
-            outbound = True
-        if not outbound:
-            par.bounds = (minval, maxval)
+        default_min, default_max = PARAMS[par.name].bounds or (None, None)
+        if default_min is not None:
+            minval = default_min if minval is None else max(minval, default_min)
+        if default_max is not None:
+            maxval = default_max if maxval is None else min(maxval, default_max)
+        par.bounds = (minval, maxval)
+        par.constant = minval == maxval
     
     def set_param_discrete_bounds(self, par, curval, minval=None, maxval=None):
+        objects = PARAMS[par.name].objects
+        default_min, default_max = (x := list(objects.values()) if isinstance(objects, dict) else objects)[0], x[-1]
+        minval = default_min if minval is None else max(minval, default_min)
+        maxval = default_max if maxval is None else min(maxval, default_max)
+        
         objects = filter_objects(PARAMS[par.name].objects, minval, maxval)
         if not value_in_objects(curval, objects):
             warnings.warn(f'Trying to set {par.name} bound [{minval}, {maxval}] outside current value: {curval})')
@@ -193,45 +188,28 @@ class Controller(param.Parameterized):
         self.set_visibility('apodization_alpha', self.from_graph('do_apodize'))
 
     def update_bounds(self):
-        if self.from_graph('sequence_type') == 'Inversion Recovery':
-            self.set_param_bounds('TI', maxval=self.from_graph('max_TI'))
-        self.set_param_bounds('slice_thickness', minval=self.from_graph('min_slice_thickness'))
-        if self.pixel_BW_is_input():
-            self.set_param_bounds('pixel_bandwidth', minval=self.from_graph('pixel_bandwidth_bounds').min, maxval=self.from_graph('pixel_bandwidth_bounds').max)
+        for par in self.input_nodes():
+            if f'{par}_bounds' in self.graph.nodes:
+                bounds = self.from_graph(f'{par}_bounds')
+                if bounds is not None:
+                    self.set_param_bounds(par, minval=bounds.min, maxval=bounds.max)
+        
         if self.FOV_BW_is_input():
-            self.set_param_bounds('FOV_bandwidth', minval=convert.pixel_BW_to_FOV_BW(self.from_graph('pixel_bandwidth_bounds').min, self.from_graph('matrix_F')), maxval=convert.pixel_BW_to_FOV_BW(self.from_graph('pixel_bandwidth_bounds').max, self.from_graph('matrix_F')))
+            lo, hi = (convert.pixel_BW_to_FOV_BW(pbw, self.from_graph('matrix_F')) for pbw in self.from_graph('pixel_bandwidth_bounds'))
+            self.set_param_bounds('FOV_bandwidth', minval=lo, maxval=hi)
         if self.FW_shift_is_input():
-            self.set_param_bounds('FW_shift', minval=convert.pixel_BW_to_shift(self.from_graph('pixel_bandwidth_bounds').max, self.from_graph('field_strength')), maxval=convert.pixel_BW_to_shift(self.from_graph('pixel_bandwidth_bounds').min, self.from_graph('field_strength')))
-        if self.matrix_is_input():
-            self.set_param_bounds('matrix_F', minval=self.from_graph('matrix_F_bounds').min, maxval=self.from_graph('matrix_F_bounds').max)
-            self.set_param_bounds('matrix_P', minval=self.from_graph('matrix_P_bounds').min, maxval=self.from_graph('matrix_P_bounds').max)
-            self.set_param_bounds('recon_matrix_F', minval=self.from_graph('recon_matrix_F_bounds').min, maxval=self.from_graph('recon_matrix_F_bounds').max)
-            self.set_param_bounds('recon_matrix_P', minval=self.from_graph('recon_matrix_P_bounds').min, maxval=self.from_graph('recon_matrix_P_bounds').max)
-        self.set_param_bounds('FOV_F', minval=self.from_graph('FOV_F_bounds').min, maxval=self.from_graph('FOV_F_bounds').max)
-        self.set_param_bounds('FOV_P', minval=self.from_graph('FOV_P_bounds').min, maxval=self.from_graph('FOV_P_bounds').max)
+            lo, hi = (convert.pixel_BW_to_shift(pbw, self.from_graph('field_strength')) for pbw in reversed(self.from_graph('pixel_bandwidth_bounds')))
+            self.set_param_bounds('FW_shift', minval=lo, maxval=hi)
         if self.voxel_size_is_input():
-            self.set_param_bounds('voxel_F', minval=self.from_graph('FOV_F')/self.from_graph('matrix_F_bounds').max, maxval=self.from_graph('FOV_F')/self.from_graph('matrix_F_bounds').min)
-            self.set_param_bounds('voxel_P', minval=self.from_graph('FOV_P')/self.from_graph('matrix_P_bounds').max, maxval=self.from_graph('FOV_P')/self.from_graph('matrix_P_bounds').min)
-            self.set_param_bounds('recon_voxel_F', minval=self.from_graph('FOV_F')/self.from_graph('recon_matrix_F_bounds').max, maxval=self.from_graph('FOV_F')/self.from_graph('recon_matrix_F_bounds').min)
-            self.set_param_bounds('recon_voxel_P', minval=self.from_graph('FOV_P')/self.from_graph('recon_matrix_P_bounds').max, maxval=self.from_graph('FOV_P')/self.from_graph('recon_matrix_P_bounds').min)
+            for dir in ['F', 'P']:
+                for prefix in ['', 'recon_']:
+                    lo, hi = (self.from_graph(f'FOV_{dir}') / matrix if matrix is not None else None for matrix in reversed(self.from_graph(f'{prefix}matrix_{dir}_bounds')))
+                    self.set_param_bounds(f'{prefix}voxel_{dir}', minval=lo, maxval=hi)
     
-        self.update_turbo_factor_bounds()
         self.update_EPI_factor_bounds()
-
         self.input.param.reference_tissue.objects = self.from_graph('tissues')
-
-        self.set_param_bounds('TR', minval=self.from_graph('min_TR'))
-        self.set_param_bounds('TE', minval=self.from_graph('min_TE'), maxval=self.from_graph('max_TE'))
-        self.input.param.shot.bounds = (0, self.from_graph('num_shots') - 1)
-
         self.update_x_y_labels()
         self.update_shot_label()
-
-    def update_turbo_factor_bounds(self):
-        even_EPI_factor = not self.input.EPI_factor % 2
-        max_turbo_factor = 1 if even_EPI_factor else min(self.from_graph('max_turbo_factor'), PARAMS['turbo_factor'].bounds[-1])
-        self.input.param.turbo_factor.bounds = (1, max_turbo_factor)
-        self.input.param.turbo_factor.constant = even_EPI_factor
 
     def update_EPI_factor_bounds(self):
         self.set_param_bounds('EPI_factor', maxval=self.from_graph('max_EPI_factor'))

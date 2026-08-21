@@ -401,7 +401,7 @@ PARAMS = {
 
     'shot': ParamSpec(
         label = 'Displayed shot',
-        default = 1,
+        default = 0,
         precedence = 1,
         widget = pn.widgets.IntSlider,
     ),

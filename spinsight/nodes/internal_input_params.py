@@ -46,7 +46,7 @@ def EPI_factor(EPI_factor_prescribed, turbo_factor):
 
 @Graph.node()
 def shot(shot_prescribed, num_shots):
-    return min(shot_prescribed, num_shots)
+    return min(shot_prescribed, num_shots - 1)
 
 
 @Graph.node()
