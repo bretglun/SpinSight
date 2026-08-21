@@ -24,13 +24,27 @@ def max_EPI_factor(matrix, phase_dir, partial_Fourier, turbo_factor, is_radial):
 
 
 @Graph.node()
-def min_voxel_F(max_readout_area):
+def min_voxel_F_aniso(max_readout_area):
     return 1e3 / (max_readout_area * GYRO)
 
 
 @Graph.node()
-def min_voxel_P(max_phaser_area):
+def min_voxel_P_aniso(max_phaser_area):
     return 1e3 / (2 * max_phaser_area * GYRO)
+
+
+@Graph.node()
+def min_voxel_F(min_voxel_F_aniso, min_voxel_P_aniso, isotropic_voxel_size):
+    if isotropic_voxel_size:
+        return max(min_voxel_F_aniso, min_voxel_P_aniso)
+    return min_voxel_F_aniso
+
+
+@Graph.node()
+def min_voxel_P(min_voxel_F_aniso, min_voxel_P_aniso, isotropic_voxel_size):
+    if isotropic_voxel_size:
+        return max(min_voxel_F_aniso, min_voxel_P_aniso)
+    return min_voxel_P_aniso
 
 
 @Graph.node()
