@@ -19,7 +19,7 @@ class Controller(param.Parameterized):
         self.gui = gui
         self.input = InputParams()
         self.graph = simulator.make_graph()
-        self.passive_updates = False # passive_updates disables watchers updating the graph
+        self.propagate_changes = True
         self.add_input_watchers()
         self.set_reference_SNR()
         self.sync_with_graph()
@@ -35,9 +35,12 @@ class Controller(param.Parameterized):
             self.input.param.watch(self.on_param_change, par)
 
     def on_param_change(self, event):
-        if self.passive_updates:
+        if not self.propagate_changes:
             return
         self.graph.update_inputs(self.inputs_to_update(event.name, event.new))
+        if event.name == 'object':
+            # adapt FOV to phantom
+            self.graph.update_inputs({f'FOV_{D}': max(self.from_graph('phantom_object')['support'][self.from_graph(f'{dir}_dir')], self.from_graph(f'FOV_{D}')) for (D, dir) in [('F', 'freq'), ('P', 'phase')]})
         self.sync_with_graph()
     
     def inputs_to_update(self, triggered, value):
@@ -155,12 +158,14 @@ class Controller(param.Parameterized):
         return 'VOXEL SIZE' in self.input.parameter_style.upper()
 
     def sync_with_graph(self):
+        self.propagate_changes = False
         self.update_visibility()
         self.update_bounds()
         self.update_params()
         self.update_info_params()
         self.update_plots()
         self.update_rec_acq_ratio()
+        self.propagate_changes = True
 
     def update_visibility(self):
         self.set_visibility('pixel_bandwidth', self.pixel_BW_is_input())
@@ -209,8 +214,6 @@ class Controller(param.Parameterized):
         self.update_EPI_factor_bounds()
 
         self.input.param.reference_tissue.objects = self.from_graph('tissues')
-        if 'object' in self.from_graph('trigger_nodes') and 'reference_tissue' not in self.from_graph('trigger_nodes'):
-            self.input.reference_tissue = self.from_graph('tissues')[0]
 
         self.set_param_bounds('TR', minval=self.from_graph('min_TR'))
         self.set_param_bounds('TE', minval=self.from_graph('min_TE'), maxval=self.from_graph('max_TE'))
@@ -250,8 +253,6 @@ class Controller(param.Parameterized):
         self.input.param.shot.label = f'Displayed {self.shot_label}'
 
     def update_params(self):
-        self.passive_updates = True
-
         for par in self.input_nodes():
             self.set_param(par, self.from_graph(par))
         self.set_param('FOV_bandwidth', convert.pixel_BW_to_FOV_BW(self.from_graph('pixel_bandwidth'), self.from_graph('matrix_F')))
@@ -260,14 +261,6 @@ class Controller(param.Parameterized):
             for prefix in ['', 'recon_']:
                 self.set_param(f'{prefix}voxel_{dir}', self.from_graph(f'FOV_{dir}') / self.from_graph(f'{prefix}matrix_{dir}'))
         self.update_trajectory_lables()
-
-        self.passive_updates = False
-
-        if 'object' in self.from_graph('trigger_nodes'):
-            if self.from_graph('FOV_F') < self.from_graph('phantom_object')['support'][self.from_graph('freq_dir')]:
-                self.set_param('FOV_F', self.from_graph('phantom_object')['support'][self.from_graph('freq_dir')], mode='ceil')
-            if self.from_graph('FOV_P') < self.from_graph('phantom_object')['support'][self.from_graph('phase_dir')]:
-                self.set_param('FOV_P', self.from_graph('phantom_object')['support'][self.from_graph('phase_dir')], mode='ceil')
 
     def update_trajectory_lables(self):
         # Label radial trajectory 'Radial' or 'PROPELLER' depending on nLines per shot

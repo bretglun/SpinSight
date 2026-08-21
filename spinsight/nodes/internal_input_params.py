@@ -41,3 +41,10 @@ def matrix_P(FOV_P, matrix_P_prescribed, isotropic_voxel_size, trigger_nodes, FO
 @Graph.node()
 def shot(shot_prescribed, num_shots):
     return min(shot_prescribed, num_shots) - 1
+
+
+@Graph.node()
+def reference_tissue(reference_tissue_prescribed, tissues):
+    if reference_tissue_prescribed in tissues:
+        return reference_tissue_prescribed
+    return tissues[0]

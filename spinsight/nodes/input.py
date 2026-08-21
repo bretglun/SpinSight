@@ -148,7 +148,7 @@ def show_FOV():
 
 
 @Graph.node()
-def reference_tissue():
+def reference_tissue_prescribed():
     return PARAMS['reference_tissue'].default
 
 
