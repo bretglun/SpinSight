@@ -53,7 +53,7 @@ def turbo_factor():
 
 
 @Graph.node()
-def EPI_factor():
+def EPI_factor_prescribed():
     return PARAMS['EPI_factor'].default
 
 

@@ -39,6 +39,13 @@ def matrix_P(FOV_P, matrix_P_prescribed, isotropic_voxel_size, trigger_nodes, FO
 
 
 @Graph.node()
+def EPI_factor(EPI_factor_prescribed, turbo_factor):
+    if turbo_factor > 1 and not EPI_factor_prescribed % 2:
+        return EPI_factor_prescribed + 1 # EPI_factor must be odd for GRASE
+    return EPI_factor_prescribed
+
+
+@Graph.node()
 def shot(shot_prescribed, num_shots):
     return min(shot_prescribed, num_shots) - 1
 

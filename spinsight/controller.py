@@ -223,18 +223,15 @@ class Controller(param.Parameterized):
         self.update_shot_label()
 
     def update_turbo_factor_bounds(self):
-        # turbo_factor must equal 1 when the EPI_factor is even
-        if not self.input.EPI_factor%2:
-            self.input.param.turbo_factor.bounds = (1, 1)
-            self.input.param.turbo_factor.constant = True
-            return
-        self.input.param.turbo_factor.bounds = (1, min(self.from_graph('max_turbo_factor'), PARAMS['turbo_factor'].bounds[-1]))
-        self.input.param.turbo_factor.constant = False
+        even_EPI_factor = not self.input.EPI_factor % 2
+        max_turbo_factor = 1 if even_EPI_factor else min(self.from_graph('max_turbo_factor'), PARAMS['turbo_factor'].bounds[-1])
+        self.input.param.turbo_factor.bounds = (1, max_turbo_factor)
+        self.input.param.turbo_factor.constant = even_EPI_factor
 
     def update_EPI_factor_bounds(self):
         self.set_param_bounds('EPI_factor', maxval=self.from_graph('max_EPI_factor'))
         # EPI_factor must be odd for turbo spin echo (GRASE)
-        if self.input.turbo_factor > 1:
+        if self.from_graph('turbo_factor') > 1:
             self.input.param.EPI_factor.objects = [v for v in self.input.param.EPI_factor.objects if v%2]
 
     def update_x_y_labels(self):
