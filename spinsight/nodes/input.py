@@ -48,7 +48,7 @@ def partial_Fourier():
 
 
 @Graph.node()
-def turbo_factor():
+def turbo_factor_prescribed():
     return PARAMS['turbo_factor'].default
 
 

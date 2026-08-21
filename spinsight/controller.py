@@ -26,9 +26,19 @@ class Controller(param.Parameterized):
     
     def set_reference_SNR(self, event=None):
         self.reference_SNR = self.from_graph('SNR')
+
+    def from_graph(self, par_name):
+        return self.graph.nodes[par_name].value()
         
     def input_nodes(self):
         return {par for par in self.input.param if any(par + post in self.graph.nodes and not self.graph.nodes[par + post].parents for post in ('', '_prescribed'))}
+    
+    def get_input_params(self):
+        return {par: getattr(self.input, par) for par in self.input_nodes() if self.input.param[par].precedence >= 0}
+
+    def set_input_params(self, settings):
+        self.graph.update_inputs(settings)
+        self.sync_with_graph()
     
     def add_input_watchers(self):
         for par in self.input.param:
@@ -136,16 +146,6 @@ class Controller(param.Parameterized):
             else:
                 insert_value_in_list_sorted(curval, objects)
         par.objects = objects
-    
-    def get_input_params(self):
-        return {par: getattr(self.input, par) for par in self.input_nodes() if self.input.param[par].precedence >= 0}
-
-    def set_input_params(self, settings):
-        self.graph.update_inputs(settings)
-        self.sync_with_graph()
-
-    def from_graph(self, par_name):
-        return self.graph.nodes[par_name].value()
 
     def pixel_BW_is_input(self):
         return 'PIXEL BW' in self.input.parameter_style.upper()
@@ -183,15 +183,12 @@ class Controller(param.Parameterized):
             self.set_visibility(voxel_size_param, self.voxel_size_is_input())
         for matrix_param in ['matrix_F', 'matrix_P', 'recon_matrix_F', 'recon_matrix_P']:
             self.set_visibility(matrix_param, self.matrix_is_input())
-        self.set_visibility('partial_Fourier', not self.from_graph('is_radial'))
-        self.set_visibility('frequency_direction', not self.from_graph('is_radial'))
-        self.set_visibility('phase_oversampling', not self.from_graph('is_radial'))
+        for cartesian_param in ['partial_Fourier', 'frequency_direction', 'phase_oversampling']:
+            self.set_visibility(cartesian_param, not self.from_graph('is_radial'))
         self.set_visibility('radial_oversampling', self.from_graph('is_radial'))
         self.set_visibility('TI', self.from_graph('sequence_type') == 'Inversion Recovery')
         self.set_visibility('FA', self.from_graph('sequence_type') == 'Spoiled Gradient Echo')
         self.set_visibility('turbo_factor', not self.from_graph('is_gradient_echo'))
-        if self.from_graph('is_gradient_echo'):
-            self.set_param('turbo_factor', 1)
         self.set_visibility('homodyne', (self.from_graph('num_blank_lines') > 0 and not self.from_graph('is_radial')))
         self.set_visibility('apodization_alpha', self.from_graph('do_apodize'))
 

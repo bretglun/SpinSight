@@ -31,6 +31,13 @@ def matrix_F(FOV_F, matrix_F_prescribed, isotropic_voxel_size, FOV_P, matrix_P):
 
 
 @Graph.node()
+def turbo_factor(is_gradient_echo, turbo_factor_prescribed):
+    if is_gradient_echo:
+        return 1
+    return turbo_factor_prescribed
+
+
+@Graph.node()
 def EPI_factor(EPI_factor_prescribed, turbo_factor):
     if turbo_factor > 1 and not EPI_factor_prescribed % 2:
         return EPI_factor_prescribed + 1 # EPI_factor must be odd for GRASE
