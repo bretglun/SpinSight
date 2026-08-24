@@ -74,12 +74,16 @@ class Controller(param.Parameterized):
         if self.isotropic_voxel_size() and 'matrix_F' in inputs:
             voxel_size = self.input.FOV_F / inputs['matrix_F']
             inputs['matrix_P'] = int(np.round(self.input.FOV_P / voxel_size))
+        if self.FOV_BW_is_input() and 'matrix_F' in inputs and 'pixel_bandwidth' not in inputs:
+            # maintain contant FOV bandwidth
+            inputs['pixel_bandwidth'] = convert.FOV_BW_to_pixel_BW(self.input.FOV_bandwidth, inputs['matrix_F'])
         for dir in ['F', 'P']:
+            # maintain contant voxel size
+            if self.voxel_size_is_input() and f'FOV_{dir}' in inputs and f'matrix_{dir}' not in inputs:
+                inputs[f'matrix_{dir}'] = int(np.round(inputs[f'FOV_{dir}'] / getattr(self.input, f'voxel_{dir}')))
             # maintain constant rec/acq ratio when acq matrix is changed
             if f'matrix_{dir}' in inputs:
                 inputs[f'recon_matrix_{dir}'] = int(np.round(inputs[f'matrix_{dir}'] * getattr(self, f'rec_acq_ratio_{dir}')))
-        if self.FOV_BW_is_input() and 'matrix_F' in inputs and 'pixel_bandwidth' not in inputs:
-            inputs['pixel_bandwidth'] = convert.FOV_BW_to_pixel_BW(self.input.FOV_bandwidth, inputs['matrix_F'])
         return inputs
 
     def set_visibility(self, par_name, visible):
