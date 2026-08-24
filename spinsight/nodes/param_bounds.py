@@ -57,11 +57,9 @@ def min_voxel_P(min_voxel_F_aniso, min_voxel_P_aniso, isotropic_voxel_size):
 
 
 @Graph.node()
-def matrix_F_bounds(constant_voxel_bounds, min_voxel_F, FOV_F, constant_FOV_BW_bounds, matrix_F, pixel_bandwidth, pixel_bandwidth_bounds):
+def matrix_F_bounds(min_voxel_F, FOV_F, constant_FOV_BW_bounds, matrix_F, pixel_bandwidth, pixel_bandwidth_bounds):
     min_matrix_F = [1]
-    max_matrix_F = []
-    if not constant_voxel_bounds:
-        max_matrix_F.append(FOV_F / min_voxel_F)
+    max_matrix_F = [FOV_F / min_voxel_F]
     if constant_FOV_BW_bounds: # constant FOV BW puts contraints on matrix_F
         min_matrix_F.append(matrix_F * pixel_bandwidth / pixel_bandwidth_bounds.max)
         max_matrix_F.append(matrix_F * pixel_bandwidth / pixel_bandwidth_bounds.min)
@@ -69,9 +67,7 @@ def matrix_F_bounds(constant_voxel_bounds, min_voxel_F, FOV_F, constant_FOV_BW_b
 
 
 @Graph.node()
-def matrix_P_bounds(constant_voxel_bounds, min_voxel_P, FOV_P):
-    if constant_voxel_bounds:
-        return MinMax(1, None)
+def matrix_P_bounds(min_voxel_P, FOV_P):
     return MinMax(1, FOV_P / min_voxel_P)
 
 
