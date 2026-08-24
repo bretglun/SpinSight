@@ -30,20 +30,20 @@ class ParamSpec:
         return {kw: getattr(self, kw) for kw in param_kw if getattr(self, kw) is not None}
 
 
-pbw_vals = [float(v) for v in np.geomspace(125, 2e3, 500)]
+pbw_vals = sorted({float(f'{v:.2g}') for v in np.geomspace(125, 2e3, 1000)})
 fov_bw_vals = [convert.pixel_BW_to_FOV_BW(bw, 180) for bw in pbw_vals]
-FW_shift_vals = [convert.pixel_BW_to_shift(pBW, 1.5) for pBW in pbw_vals[::-1]]
+FW_shift_vals = [convert.pixel_BW_to_shift(pBW, 1.5) for pBW in reversed(pbw_vals)]
 
-TR_vals = [float(v) for v in np.geomspace(1, 1e4, 500)]
-TE_vals = [float(v) for v in np.geomspace(1, 1e3, 500)]
-TI_vals = [float(v) for v in np.geomspace(1e2, 4e3, 500)]
+TR_vals = sorted({float(f'{v:.2g}') for v in np.geomspace(1, 1e4, 1000)})
+TE_vals = sorted({float(f'{v:.2g}') for v in np.geomspace(1, 1e3, 1000)})
+TI_vals = sorted({float(f'{v:.2g}') for v in np.geomspace(1e2, 4e3, 1000)})
 
 fov_vals = range(100, 600 + 1)
 
 matrix_vals = list(range(16, 600 + 1))
 recon_matrix_vals = list(range(16, 1200 + 1))
-voxel_vals = [240 / matrix for matrix in matrix_vals[::-1]]
-recon_voxel_vals = [240 / matrix for matrix in recon_matrix_vals[::-1]]
+voxel_vals = [240 / matrix for matrix in reversed(matrix_vals)]
+recon_voxel_vals = [240 / matrix for matrix in reversed(recon_matrix_vals)]
 
 PARAMS = {
 
