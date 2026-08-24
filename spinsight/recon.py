@@ -59,7 +59,7 @@ def resample_kspace(phantom_object, k_samples):
     gridder = get_gridder(samples, phantom_object['matrix'])
     norm_factor = np.sqrt(4 * np.prod(phantom_object['matrix'])) # for mrinufft
     for tissue in phantom_object['kspace']:
-        kspace[tissue] = ungrid(phantom_object['kspace'][tissue], gridder=gridder, shape=samples.shape[:-1]) * norm_factor
+        kspace[tissue] = ungrid(zerofill(phantom_object['kspace'][tissue], gridder.shape), gridder=gridder, shape=samples.shape[:-1]) * norm_factor
     return kspace
 
 
