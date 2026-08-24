@@ -132,23 +132,14 @@ class Controller(param.Parameterized):
         par.bounds = (minval, maxval)
         if minval == maxval:
             setattr(self.input, par_name, minval)
-            par.constant = True
+        par.constant = minval == maxval
     
     def set_param_discrete_bounds(self, par, curval, minval=None, maxval=None):
         objects = PARAMS[par.name].objects
         default_min, default_max = (x := list(objects.values()) if isinstance(objects, dict) else objects)[0], x[-1]
         minval = default_min if minval is None else max(minval, default_min)
         maxval = default_max if maxval is None else min(maxval, default_max)
-        
-        objects = filter_objects(PARAMS[par.name].objects, minval, maxval)
-        if not value_in_objects(curval, objects):
-            warnings.warn(f'Trying to set {par.name} bound [{minval}, {maxval}] outside current value: {curval})')
-            if isinstance(objects, dict):
-                cur_label = next((k for k, v in par.names.items() if v==curval), str(curval))
-                insert_value_in_dict_sorted(cur_label, curval, objects)
-            else:
-                insert_value_in_list_sorted(curval, objects)
-        par.objects = objects
+        par.objects = filter_objects(PARAMS[par.name].objects, minval, maxval)
 
     def pixel_BW_is_input(self):
         return 'PIXEL BW' in self.input.parameter_style.upper()
