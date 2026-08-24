@@ -124,7 +124,9 @@ class Controller(param.Parameterized):
         if default_max is not None:
             maxval = default_max if maxval is None else min(maxval, default_max)
         par.bounds = (minval, maxval)
-        par.constant = minval == maxval
+        if minval == maxval:
+            setattr(self.input, par_name, minval)
+            par.constant = True
     
     def set_param_discrete_bounds(self, par, curval, minval=None, maxval=None):
         objects = PARAMS[par.name].objects
