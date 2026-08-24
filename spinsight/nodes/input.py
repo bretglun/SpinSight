@@ -123,12 +123,12 @@ def matrix_F_prescribed():
 
 
 @Graph.node()
-def recon_matrix_P():
+def recon_matrix_P_prescribed():
     return PARAMS['recon_matrix_P'].default
 
 
 @Graph.node()
-def recon_matrix_F():
+def recon_matrix_F_prescribed():
     return PARAMS['recon_matrix_F'].default
 
 

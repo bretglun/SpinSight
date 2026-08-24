@@ -31,6 +31,16 @@ def matrix_F(FOV_F, matrix_F_prescribed, isotropic_voxel_size, FOV_P, matrix_P):
 
 
 @Graph.node()
+def recon_matrix_F(recon_matrix_F_prescribed, matrix_F):
+    return max(recon_matrix_F_prescribed, matrix_F)
+
+
+@Graph.node()
+def recon_matrix_P(recon_matrix_P_prescribed, matrix_P):
+    return max(recon_matrix_P_prescribed, matrix_P)
+
+
+@Graph.node()
 def turbo_factor(is_gradient_echo, turbo_factor_prescribed):
     if is_gradient_echo:
         return 1
