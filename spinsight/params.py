@@ -401,9 +401,10 @@ PARAMS = {
 
     'shot': ParamSpec(
         label = 'Displayed shot',
+        objects = {f'{i + 1}': i for i in range(1000)},
         default = 0,
         precedence = 1,
-        widget = pn.widgets.IntSlider,
+        widget = pn.widgets.DiscreteSlider,
     ),
 
     'signal_exponent': ParamSpec(

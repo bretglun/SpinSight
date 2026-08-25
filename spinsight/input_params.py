@@ -70,5 +70,5 @@ class InputParams(param.Parameterized):
     do_zerofill = init_param(param.Boolean, 'do_zerofill')
     
     # Sequence plot
-    shot = init_param(param.Integer, 'shot')
+    shot = init_param(param.Selector, 'shot')
     signal_exponent = init_param(param.Number, 'signal_exponent')
