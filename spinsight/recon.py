@@ -34,11 +34,28 @@ def IFFT(ksp, pixel_shifts, sample_shifts):
     return img
 
 
-def crop(arr, shape):
-    # Crop array from center according to shape
+def crop_or_pad(arr, shape):
+    slices = [slice(None)] * arr.ndim
+    pad_width = [(0, 0)] * arr.ndim
+
     for dim, n in enumerate(arr.shape):
-        arr = arr.take(np.array(range(shape[dim])) + (n-shape[dim])//2, dim)
-    return arr
+        if shape[dim] < n: # crop from center
+            start = (n - shape[dim]) // 2
+            slices[dim] = slice(start, start + shape[dim])
+        elif shape[dim] > n: # zerofill
+            after = (shape[dim] - n) // 2
+            before = shape[dim] - n - after
+            pad_width[dim] = (before, after)
+
+    return np.pad(arr[tuple(slices)], pad_width)
+
+
+def crop(arr, shape):
+    return crop_or_pad(arr, shape)
+
+
+def zerofill(kspace, recon_matrix):
+    return crop_or_pad(kspace, recon_matrix)
 
 
 def resample_kspace_Cartesian(phantom_object, k_axes, shape=None):
@@ -80,20 +97,6 @@ def radial_Tukey(alpha, matrix):
     k[k>1] = 1
     k[k<0] = 0
     return np.sin(np.pi*k/2)**2
-
-
-def zerofill(kspace, recon_matrix):
-    for dim, n in enumerate(kspace.shape):
-        num_trailing = (recon_matrix[dim]-n)//2
-        num_leading = recon_matrix[dim] - n - num_trailing
-        kspace = np.insert(kspace, 0, np.zeros((num_leading, 1)), axis=dim)
-        kspace = np.insert(kspace, n+num_leading, np.zeros((num_trailing, 1)), axis=dim)
-    return kspace
-
-def get_k_coords(k_samples, pixel_size):
-    kx = k_samples[..., 0].flatten() * 2 * np.pi * pixel_size[0]
-    ky = k_samples[..., 1].flatten() * 2 * np.pi * pixel_size[1]
-    return kx, ky
 
 
 def get_gridder(samples, shape):
