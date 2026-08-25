@@ -195,7 +195,7 @@ PARAMS = {
 
     'trajectory': ParamSpec(
         label = 'k-space trajectory',
-        objects = ['Cartesian', 'Radial', 'PROPELLER'],
+        objects = {'Cartesian': 'Cartesian', 'Radial': 'Radial'},
         default = 'Cartesian',
         precedence = 1,
         group = 'Geometry',

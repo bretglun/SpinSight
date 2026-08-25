@@ -157,7 +157,7 @@ class Controller(param.Parameterized):
         return 'VOXEL SIZE' in self.input.parameter_style.upper()
 
     def isotropic_voxel_size(self):
-        return self.input.trajectory in ['Radial', 'PROPELLER']
+        return self.input.trajectory.upper() == 'RADIAL'
 
     def sync_with_graph(self):
         self.propagate_changes = False
@@ -244,10 +244,7 @@ class Controller(param.Parameterized):
     def update_trajectory_lables(self):
         # Label radial trajectory 'Radial' or 'PROPELLER' depending on nLines per shot
         invalid, updated = ('PROPELLER', 'Radial') if (self.from_graph('EPI_factor') * self.from_graph('turbo_factor') == 1) else ('Radial', 'PROPELLER')
-        if self.input.trajectory == invalid:
-            self.input.param.trajectory.objects = PARAMS['trajectory'].objects
-            self.input.trajectory = updated
-        self.input.param.trajectory.objects = [t for t in PARAMS['trajectory'].objects if t != invalid]
+        self.input.param.trajectory.objects = {(updated if key == invalid else key): value for key, value in PARAMS['trajectory'].objects.items()}
 
     def update_info_params(self):
         self.gui.FW_shift = formatting.FW_shift(self.input.FW_shift)

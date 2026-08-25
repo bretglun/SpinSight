@@ -4,7 +4,7 @@ from spinsight.params import PARAMS
 
 @Graph.node()
 def is_radial(trajectory):
-    return trajectory in ['Radial', 'PROPELLER']
+    return trajectory.upper() == 'RADIAL'
 
 
 @Graph.node()
