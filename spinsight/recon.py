@@ -71,13 +71,9 @@ def resample_kspace_Cartesian(phantom_object, k_axes, shape=None):
 
 
 def resample_kspace(phantom_object, k_samples):
-    samples = np.array(k_samples * phantom_object['support'] / phantom_object['matrix'], dtype='float32')
-    kspace = {}
-    gridder = get_gridder(samples, phantom_object['matrix'])
-    norm_factor = np.sqrt(4 * np.prod(phantom_object['matrix'])) # for mrinufft
-    for tissue in phantom_object['kspace']:
-        kspace[tissue] = ungrid(zerofill(phantom_object['kspace'][tissue], gridder.shape), gridder=gridder, shape=samples.shape[:-1]) * norm_factor
-    return kspace
+    gridder = get_gridder(k_samples, phantom_object['support'])
+    norm_factor = np.sqrt(4 * np.prod(gridder.shape)) # for mrinufft
+    return {tissue: ungrid(phantom_object['kspace'][tissue], gridder=gridder, shape=k_samples.shape[:-1]) * norm_factor for tissue in phantom_object['kspace']}
 
 
 def homodyne_weights(N, num_blank, dim):
@@ -99,46 +95,32 @@ def radial_Tukey(alpha, matrix):
     return np.sin(np.pi*k/2)**2
 
 
-def get_gridder(samples, shape):
-    for dim in range(len(shape)):
-        if np.max(np.abs(samples[..., dim])) > .5:
-            # pad matrix to ensure samples are <= .5
-            N = int(np.ceil(np.max(np.abs(samples[..., dim])) * 2 * shape[dim]))
-            samples[..., dim] *= shape[dim] / N
-            shape = tuple(N if d==dim else n for d, n in enumerate(shape))
-    samples = np.array(samples, dtype='float32')
+def get_gridder(k_samples, FOV):
+    shape = tuple(int(np.ceil(np.max(np.abs(k_samples[..., dim])) * FOV[dim] * 2)) for dim in range(k_samples.shape[-1]))
+    samples = np.array(k_samples, dtype='float32') * FOV / shape
     density = mrinufft.density.voronoi(samples)
-    return mrinufft.get_operator('finufft')(samples*2*np.pi, density=density, shape=shape)
+    return mrinufft.get_operator('finufft')(2 * np.pi * samples, density=density, shape=shape)
 
 
-def ungrid(gridded, samples=None, gridder=None, shape=None):
+def ungrid(gridded, k_samples=None, FOV=None, gridder=None, shape=None):
     if not gridder:
-        gridder = get_gridder(samples, gridded.shape)
+        gridder = get_gridder(k_samples, FOV)
     sample_shifts = [0 if gridded.shape[dim]%2 else 1/2 for dim in range(2)]
-    img = IFFT(gridded, [0, 0], sample_shifts)
+    img = IFFT(crop_or_pad(gridded, gridder.shape), [0, 0], sample_shifts)
     ungridded = gridder.op(img)
-    if samples is not None:
-        return ungridded.reshape(samples.shape[:-1])
+    if k_samples is not None:
+        return ungridded.reshape(k_samples.shape[:-1])
     elif shape is not None:
         return ungridded.reshape(shape)
     return ungridded
 
 
-def grid(ungridded, shape, samples=None, gridder=None):
-    if (samples is None) == (gridder is None):
-        raise ValueError('Use either samples or gridder, not both.')
+def grid(ungridded, shape, k_samples=None, FOV=None, gridder=None):
+    if (k_samples is None) == (gridder is None):
+        raise ValueError('Use either k_samples or gridder, not both.')
     if gridder is None:
-        gridder = get_gridder(samples, shape)
+        gridder = get_gridder(k_samples, FOV)
     img = gridder.adj_op(ungridded.flatten())
     sample_shifts = [0 if gridder.shape[dim]%2 else 1/2 for dim in range(2)]
     gridded = FFT(img, [0, 0], sample_shifts)
-    return crop(gridded, shape) # crop in case gridder shape was padded
-
-
-def Pipe_Menon_2D(kx, ky, grid_shape, num_iter=10):
-    w = np.ones(len(kx), dtype=complex)
-    for iter in range(num_iter):
-        w_grid = grid(w, kx, ky, grid_shape)
-        w_nonuniform = ungrid(w_grid, kx, ky, w.shape)
-        w /= np.abs(w_nonuniform)
-    return w
+    return crop_or_pad(gridded, shape)

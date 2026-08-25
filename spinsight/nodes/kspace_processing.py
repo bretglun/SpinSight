@@ -47,5 +47,4 @@ def gridded_kspace(k_grid_axes, is_radial, measured_kspace, k_samples, FOV, matr
     grid_shape = tuple(len(k_grid_axes[dim]) for dim in range(2))
     if not is_radial:
         return measured_kspace.reshape(grid_shape)
-    samples = k_samples * FOV / matrix
-    return recon.grid(measured_kspace, grid_shape, samples)
+    return recon.grid(measured_kspace, grid_shape, k_samples, FOV)
