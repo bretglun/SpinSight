@@ -185,6 +185,7 @@ class Controller(param.Parameterized):
         self.set_visibility('turbo_factor', not self.from_graph('is_gradient_echo'))
         self.set_visibility('homodyne', (self.from_graph('num_blank_lines') > 0 and not self.from_graph('is_radial')))
         self.set_visibility('apodization_alpha', self.from_graph('do_apodize'))
+        self.gui.set_indicator_visibility('spoke_angle', self.from_graph('is_radial'))
 
     def update_bounds(self):
         for par in self.input_nodes():

@@ -39,6 +39,7 @@ class GUI(param.Parameterized):
         self.settings_file = settings_file
         self.start_time = start_time
 
+        self.make_indicators()
         self.controller = Controller(self)
 
         pn.config.throttled = lazy_sliders
@@ -149,17 +150,15 @@ class GUI(param.Parameterized):
         )
     
     def make_sequence_plot_panel(self):
-        shot_angle_info = self.indicator('spoke_angle') 
-        num_shots_info = self.indicator('num_shots')
         def update_num_shots_label(event): 
-            num_shots_info.name = f'# {event.new}s'
+            self.indicators['num_shots'].name = f'# {event.new}s'
         self.controller.param.watch(update_num_shots_label, 'shot_label')
         return pn.Column(
             hv.DynamicMap(self.display_sequence_plot), 
             pn.Row(
                 self.make_param_panel('shot'),
-                shot_angle_info, 
-                num_shots_info, 
+                self.indicators['spoke_angle'], 
+                self.indicators['num_shots'], 
                 self.make_param_panel('signal_exponent')
             ),
             visible=False
@@ -168,13 +167,19 @@ class GUI(param.Parameterized):
     def make_info_panel(self, reset_SNR_button):
         return pn.Column(
             pn.Row(self.controller.input.param.reference_tissue, reset_SNR_button),
-            pn.Row(*(self.indicator(par) for par in ['relative_SNR', 'scantime', 'FW_shift', 'pixel_bandwidth']))
+            pn.Row(*(self.indicators[par] for par in ['relative_SNR', 'scantime', 'FW_shift', 'pixel_bandwidth']))
         )
     
     def indicator(self, par_name):
         par = self.param[par_name]
         return pn.indicators.String(value=par, name=par.label, font_size=INFO_FONT_SIZE, title_size=INFO_TITLE_SIZE, default_color=INFO_TEXT_COLOR)
+
+    def make_indicators(self):
+        self.indicators = {par_name: self.indicator(par_name) for par_name in ['spoke_angle', 'num_shots', 'relative_SNR', 'scantime', 'FW_shift', 'pixel_bandwidth']}
     
+    def set_indicator_visibility(self, par_name, visible):
+        self.indicators[par_name].visible = visible
+
     def make_footer_panel(self):
         author = '*Written by [Johan Berglund](mailto:johan.berglund@akademiska.se), Ph.D.*'
         start_time = f'{self.start_time: %Y-%m-%d %H:%M:%S}'
