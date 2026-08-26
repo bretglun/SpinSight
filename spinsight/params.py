@@ -150,6 +150,14 @@ PARAMS = {
         group = 'Sequence',
     ),
 
+    'echo_order': ParamSpec(
+        label = 'Echo order',
+        objects = ['Linear', 'Centric', 'Flexible'],
+        default = 'Flexible',
+        precedence = 8,
+        group = 'Sequence',
+    ),
+
     'FatSat': ParamSpec(
         label = 'Fat saturation',
         default = False,

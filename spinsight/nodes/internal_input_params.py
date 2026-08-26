@@ -55,6 +55,21 @@ def EPI_factor(EPI_factor_prescribed, turbo_factor):
 
 
 @Graph.node()
+def echo_order_options(EPI_factor, turbo_factor):
+    options = PARAMS['echo_order'].objects
+    if EPI_factor > 1 or turbo_factor <= 1: # not turbo spin echo
+        options = [opt for opt in options if opt not in ['Flexible', 'Centric']]
+    return options
+
+
+@Graph.node()
+def echo_order(echo_order_prescribed, echo_order_options):
+    if echo_order_prescribed in echo_order_options:
+        return echo_order_prescribed
+    return 'Linear'
+
+
+@Graph.node()
 def shot(shot_prescribed, num_shots):
     return min(shot_prescribed, num_shots - 1)
 

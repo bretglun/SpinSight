@@ -58,6 +58,11 @@ def EPI_factor_prescribed():
 
 
 @Graph.node()
+def echo_order_prescribed():
+    return PARAMS['echo_order'].default
+
+
+@Graph.node()
 def FatSat():
     return PARAMS['FatSat'].default
 

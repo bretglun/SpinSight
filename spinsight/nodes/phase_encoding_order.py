@@ -6,11 +6,11 @@ from itertools import chain
 
 
 @Graph.node()
-def pe_table(num_sampled_phase_encodes, num_segm, num_shots, EPI_factor, turbo_factor, num_sym_segm, k0_rf_echo_index, reverse_linear_order):
-    if EPI_factor == 1: # (turbo) spin echo
+def pe_table(num_sampled_phase_encodes, num_segm, num_shots, EPI_factor, turbo_factor, num_sym_segm, k0_rf_echo_index, reverse_linear_order, echo_order):
+    if echo_order == 'Linear':
+        segment_order = range(turbo_factor)
+    else: # centric or flexible echo order (centric implemented as flexible with rf_index=0)
         segment_order = flexible_segment_order(turbo_factor, num_sym_segm, k0_rf_echo_index)
-    else: # EPI and GRASE
-        segment_order = range(turbo_factor) # linear segment order
     order = -1 if reverse_linear_order else 1
     view_order = np.array(range(EPI_factor))[None, ::order] * turbo_factor + np.array(segment_order)[::order, None]
     num_lines_per_segment = int(num_sampled_phase_encodes / num_segm)
@@ -138,34 +138,36 @@ def reverse_linear_order(k0_index):
 
 
 @Graph.node()
-def k0_index(k0_echo_indices_reverse_linear_order, k0_echo_indices_linear_order, is_gradient_echo, turbo_factor, TE, EPI_factor, gr_echo_spacing, min_refocusing_time, min_RF_to_readtrain_center):
-    if EPI_factor == 1:
-        gr_index = 0
-        reverse_order = False
-        if is_gradient_echo or turbo_factor == 1:
-            rf_index = 0
-        else: # flexible segment order
-            readtrain_spacing = min_readtrain_spacing(gr_echo_spacing, gr_index, EPI_factor, is_gradient_echo, min_RF_to_readtrain_center, turbo_factor, min_refocusing_time)
+def k0_index(k0_echo_indices_reverse_linear_order, k0_echo_indices_linear_order, is_gradient_echo, turbo_factor, TE, EPI_factor, gr_echo_spacing, min_refocusing_time, min_RF_to_readtrain_center, echo_order):
+    k0_gr_echo_index = 0
+    reverse_linear_order = False
+    match echo_order:
+        case 'Centric':
+            k0_rf_echo_index = 0
+        case 'Flexible':
+            readtrain_spacing = min_readtrain_spacing(gr_echo_spacing, k0_gr_echo_index, EPI_factor, is_gradient_echo, min_RF_to_readtrain_center, turbo_factor, min_refocusing_time)
             rf_index = int(np.floor(TE / readtrain_spacing)) - 1
-            rf_index = min(rf_index, turbo_factor - 1)
-        return (rf_index, gr_index, reverse_order)
-    # choose order that minimizes readtrain spacing
-    readtrain_spacings = {}
-    for reverse_order, indices in [
-        (True, k0_echo_indices_reverse_linear_order),
-        (False, k0_echo_indices_linear_order)]:
-        for (gr_index, rf_index) in indices:
-            first_refocusing_time = get_first_refocusing_time(is_gradient_echo, turbo_factor, TE, EPI_factor, gr_echo_spacing, gr_index, rf_index)
-            RF_to_readtrain_center = get_RF_to_readtrain_center(TE, EPI_factor, gr_echo_spacing, gr_index, rf_index, first_refocusing_time)
-            if (first_refocusing_time >= min_refocusing_time) and (RF_to_readtrain_center >= min_RF_to_readtrain_center):
-                readtrain_spacings[(rf_index, gr_index, reverse_order)] = first_refocusing_time + RF_to_readtrain_center
-    if not readtrain_spacings:
-        warnings.warn('No valid order found')
-        return (0, 0, False)
-    smallest_spacing = readtrain_spacings[min(readtrain_spacings, key=readtrain_spacings.get)]
-    for k0_index in readtrain_spacings:
-        if readtrain_spacings[k0_index] == smallest_spacing:
-            return k0_index
+            k0_rf_echo_index = min(rf_index, turbo_factor - 1)
+        case 'Linear':
+            # choose order that minimizes readtrain spacing
+            smallest_spacing = None
+            for reverse_order, indices in [
+                (True, k0_echo_indices_reverse_linear_order),
+                (False, k0_echo_indices_linear_order)]:
+                for (gr_index, rf_index) in indices:
+                    first_refocusing_time = get_first_refocusing_time(is_gradient_echo, turbo_factor, TE, EPI_factor, gr_echo_spacing, gr_index, rf_index)
+                    RF_to_readtrain_center = get_RF_to_readtrain_center(TE, EPI_factor, gr_echo_spacing, gr_index, rf_index, first_refocusing_time)
+                    if (first_refocusing_time >= min_refocusing_time) and (RF_to_readtrain_center >= min_RF_to_readtrain_center):
+                        readtrain_spacing = first_refocusing_time + RF_to_readtrain_center
+                        if smallest_spacing is None or readtrain_spacing < smallest_spacing:
+                            smallest_spacing = readtrain_spacing
+                            k0_rf_echo_index, k0_gr_echo_index, reverse_linear_order = rf_index, gr_index, reverse_order
+            if smallest_spacing is None:
+                warnings.warn('No valid linear order found')
+                return (0, 0, False)
+        case _:
+            raise ValueError('Unknown echo order')
+    return (k0_rf_echo_index, k0_gr_echo_index, reverse_linear_order)
 
 
 def get_RF_to_readtrain_center(TE, num_gr_echoes, gr_echo_spacing, k0_gr_echo_index, k0_rf_echo_index, first_refocusing_time):

@@ -183,6 +183,7 @@ class Controller(param.Parameterized):
         self.set_visibility('TI', self.from_graph('sequence_type') == 'Inversion Recovery')
         self.set_visibility('FA', self.from_graph('sequence_type') == 'Spoiled Gradient Echo')
         self.set_visibility('turbo_factor', not self.from_graph('is_gradient_echo'))
+        self.set_visibility('echo_order', len(self.from_graph('echo_order_options')) > 1)
         self.set_visibility('homodyne', (self.from_graph('num_blank_lines') > 0 and not self.from_graph('is_radial')))
         self.set_visibility('apodization_alpha', self.from_graph('do_apodize'))
         self.gui.set_indicator_visibility('spoke_angle', self.from_graph('is_radial'))
@@ -207,6 +208,7 @@ class Controller(param.Parameterized):
                     self.set_param_bounds(f'{prefix}voxel_{dir}', minval=lo, maxval=hi)
     
         self.update_EPI_factor_bounds()
+        self.input.param.echo_order.objects = self.from_graph('echo_order_options')
         self.input.param.reference_tissue.objects = self.from_graph('tissues')
         self.update_x_y_labels()
         self.update_shot_label()

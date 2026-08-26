@@ -25,6 +25,7 @@ class InputParams(param.Parameterized):
     partial_Fourier = init_param(param.Number, 'partial_Fourier')
     turbo_factor = init_param(param.Integer, 'turbo_factor')
     EPI_factor = init_param(param.Selector, 'EPI_factor')
+    echo_order = init_param(param.Selector, 'echo_order')
 
     # Contrast
     FatSat = init_param(param.Boolean, 'FatSat')

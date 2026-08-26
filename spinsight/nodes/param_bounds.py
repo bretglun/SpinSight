@@ -116,11 +116,11 @@ def TI_bounds(TR, spoiler, slice_select_inversion_floating):
 
 
 @Graph.node()
-def min_TE(k0_echo_indices_linear_order, k0_echo_indices_reverse_linear_order, min_refocusing_time, min_RF_to_readtrain_center, gr_echo_spacing, EPI_factor, is_gradient_echo, turbo_factor):
-    if EPI_factor == 1:
+def min_TE(echo_order, k0_echo_indices_linear_order, k0_echo_indices_reverse_linear_order, min_refocusing_time, min_RF_to_readtrain_center, gr_echo_spacing, EPI_factor, is_gradient_echo, turbo_factor):
+    if echo_order in ['Centric', 'Flexible']:
         gr_index, rf_index = 0, 0
         return min_TE_from_k0_echo_indices(gr_echo_spacing, gr_index, EPI_factor, is_gradient_echo, min_RF_to_readtrain_center, turbo_factor, min_refocusing_time, rf_index)
-    
+    # Linear echo order
     min_TE_cands = []
     for indices in [k0_echo_indices_linear_order, k0_echo_indices_reverse_linear_order]:
         for (gr_index, rf_index) in indices:
