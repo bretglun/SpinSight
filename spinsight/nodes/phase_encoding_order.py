@@ -54,7 +54,7 @@ def num_sym_segm(num_segm, num_sym_lines, num_sampled_phase_encodes):
     num_sym_segm = num_segm * (num_sym_lines / num_sampled_phase_encodes)
     if (num_sym_segm % 2 == 0):
         return int(num_sym_segm) # k0 lies between two segments
-    return int(np.round((num_sym_segm - 1) / 2)) * 2 + 1
+    return round((num_sym_segm - 1) / 2) * 2 + 1
 
 
 @Graph.node()

@@ -13,7 +13,7 @@ def zerofilled_kspace(apodized_kspace, oversampled_recon_matrix):
 def oversampled_recon_matrix(recon_matrix, full_k_matrix, matrix):
     oversampled_recon_matrix = copy.deepcopy(recon_matrix)
     for dim in range(2):
-        oversampled_recon_matrix[dim] = int(np.round(recon_matrix[dim] * full_k_matrix[dim] / matrix[dim]))
+        oversampled_recon_matrix[dim] = round(recon_matrix[dim] * full_k_matrix[dim] / matrix[dim])
     return oversampled_recon_matrix
 
 
