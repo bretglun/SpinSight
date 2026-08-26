@@ -13,10 +13,10 @@ def readtrain_shift(gr_echo_spacing, k0_gr_echo_index, num_gr_echoes):
 
 
 def min_readtrain_spacing(gr_echo_spacing, k0_gr_echo_index, num_gr_echoes, is_gradient_echo, min_RF_to_readtrain_center, num_rf_echoes, min_refocusing_time):
-    TE_shift = readtrain_shift(gr_echo_spacing, k0_gr_echo_index, num_gr_echoes)
     if is_gradient_echo:
-        return min_RF_to_readtrain_center + TE_shift
+        return min_RF_to_readtrain_center
     min_RF_to_spin_echo = min_RF_to_readtrain_center
+    TE_shift = readtrain_shift(gr_echo_spacing, k0_gr_echo_index, num_gr_echoes)
     if num_rf_echoes == 1:
         min_RF_to_spin_echo += TE_shift
     min_first_spin_echo = max(min_refocusing_time, min_RF_to_spin_echo) * 2
