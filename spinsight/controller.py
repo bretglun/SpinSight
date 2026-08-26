@@ -229,7 +229,7 @@ class Controller(param.Parameterized):
                 par.label = par.label.replace(' x', ' y')
 
     def update_shot_label(self):
-        self.shot_label = 'shot' if not self.from_graph('is_radial') else 'spoke' if (self.from_graph('EPI_factor') * self.from_graph('turbo_factor') == 1) else 'blade'
+        self.shot_label = 'shot' if not self.from_graph('is_radial') else 'spoke' if (self.from_graph('num_segm') == 1) else 'blade'
         self.input.param.shot.label = f'Displayed {self.shot_label}'
 
     def update_params(self):
@@ -244,7 +244,7 @@ class Controller(param.Parameterized):
 
     def update_trajectory_lables(self):
         # Label radial trajectory 'Radial' or 'PROPELLER' depending on nLines per shot
-        invalid, updated = ('PROPELLER', 'Radial') if (self.from_graph('EPI_factor') * self.from_graph('turbo_factor') == 1) else ('Radial', 'PROPELLER')
+        invalid, updated = ('PROPELLER', 'Radial') if (self.from_graph('num_segm') == 1) else ('Radial', 'PROPELLER')
         self.input.param.trajectory.objects = {(updated if key == invalid else key): value for key, value in PARAMS['trajectory'].objects.items()}
 
     def update_info_params(self):
