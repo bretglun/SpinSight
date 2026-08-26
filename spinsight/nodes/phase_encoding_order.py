@@ -2,6 +2,7 @@ from spinsight.DAG import Graph
 from spinsight.nodes.sequence_timing import get_readtrain_spacing, min_readtrain_spacing
 import numpy as np
 import warnings
+from itertools import chain
 
 
 @Graph.node()
@@ -18,24 +19,26 @@ def pe_table(num_sampled_phase_encodes, num_segm, num_shots, EPI_factor, turbo_f
 
 
 def flexible_segment_order(num_segm, num_sym, k0_index):
-    # temporal order of k-space segments with flexible k-space center (k0)
-    
-    split_k0 = not(num_sym % 2) # k-space center is between two segments
-
+    # temporal order of k-space segments with flexible k-space center (k0_index)
     if k0_index > (num_segm - 1) // 2:
-        return flexible_segment_order(num_segm, num_sym, num_segm - 1 - k0_index - split_k0)[::-1]
-    
-    num_sym_linear = min(num_sym, 2 * k0_index + 1 + split_k0)
-    num_sym_pivoting = num_sym - num_sym_linear
+        return list(reversed(flexible_segment_order(num_segm, num_sym, num_segm - 1 - k0_index)))
+    num_linear = min(
+        2 * k0_index + 2 - num_sym % 2, # linear part within symmetric segments
+        k0_index + (num_sym + 1) // 2, # linear part beyond symmetric segments
+    )
+    linear_start = num_segm - (k0_index + (num_sym + 1) // 2)
+    linear_end = linear_start + num_linear
+
+    linear = list(range(linear_start, linear_end)) # consecutively read segments
     num_asym = num_segm - num_sym
-    linear_start = num_asym + num_sym//2 - split_k0 - k0_index
-    linear_end = num_segm - num_sym_pivoting//2
-    linear = list(range(linear_start, linear_end)) # consecutively read (symmetric) segments
-    if linear_start == num_asym:
+    left_pivot = reversed(range(num_asym, linear_start))
+    right_pivot = range(linear_end, num_segm)
+    if linear_start >= num_asym:
         linear.reverse()
-    pivoting = [val for pair in zip(range(linear_end, num_segm), reversed(range(num_asym, linear_start))) for val in pair]
-    tail = list(range(min(linear_start, num_asym)))[::-1] # remaining (asymmetric) segments
-    segment_order = linear + pivoting + tail
+        left_pivot, right_pivot = right_pivot, left_pivot
+    pivoting = list(chain.from_iterable(zip(left_pivot, right_pivot)))
+    tail = reversed(range(min(chain(linear, pivoting)))) # remaining (asymmetric) segments
+    segment_order = list(chain(linear, pivoting, tail))
     return segment_order
 
 
