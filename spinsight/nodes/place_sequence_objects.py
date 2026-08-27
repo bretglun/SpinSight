@@ -91,6 +91,27 @@ def slice_select_refocusing(slice_select_refocusing_floating, refocusing_time):
 
 
 @Graph.node()
+def crusher_offset(RF_refocusing_floating, left_crusher_floating):
+    if left_crusher_floating is None:
+        return None
+    return (RF_refocusing_floating[0]['dur_f'] + left_crusher_floating[0]['dur_f']) / 2
+
+
+@Graph.node()
+def left_crusher(left_crusher_floating, crusher_offset, refocusing_time):
+    if left_crusher_floating is None:
+        return None
+    return [place_waveform(grad, time - crusher_offset) for grad, time in zip(left_crusher_floating, refocusing_time)]
+
+
+@Graph.node()
+def right_crusher(right_crusher_floating, crusher_offset, refocusing_time):
+    if right_crusher_floating is None:
+        return None
+    return [place_waveform(grad, time + crusher_offset) for grad, time in zip(right_crusher_floating, refocusing_time)]
+
+
+@Graph.node()
 def phasers(readtrain_center_time, phasers_floating, gre_echo_train_dur, readout_risetime):
     return [place_waveform(phaser, center - (gre_echo_train_dur + phaser['dur_f'])/2 + readout_risetime) for phaser, center in zip(phasers_floating, readtrain_center_time)]
 

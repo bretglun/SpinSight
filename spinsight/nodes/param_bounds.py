@@ -135,13 +135,13 @@ def min_TE_from_k0_echo_indices(gr_echo_spacing, k0_gr_echo_index, num_gr_echoes
 
 
 @Graph.node()
-def min_refocusing_time(is_gradient_echo, RF_excitation, RF_refocusing_floating, read_prephaser_floating, slice_select_excitation, slice_select_rephaser_floating, slice_select_refocusing_floating):
+def min_refocusing_time(is_gradient_echo, RF_excitation, RF_refocusing_floating, read_prephaser_floating, slice_select_excitation, slice_select_rephaser_floating, left_crusher_floating, slice_select_refocusing_floating):
     # Get earliest position of refocusing pulse
     if is_gradient_echo:
         return 0
     return RF_excitation['dur_f'] / 2 + RF_refocusing_floating[0]['dur_f'] / 2 + max(
         read_prephaser_floating['dur_f'], 
-        slice_select_excitation['risetime_f'] + slice_select_rephaser_floating['dur_f'] + (slice_select_refocusing_floating[0]['risetime_f'])
+        slice_select_excitation['risetime_f'] + slice_select_rephaser_floating['dur_f'] + max(left_crusher_floating[0]['dur_f'], slice_select_refocusing_floating[0]['risetime_f'])
         )
 
 
@@ -170,7 +170,7 @@ def TE_bounds(min_TE, max_TE):
 
 
 @Graph.node()
-def min_RF_to_readtrain_center(is_gradient_echo, RF_excitation, read_prephaser_floating, slice_select_excitation, slice_select_rephaser_floating, RF_refocusing_floating, slice_select_refocusing_floating, gre_echo_train_dur, readout_risetime, phaser_duration):
+def min_RF_to_readtrain_center(is_gradient_echo, RF_excitation, read_prephaser_floating, slice_select_excitation, slice_select_rephaser_floating, RF_refocusing_floating, right_crusher_floating, slice_select_refocusing_floating, gre_echo_train_dur, readout_risetime, phaser_duration):
     # Get shortest spacing bewteen RF (excitation or refocusing for gradient / spin echo) and center of readout (train)
     if is_gradient_echo:
         RF_dur = RF_excitation['dur_f']
@@ -179,7 +179,7 @@ def min_RF_to_readtrain_center(is_gradient_echo, RF_excitation, read_prephaser_f
     else: # spin echo
         RF_dur = RF_refocusing_floating[0]['dur_f']
         read_prephaser_dur = 0
-        slice_rewind_dur = slice_select_refocusing_floating[0]['risetime_f']
+        slice_rewind_dur = max(right_crusher_floating[0]['dur_f'], slice_select_refocusing_floating[0]['risetime_f'])
     return RF_dur / 2 + gre_echo_train_dur / 2 - readout_risetime + max(
         read_prephaser_dur + readout_risetime,
         phaser_duration,
@@ -188,17 +188,26 @@ def min_RF_to_readtrain_center(is_gradient_echo, RF_excitation, read_prephaser_f
 
 
 @Graph.node()
-def pixel_bandwidth_bounds(matrix_F, FOV_F, is_gradient_echo, RF_refocusing, turbo_factor, EPI_factor, TE, RF_excitation, refocusing_time, readtrain_spacing, TR, sequence_start, spoiler, k0_echo_indices_linear_order, k0_echo_indices_reverse_linear_order, read_prephaser, phaser_duration, slice_select_excitation, slice_select_rephaser_floating, max_blip_dur, slice_select_refocusing):
+def pixel_bandwidth_bounds(matrix_F, FOV_F, is_gradient_echo, RF_refocusing_floating, turbo_factor, EPI_factor, TE, RF_excitation, refocusing_time, readtrain_spacing, TR, sequence_start, spoiler_floating, k0_echo_indices_linear_order, k0_echo_indices_reverse_linear_order, read_prephaser_floating, phaser_duration, slice_select_excitation, slice_select_rephaser_floating, max_blip_dur, right_crusher_floating, slice_select_refocusing_floating):
     readout_area = 1e3 * matrix_F / (FOV_F * GYRO)
     # min limit imposed by maximum gradient amplitude:
     min_read_duration = readout_area / MAX_AMP
 
     first_readtrain_ref = TE if (turbo_factor == 1) else readtrain_spacing
     last_readtrain_ref = TE if (turbo_factor == 1) else readtrain_spacing * turbo_factor
-    last_read_end = TR + sequence_start - spoiler['dur_f']
+    last_read_end = TR + sequence_start - spoiler_floating['dur_f']
     max_dur_ref_to_read_end = last_read_end - last_readtrain_ref
-    
-    slice_select_rewind_dur = slice_select_excitation['risetime_f'] + slice_select_rephaser_floating['dur_f'] if is_gradient_echo else slice_select_refocusing[0]['risetime_f']
+
+    if is_gradient_echo:
+        RF_time = 0
+        RF_dur = RF_excitation['dur_f']
+        read_prephaser_dur = read_prephaser_floating['dur_f']
+        slice_rewind_dur = slice_select_excitation['risetime_f'] + slice_select_rephaser_floating['dur_f']
+    else: # spin echo
+        RF_time = refocusing_time[0]
+        RF_dur = RF_refocusing_floating[0]['dur_f']
+        read_prephaser_dur = 0
+        slice_rewind_dur = max(right_crusher_floating[0]['dur_f'], slice_select_refocusing_floating[0]['risetime_f'])
 
     k0_echo_indices = k0_echo_indices_linear_order | k0_echo_indices_reverse_linear_order
 
@@ -213,29 +222,21 @@ def pixel_bandwidth_bounds(matrix_F, FOV_F, is_gradient_echo, RF_refocusing, tur
         readout_risetime = readout_area / read_duration / MAX_SLEW
         read_gap = max(max_blip_dur, 2 * readout_risetime)
         
+        first_read_start = RF_time + RF_dur / 2 + max(
+            read_prephaser_dur + readout_risetime,
+            phaser_duration,
+            slice_rewind_dur
+            )
+        max_dur_read_start_to_ref = first_readtrain_ref - first_read_start
+        
         for (gr_echo, _) in k0_echo_indices:
-            num_blips_before_ref = gr_echo if (turbo_factor == 1) else (EPI_factor-1) / 2
+            num_blips_before_ref = gr_echo if (turbo_factor == 1) else (EPI_factor - 1) / 2
             num_blips_after_ref = EPI_factor - 1 - num_blips_before_ref
             
             dur_ref_to_read_end = read_duration * (num_blips_after_ref + 1/2) + read_gap * num_blips_after_ref
             if dur_ref_to_read_end > max_dur_ref_to_read_end:
                 continue
             
-            if is_gradient_echo:
-                first_read_start = RF_excitation['dur_f']/2 + max(
-                    read_prephaser['dur_f'] + readout_risetime,
-                    phaser_duration,
-                    slice_select_rewind_dur
-                    )
-            else: # spin echo
-                refocusing_dur = RF_refocusing[0]['dur_f']
-                first_read_start = refocusing_time[0] + refocusing_dur / 2 + max(
-                    readout_risetime,
-                    phaser_duration,
-                    slice_select_rewind_dur
-                    )
-            
-            max_dur_read_start_to_ref = first_readtrain_ref - first_read_start
             dur_read_start_to_ref = read_duration * (num_blips_before_ref + 1/2) + read_gap * num_blips_before_ref
             
             if dur_read_start_to_ref > max_dur_read_start_to_ref:
@@ -288,11 +289,11 @@ def min_slice_thickness(RF_excitation, is_gradient_echo, RF_refocusing, sequence
 
 
 @Graph.node()
-def max_phaser_area(is_gradient_echo, readtrain_spacing, RF_excitation, gre_echo_train_dur, readout_risetime, refocusing_time, RF_refocusing):
+def max_phaser_area(is_gradient_echo, readtrain_spacing, RF_excitation, gre_echo_train_dur, readout_risetime, refocusing_time, RF_refocusing_floating):
     if is_gradient_echo:
         max_phaser_duration = readtrain_spacing - RF_excitation['dur_f']/2 - gre_echo_train_dur/2 + readout_risetime
     else:
-        max_phaser_duration = readtrain_spacing - refocusing_time[0] - RF_refocusing[0]['dur_f'] / 2 - gre_echo_train_dur / 2 + readout_risetime
+        max_phaser_duration = readtrain_spacing - refocusing_time[0] - RF_refocusing_floating[0]['dur_f'] / 2 - gre_echo_train_dur / 2 + readout_risetime
     max_risetime = MAX_AMP / MAX_SLEW
     if max_phaser_duration > 2 * max_risetime: # trapezoid maxPhaser
         max_phaserarea = (max_phaser_duration - max_risetime) * MAX_AMP

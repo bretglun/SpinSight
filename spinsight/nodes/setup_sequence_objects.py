@@ -1,6 +1,6 @@
 from spinsight import sequence
 from spinsight.DAG import Graph
-from spinsight.constants import GYRO, MAX_AMP, MAX_SLEW, INVERSION_THK_FACTOR, SPOILER_AREA
+from spinsight.constants import GYRO, MAX_AMP, MAX_SLEW, INVERSION_THK_FACTOR, SPOILER_AREA, CRUSHER_DEPHASING
 import numpy as np
 
 
@@ -91,6 +91,33 @@ def slice_select_refocusing_floating(RF_refocusing_floating, slice_thickness, tu
         name = f'slice select refocusing{" " + str(rf_echo + 1) if turbo_factor > 1 else ""}'
         slice_select_refocusing.append(sequence.get_gradient('slice', max_amp=amp, flat_dur=flat_dur, name=name, max_slew=MAX_SLEW))
     return slice_select_refocusing
+
+
+@Graph.node()
+def crusher_area(slice_thickness):
+    return CRUSHER_DEPHASING / GYRO / (1e-3 * slice_thickness) # µTs / m 
+
+
+@Graph.node()
+def left_crusher_floating(RF_refocusing_floating, turbo_factor, crusher_area):
+    if RF_refocusing_floating is None:
+        return None
+    crusher = []
+    for rf_echo in range(turbo_factor):
+        name = f'left crusher{" " + str(rf_echo + 1) if turbo_factor > 1 else ""}'
+        crusher.append(sequence.get_gradient('slice', total_area=crusher_area,  name=name, max_amp=MAX_AMP, max_slew=MAX_SLEW))
+    return crusher
+
+
+@Graph.node()
+def right_crusher_floating(RF_refocusing_floating, turbo_factor, crusher_area):
+    if RF_refocusing_floating is None:
+        return None
+    crusher = []
+    for rf_echo in range(turbo_factor):
+        name = f'right crusher{" " + str(rf_echo + 1) if turbo_factor > 1 else ""}'
+        crusher.append(sequence.get_gradient('slice', total_area=crusher_area,  name=name, max_amp=MAX_AMP, max_slew=MAX_SLEW))
+    return crusher
 
 
 @Graph.node()

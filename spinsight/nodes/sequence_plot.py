@@ -81,8 +81,8 @@ def phase_objects(phasers, rephasers, blips):
 
 
 @Graph.node()
-def slice_objects(slice_select_inversion, inversion_spoiler, FatSat_spoiler, slice_select_excitation, slice_select_rephaser, slice_select_refocusing, spoiler):
-    objects = [slice_select_inversion, inversion_spoiler, FatSat_spoiler, slice_select_excitation, slice_select_rephaser, *flatten_dicts(slice_select_refocusing), spoiler]
+def slice_objects(slice_select_inversion, inversion_spoiler, FatSat_spoiler, slice_select_excitation, slice_select_rephaser, slice_select_refocusing, left_crusher, right_crusher, spoiler):
+    objects = [slice_select_inversion, inversion_spoiler, FatSat_spoiler, slice_select_excitation, slice_select_rephaser, *flatten_dicts(slice_select_refocusing), *flatten_dicts(left_crusher), *flatten_dicts(right_crusher), spoiler]
     return [obj for obj in objects if obj]
 
 

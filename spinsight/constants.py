@@ -52,3 +52,4 @@ MAX_AMP = 25. # mT/m
 MAX_SLEW = 80. # T/m/s
 INVERSION_THK_FACTOR = 1.1 # make inversion slice 10% thicker
 SPOILER_AREA = 30. # uTs/m
+CRUSHER_DEPHASING = 2. # cycles
