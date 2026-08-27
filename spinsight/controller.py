@@ -84,6 +84,8 @@ class Controller(param.Parameterized):
             # maintain constant rec/acq ratio when acq matrix is changed
             if f'matrix_{dir}' in inputs:
                 inputs[f'recon_matrix_{dir}'] = round(inputs[f'matrix_{dir}'] * getattr(self, f'rec_acq_ratio_{dir}'))
+        if inputs.get('echo_order', None) == 'Centric' and 'TE' not in inputs:
+            inputs['TE'] = 'min'
         return inputs
 
     def set_visibility(self, par_name, visible):

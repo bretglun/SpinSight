@@ -146,19 +146,22 @@ def min_refocusing_time(is_gradient_echo, RF_excitation, RF_refocusing_floating,
 
 
 @Graph.node()
-def max_TE(TR, sequence_start, spoiler_floating, readout_risetime, gre_echo_train_dur, EPI_factor, turbo_factor, k0_echo_indices_linear_order, k0_echo_indices_reverse_linear_order, gr_echo_spacing):
-    last_readtrain_center = TR + sequence_start - spoiler_floating['dur_f'] + readout_risetime - gre_echo_train_dur / 2
-    if EPI_factor == 1:
-        return last_readtrain_center
-    
-    readtrain_spacing = last_readtrain_center / turbo_factor
-    max_TE_cands = []
-    for indices in [k0_echo_indices_linear_order, k0_echo_indices_reverse_linear_order]:
-        for (gr_index, rf_index) in indices:
-            readtrain_center = readtrain_spacing * (rf_index + 1)
-            TE = readtrain_center + readtrain_shift(gr_echo_spacing, gr_index, EPI_factor)
-            max_TE_cands.append(TE)
-    return max(max_TE_cands)
+def max_TE(TR, sequence_start, spoiler_floating, readout_risetime, gre_echo_train_dur, EPI_factor, turbo_factor, k0_echo_indices_linear_order, k0_echo_indices_reverse_linear_order, gr_echo_spacing, echo_order):
+    max_last_readtrain_center = TR + sequence_start - spoiler_floating['dur_f'] + readout_risetime - gre_echo_train_dur / 2
+    max_readtrain_spacing = max_last_readtrain_center / turbo_factor
+    match echo_order:
+        case 'Flexible':
+            return max_last_readtrain_center
+        case 'Centric':
+            return max_readtrain_spacing
+        case 'Linear':
+            max_TE_cands = []
+            for indices in [k0_echo_indices_linear_order, k0_echo_indices_reverse_linear_order]:
+                for (gr_index, rf_index) in indices:
+                    readtrain_center = max_readtrain_spacing * (rf_index + 1)
+                    TE = readtrain_center + readtrain_shift(gr_echo_spacing, gr_index, EPI_factor)
+                    max_TE_cands.append(TE)
+            return max(max_TE_cands)
 
 
 @Graph.node()
