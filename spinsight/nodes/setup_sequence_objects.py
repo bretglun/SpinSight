@@ -93,9 +93,13 @@ def slice_select_refocusing_floating(RF_refocusing_floating, slice_thickness, tu
     return slice_select_refocusing
 
 
+def get_crusher_area(slice_thickness):
+    return CRUSHER_DEPHASING / GYRO / (1e-3 * slice_thickness) # µTs / m 
+
+
 @Graph.node()
 def crusher_area(slice_thickness):
-    return CRUSHER_DEPHASING / GYRO / (1e-3 * slice_thickness) # µTs / m 
+    return get_crusher_area(slice_thickness)
 
 
 @Graph.node()

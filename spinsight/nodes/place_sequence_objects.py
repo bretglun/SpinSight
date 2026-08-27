@@ -42,10 +42,10 @@ def inversion_spoiler(inversion_spoiler_floating, RF_inversion):
 
 
 @Graph.node()
-def RF_FatSat(RF_FatSat_floating, FatSat_spoiler_floating):
+def RF_FatSat(RF_FatSat_floating, FatSat_spoiler):
     if RF_FatSat_floating is None:
         return None
-    time = FatSat_spoiler_floating['time'][0] - RF_FatSat_floating['dur_f']/2
+    time = FatSat_spoiler['time'][0] - RF_FatSat_floating['dur_f']/2
     return place_waveform(RF_FatSat_floating, time)
 
 

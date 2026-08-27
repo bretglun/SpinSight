@@ -2,6 +2,8 @@ from spinsight.constants import GYRO, MAX_AMP, MAX_SLEW, INVERSION_THK_FACTOR
 from spinsight.DAG import Graph
 from spinsight.params import PARAMS
 from spinsight.nodes.sequence_timing import readtrain_shift, min_readtrain_spacing
+from spinsight.nodes.setup_sequence_objects import get_crusher_area
+from spinsight import sequence
 import numpy as np
 from collections import namedtuple
 
@@ -253,39 +255,42 @@ def slice_thickness_bounds(min_slice_thickness):
 
 
 @Graph.node()
-def min_slice_thickness(RF_excitation, is_gradient_echo, RF_refocusing, sequence_type, RF_inversion, TR, spoiler, sampling_windows):
+def min_slice_thickness(RF_excitation, is_gradient_echo, RF_refocusing, RF_FatSat_floating, FatSat_spoiler_floating, RF_inversion, TR, spoiler, sampling_windows):
+    # Constraints due to MAX_AMP
     min_thks = [RF_excitation['FWHM_f'] / (MAX_AMP * GYRO)]
-    if not is_gradient_echo:
+    if RF_refocusing is not None:
         min_thks.append(RF_refocusing[0]['FWHM_f'] / (MAX_AMP * GYRO))
-    if sequence_type == 'Inversion Recovery':
+    if RF_inversion is not None:
         min_thks.append(RF_inversion['FWHM_f'] / (MAX_AMP * GYRO) * INVERSION_THK_FACTOR)
     
-    # Constraint due to TR: 
-    if sequence_type == 'Inversion Recovery':
-        max_risetime = TR - (spoiler['time'][-1] - RF_inversion['time'][0])
-        max_amp = MAX_SLEW * max_risetime
-        min_thks.append(RF_inversion['FWHM_f'] / (max_amp * GYRO))
-    else:
-        max_risetime = TR - (spoiler['time'][-1] - RF_excitation['time'][0])
-        max_amp = MAX_SLEW * max_risetime
-        min_thks.append(RF_excitation['FWHM_f'] / (max_amp * GYRO))
-    
-    # See paramBounds.tex for formulae
-    s = MAX_SLEW
-    d = RF_excitation['dur_f']
-    if is_gradient_echo: # Constraint due to slice rephaser
-        t = sampling_windows[0][0]['time'][0]
-        h = s * (t - np.sqrt(t**2/2 + d**2/8))
-        h = min(h, MAX_AMP)
-        A = d * (np.sqrt((d*s+2*h)**2 - 8*h*(h-s*(t-d/2))) - d*s - 2*h) / 2
-    else: # Spin echo: Constraint due to slice rephaser and refocusing slice select rampup
-        t = RF_refocusing[0]['time'][0]
-        h = s * (np.sqrt(2*(d + 2*t)**2 - 4*d**2) - d - 2*t) / 4
-        h = min(h, MAX_AMP)
-        A = (np.sqrt((d*(d*s + 4*h))**2 - 4*d**2*h*(d*s + 2*h - 2*s*t)) - d*(d*s + 4*h)) / 2
-    Be = RF_excitation['FWHM_f']
-    min_thks.append(Be * d / (GYRO * A)) # mm
-    return max(min_thks)
+    # Constraint due to TR
+    first_slice_selective_RF = RF_inversion if RF_inversion is not None else RF_excitation
+    max_risetime = TR - (spoiler['time'][-1] - first_slice_selective_RF['time'][0])
+    if RF_FatSat_floating is not None:
+        max_risetime -= RF_FatSat_floating['dur_f'] + FatSat_spoiler_floating['dur_f']
+    max_amp = MAX_SLEW * max_risetime
+    min_thks.append(first_slice_selective_RF['FWHM_f'] / (max_amp * GYRO))
+
+    min_thk = max(min_thks)
+    available_time = sampling_windows[0][0]['time'][0] if is_gradient_echo else RF_refocusing[0]['time'][0]
+    crusher_duration = 0
+    for slice_thickness in PARAMS['slice_thickness'].objects.values():
+        if slice_thickness < min_thk:
+            continue
+        if not is_gradient_echo: # spin echo
+            crusher = sequence.get_gradient('slice', total_area=get_crusher_area(slice_thickness), max_amp=MAX_AMP, max_slew=MAX_SLEW)
+            crusher_duration = crusher['dur_f']
+
+        slice_amp = RF_excitation['FWHM_f'] / (slice_thickness * GYRO)
+        slice_rise_time = slice_amp / MAX_SLEW
+
+        slice_rephaser_area = slice_amp * (RF_excitation['dur_f'] + slice_rise_time) / 2
+        slice_rephaser = sequence.get_gradient('slice', total_area=slice_rephaser_area, max_amp=MAX_AMP, max_slew=MAX_SLEW)
+
+        if available_time < (RF_excitation['dur_f'] / 2) + slice_rise_time + slice_rephaser['dur_f'] + crusher_duration:
+            continue
+        
+        return slice_thickness
 
 
 @Graph.node()
