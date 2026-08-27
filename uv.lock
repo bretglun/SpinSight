@@ -1924,7 +1924,7 @@ wheels = [
 
 [[package]]
 name = "spinsight"
-version = "1.3.4"
+version = "1.3.5"
 source = { editable = "." }
 dependencies = [
     { name = "darkdetect" },
@@ -1970,7 +1970,7 @@ dev = [{ name = "pytest", specifier = ">=8.3.2" }]
 
 [[package]]
 name = "svgpathtools"
-version = "1.7.2"
+version = "1.7.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
@@ -1981,9 +1981,9 @@ dependencies = [
     { name = "scipy", version = "1.18.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "svgwrite" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/3e/a0/06163182bdb00300a23e51b433a6ca5c881761e7dfbef432b4da44e3a84a/svgpathtools-1.7.2.tar.gz", hash = "sha256:5974daba24825e22f284ea10aa980d7d6f77a1ca55d914d80283e3ea8a7ac450", size = 2136092, upload-time = "2025-11-30T19:15:03.446Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/92/7b/22289d0d0303fcaba39751497495e7f23a299e2cb0b728b19d92b813da99/svgpathtools-1.7.4.tar.gz", hash = "sha256:276ae08b9cedb06327b2a26bfa9c913c8d596fc5dd141d8f52282bb733ce2155", size = 2137606, upload-time = "2026-08-26T23:53:38.227Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/98/4b/9128c82796479426fba219a5b0da70bbf8f1f0b571a54cc7a420cea0e9c4/svgpathtools-1.7.2-py2.py3-none-any.whl", hash = "sha256:ecb1885f7c6363be2903f39d8584ed772bd055a2e92044f43d412780b1d4c283", size = 68346, upload-time = "2025-11-30T19:15:02.053Z" },
+    { url = "https://files.pythonhosted.org/packages/0e/47/824c69a16715206a77b4d0fb34f1c0518ab50940abed4368c25013dbfea4/svgpathtools-1.7.4-py2.py3-none-any.whl", hash = "sha256:65c4fc428215fe27dff8c866b3aad0ce8798857ecf5d2f4e58fe5ebde64d4dd9", size = 69135, upload-time = "2026-08-26T23:53:36.668Z" },
 ]
 
 [[package]]
