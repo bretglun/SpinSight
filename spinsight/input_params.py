@@ -56,13 +56,12 @@ class InputParams(param.Parameterized):
     # MR image
     show_FOV = init_param(param.Boolean, 'show_FOV')
     reference_tissue = init_param(param.ObjectSelector, 'reference_tissue')
-
-    image_type = init_param(param.ObjectSelector, 'image_type')
+    image_mode = init_param(param.ObjectSelector, 'image_mode')
 
     # k-space
     show_processed_kspace = init_param(param.Boolean, 'show_processed_kspace')
     kspace_exponent = init_param(param.Number, 'kspace_exponent')
-    kspace_type = init_param(param.ObjectSelector, 'kspace_type')
+    kspace_mode = init_param(param.ObjectSelector, 'kspace_mode')
 
     # Post-processing
     homodyne = init_param(param.Boolean, 'homodyne')

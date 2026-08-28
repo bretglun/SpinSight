@@ -158,8 +158,8 @@ def reference_tissue_prescribed():
 
 
 @Graph.node()
-def image_type():
-    return PARAMS['image_type'].default
+def image_mode():
+    return PARAMS['image_mode'].default
 
 
 @Graph.node()
@@ -173,8 +173,8 @@ def kspace_exponent():
 
 
 @Graph.node()
-def kspace_type():
-    return PARAMS['kspace_type'].default
+def kspace_mode():
+    return PARAMS['kspace_mode'].default
 
 
 @Graph.node()

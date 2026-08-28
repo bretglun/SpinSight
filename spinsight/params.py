@@ -351,10 +351,11 @@ PARAMS = {
         precedence = 2,
     ),
 
-    'image_type': ParamSpec(
-        label = 'Image type',
+    'image_mode': ParamSpec(
+        label = 'Image mode',
         objects = constants.OPERATORS.keys(),
         default = 'Magnitude',
+        precedence = 3,
     ),
 
     'show_processed_kspace': ParamSpec(
@@ -371,10 +372,11 @@ PARAMS = {
         precedence = 2,
     ),
 
-    'kspace_type': ParamSpec(
-        label = 'k-space type',
+    'kspace_mode': ParamSpec(
+        label = 'k-space mode',
         objects = constants.OPERATORS.keys(),
         default = 'Magnitude',
+        precedence = 3,
     ),
 
     'homodyne': ParamSpec(

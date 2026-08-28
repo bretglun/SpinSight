@@ -136,16 +136,19 @@ class GUI(param.Parameterized):
         return pn.Column(
             hv.DynamicMap(self.display_image), 
             pn.Row(
-                # self.controller.input.param.image_type, 
-                self.controller.input.param.show_FOV,
+                self.controller.input.param.image_mode, 
+                pn.Param(self.controller.input.param, parameters=['show_FOV'], show_name=False, margin=(30, 0, 0, 0))
             )
         )
     
     def make_kspace_panel(self):
         return pn.Column(
             hv.DynamicMap(self.display_kspace) * self.controller.from_graph('hover_manager').k_line, 
-            # self.controller.input.param.kspace_type, 
-            pn.Row(self.controller.input.param.show_processed_kspace, self.controller.input.param.kspace_exponent), 
+            pn.Row(
+                self.controller.input.param.kspace_mode, 
+                pn.Param(self.controller.input.param, parameters=['kspace_exponent'], show_name=False, width=150)
+                ),
+            self.controller.input.param.show_processed_kspace,
             visible=False
         )
     
@@ -166,7 +169,10 @@ class GUI(param.Parameterized):
     
     def make_info_panel(self, reset_SNR_button):
         return pn.Column(
-            pn.Row(self.controller.input.param.reference_tissue, reset_SNR_button),
+            pn.Row(
+                self.controller.input.param.reference_tissue, 
+                pn.Column(pn.Spacer(height=20), reset_SNR_button),
+            ),
             pn.Row(*(self.indicators[par] for par in ['relative_SNR', 'scantime', 'FW_shift', 'pixel_bandwidth']))
         )
     

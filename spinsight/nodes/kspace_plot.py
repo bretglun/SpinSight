@@ -7,9 +7,9 @@ import numpy as np
 
 
 @Graph.node()
-def kspace(kspace_type, show_processed_kspace, oversampled_recon_matrix, FOV, recon_matrix, full_k_matrix, zerofilled_kspace, kspace_exponent, gridded_kspace, k_grid_axes):
-    operator = OPERATORS[kspace_type]
+def kspace(kspace_mode, show_processed_kspace, oversampled_recon_matrix, FOV, recon_matrix, full_k_matrix, zerofilled_kspace, kspace_exponent, gridded_kspace, k_grid_axes):
     if show_processed_kspace:
+        kspace = zerofilled_kspace
         k_axes = []
         for dim in range(2):
             k_axes.append(recon.get_k_axis(oversampled_recon_matrix[dim], FOV[dim] / recon_matrix[dim]))
@@ -17,19 +17,17 @@ def kspace(kspace_type, show_processed_kspace, oversampled_recon_matrix, FOV, re
             if (oversampled_recon_matrix[dim] - full_k_matrix[dim])%2:
                 shift = recon_matrix[dim] / (2 * oversampled_recon_matrix[dim] * FOV[dim])
                 k_axes[-1] -= shift
-        ksp = xr.DataArray(
-            operator(zerofilled_kspace**kspace_exponent), 
-            dims=('ky', 'kx'),
-            coords={'kx': k_axes[1], 'ky': k_axes[0]}
-        )
     else:
-        ksp = xr.DataArray(
-            operator(gridded_kspace**kspace_exponent), 
-            dims=('ky', 'kx'),
-            coords={'kx': k_grid_axes[1], 'ky': k_grid_axes[0]}
-        )
+        kspace = gridded_kspace
+        k_axes = k_grid_axes
+    kspace = OPERATORS[kspace_mode](kspace)
+    ksp = xr.DataArray(
+        np.sign(kspace) * np.abs(kspace) ** (kspace_exponent if (OPERATORS[kspace_mode] != np.angle) else 1),
+        dims=('ky', 'kx'),
+        coords={'kx': k_axes[1], 'ky': k_axes[0]}
+    )
     ksp.kx.attrs['units'] = ksp.ky.attrs['units'] = '1/mm'
-    lim = 1.12 * max(k_grid_axes[1])
+    lim = 1.12 * max(k_axes[1])
     return hv.Image(ksp, vdims=['magnitude']).opts(xlim=(-lim,lim), ylim=(-lim,lim))
 
 

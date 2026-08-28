@@ -12,11 +12,10 @@ def annotated_image(image, FOV_box):
 
 
 @Graph.node()
-def image(image_type, recon_matrix, FOV, image_array):
-    operator = OPERATORS[image_type]
+def image(image_mode, recon_matrix, FOV, image_array):
     axes = [(np.arange(recon_matrix[dim]) - (recon_matrix[dim]-1)/2) / recon_matrix[dim] * FOV[dim] for dim in range(2)]
     img = xr.DataArray(
-        operator(image_array), 
+        OPERATORS[image_mode](image_array), 
         dims=('y', 'x'),
         coords={'x': axes[1], 'y': axes[0][::-1]}
     )
