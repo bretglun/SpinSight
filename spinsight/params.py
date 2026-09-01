@@ -4,11 +4,22 @@ from spinsight.param_utils import snap
 import numpy as np
 import panel as pn
 from panel.widgets.base import Widget
+import param
+
+
+DEFAULT_WIDGETS = {
+    param.Selector: pn.widgets.Select,
+    param.Number: pn.widgets.FloatSlider,
+    param.Integer: pn.widgets.IntSlider,
+    param.Boolean: pn.widgets.Checkbox
+}
 
 
 @dataclass(frozen=True)
 class ParamSpec:
     label: str
+    type: type[param.Parameter]
+    doc: str = ''
     bounds: tuple | None = None
     objects: list | dict | None = None
     step: float | None = None
@@ -18,6 +29,8 @@ class ParamSpec:
     widget: Widget | None = None
 
     def __post_init__(self):
+        if self.widget is None:
+            object.__setattr__(self, 'widget', DEFAULT_WIDGETS[self.type])
         if self.default is not None and self.objects is not None:
             # assert default is in objects
             values = self.objects.values() if isinstance(self.objects, dict) else self.objects
@@ -26,7 +39,7 @@ class ParamSpec:
 
     @property
     def param_kwargs(self):
-        param_kw = {'label', 'bounds', 'objects', 'step', 'default', 'precedence'}
+        param_kw = {'label', 'doc', 'bounds', 'objects', 'step', 'default', 'precedence'}
         return {kw: getattr(self, kw) for kw in param_kw if getattr(self, kw) is not None}
 
 
@@ -49,6 +62,7 @@ PARAMS = {
 
     'object': ParamSpec(
         label = 'Phantom object',
+        type = param.Selector,
         objects = phantom.get_phantom_names(),
         default = 'brain',
         precedence = 1,
@@ -57,6 +71,7 @@ PARAMS = {
 
     'field_strength': ParamSpec(
         label = 'B0 field strength [T]',
+        type = param.Selector,
         objects = [1.5, 3.0],
         default = 1.5,
         precedence = 2,
@@ -65,6 +80,7 @@ PARAMS = {
 
     'parameter_style': ParamSpec(
         label = 'Parameter Style',
+        type = param.Selector,
         objects = ['Matrix and Pixel BW', 'Voxel size and Fat/water shift', 'Matrix and FOV BW'],
         default = 'Matrix and Pixel BW',
         precedence = 3,
@@ -73,16 +89,19 @@ PARAMS = {
 
     'min_voxel_size': ParamSpec(
         label = 'Phantom resolution limit (to bound computation time) [mm]',
+        type = param.Number,
         default = 0.5,
     ),
     
     'noise_gain': ParamSpec(
         label = 'Scaling factor for noise standard deviation',
+        type = param.Number,
         default = 3.0,
     ),
     
     'sequence_type': ParamSpec(
         label = 'Pulse sequence',
+        type = param.Selector,
         objects = ['Spin Echo', 'Spoiled Gradient Echo', 'Inversion Recovery'],
         default = 'Spin Echo',
         precedence = 1,
@@ -91,6 +110,7 @@ PARAMS = {
     
     'pixel_bandwidth': ParamSpec(
         label = 'Bandwidth',
+        type = param.Selector,
         objects = {formatting.pixel_bandwidth(bw): bw for bw in pbw_vals},
         default = 480,
         precedence = 2,
@@ -100,6 +120,7 @@ PARAMS = {
 
     'FOV_bandwidth': ParamSpec(
         label = 'FOV bandwidth',
+        type = param.Selector,
         objects = {formatting.FOV_bandwidth(fovbw): fovbw for fovbw in fov_bw_vals},
         default = 43.2,
         precedence = 2,
@@ -109,6 +130,7 @@ PARAMS = {
 
     'FW_shift': ParamSpec(
         label = 'Fat/water shift',
+        type = param.Selector,
         objects = {formatting.FW_shift(shift): shift for shift in FW_shift_vals},
         default = 0.45,
         precedence = 2,
@@ -118,6 +140,7 @@ PARAMS = {
 
     'NSA': ParamSpec(
         label = 'NSA',
+        type = param.Integer,
         bounds = (1, 16),
         default = 1,
         precedence = 3,
@@ -126,6 +149,7 @@ PARAMS = {
 
     'partial_Fourier': ParamSpec(
         label = 'Partial Fourier factor',
+        type = param.Number,
         bounds = (.6, 1),
         step = 0.01,
         default = 1,
@@ -135,6 +159,7 @@ PARAMS = {
 
     'turbo_factor': ParamSpec(
         label = 'Turbo factor',
+        type = param.Integer,
         bounds = (1, 64),
         default = 1,
         precedence = 6,
@@ -143,6 +168,7 @@ PARAMS = {
 
     'EPI_factor': ParamSpec(
         label = 'EPI factor',
+        type = param.Selector,
         objects = list(range(1, 64 + 1)),
         default = 1,
         precedence = 7,
@@ -152,6 +178,7 @@ PARAMS = {
 
     'echo_order': ParamSpec(
         label = 'Echo order',
+        type = param.Selector,
         objects = ['Linear', 'Centric', 'Flexible'],
         default = 'Flexible',
         precedence = 8,
@@ -160,6 +187,7 @@ PARAMS = {
 
     'FatSat': ParamSpec(
         label = 'Fat saturation',
+        type = param.Boolean,
         default = False,
         precedence = 1,
         group = 'Contrast',
@@ -167,6 +195,7 @@ PARAMS = {
 
     'TR': ParamSpec(
         label = 'TR',
+        type = param.Selector,
         objects = {formatting.Ts(tr): tr for tr in TR_vals},
         default = 9000,
         precedence = 2,
@@ -176,6 +205,7 @@ PARAMS = {
 
     'TE': ParamSpec(
         label = 'TE',
+        type = param.Selector,
         objects = {formatting.Ts(te): te for te in TE_vals},
         default = 12,
         precedence = 3,
@@ -185,6 +215,7 @@ PARAMS = {
 
     'TI': ParamSpec(
         label = 'TI',
+        type = param.Selector,
         objects = {formatting.Ts(ti): ti for ti in TI_vals},
         default = 40,
         precedence = 4,
@@ -194,6 +225,7 @@ PARAMS = {
 
     'FA': ParamSpec(
         label = 'Flip angle',
+        type = param.Selector,
         objects = {formatting.flip_angle(fa): fa for fa in range(1, 90 + 1)},
         default = 90,
         precedence = 5,
@@ -203,6 +235,7 @@ PARAMS = {
 
     'trajectory': ParamSpec(
         label = 'k-space trajectory',
+        type = param.Selector,
         objects = {'Cartesian': 'Cartesian', 'Radial': 'Radial'},
         default = 'Cartesian',
         precedence = 1,
@@ -211,6 +244,7 @@ PARAMS = {
 
     'frequency_direction': ParamSpec(
         label = 'Frequency encoding direction',
+        type = param.Selector,
         objects = ['anterior-posterior', 'left-right'],
         default = 'anterior-posterior',
         precedence = 1,
@@ -219,6 +253,7 @@ PARAMS = {
 
     'FOV_P': ParamSpec(
         label = 'FOV x',
+        type = param.Selector,
         objects = {formatting.FOV(fov): fov for fov in fov_vals},
         default = 240,
         precedence = 2,
@@ -228,6 +263,7 @@ PARAMS = {
 
     'FOV_F': ParamSpec(
         label = 'FOV y',
+        type = param.Selector,
         objects = {formatting.FOV(fov): fov for fov in fov_vals},
         default = 240,
         precedence = 2,
@@ -237,6 +273,7 @@ PARAMS = {
 
     'phase_oversampling': ParamSpec(
         label = 'Phase oversampling',
+        type = param.Selector,
         objects = {formatting.oversampling(factor): float(factor) for factor in np.linspace(1, 2, 101)},
         default = 1.0,
         precedence = 3,
@@ -246,6 +283,7 @@ PARAMS = {
 
     'radial_oversampling': ParamSpec(
         label = 'Radial oversampling',
+        type = param.Selector,
         objects = {formatting.oversampling(factor): float(factor) for factor in np.linspace(0.1, 4, 391)},
         default = 1.0,
         precedence = 3,
@@ -255,6 +293,7 @@ PARAMS = {
 
     'matrix_P': ParamSpec(
         label = 'Acquisition matrix x',
+        type = param.Selector,
         objects = matrix_vals,
         default = 180,
         precedence = 4,
@@ -264,6 +303,7 @@ PARAMS = {
 
     'matrix_F': ParamSpec(
         label = 'Acquisition matrix y',
+        type = param.Selector,
         objects = matrix_vals,
         default = 180,
         precedence = 4,
@@ -273,6 +313,7 @@ PARAMS = {
 
     'voxel_P': ParamSpec(
         label = 'Voxel size x',
+        type = param.Selector,
         objects =  {formatting.voxel_size(voxel): voxel for voxel in voxel_vals},
         default = 1.333, 
         precedence = 4,
@@ -282,6 +323,7 @@ PARAMS = {
 
     'voxel_F': ParamSpec(
         label = 'Voxel size y',
+        type = param.Selector,
         objects =  {formatting.voxel_size(voxel): voxel for voxel in voxel_vals},
         default = 1.333, 
         precedence = 4,
@@ -291,6 +333,7 @@ PARAMS = {
 
     'recon_matrix_P': ParamSpec(
         label = 'Reconstruction matrix x',
+        type = param.Selector,
         objects = recon_matrix_vals,
         default = 360,
         precedence = 5,
@@ -300,6 +343,7 @@ PARAMS = {
 
     'recon_matrix_F': ParamSpec(
         label = 'Reconstruction matrix y',
+        type = param.Selector,
         objects = recon_matrix_vals,
         default = 360,
         precedence = 5,
@@ -309,6 +353,7 @@ PARAMS = {
 
     'recon_voxel_P': ParamSpec(
         label = 'Reconstructed voxel size x',
+        type = param.Selector,
         objects =  {formatting.voxel_size(voxel): voxel for voxel in recon_voxel_vals},
         precedence = 5,
         widget = pn.widgets.DiscreteSlider,
@@ -317,6 +362,7 @@ PARAMS = {
 
     'recon_voxel_F': ParamSpec(
         label = 'Reconstructed voxel size y',
+        type = param.Selector,
         objects =  {formatting.voxel_size(voxel): voxel for voxel in recon_voxel_vals},
         precedence = 5,
         widget = pn.widgets.DiscreteSlider,
@@ -325,6 +371,7 @@ PARAMS = {
 
     'slice_thickness': ParamSpec(
         label = 'Slice thickness',
+        type = param.Selector,
         objects = {formatting.slice_thickness(thk): thk for thk in np.linspace(0.5, 10, 96)},
         default = 3.0,
         precedence = 6,
@@ -334,6 +381,7 @@ PARAMS = {
 
     'radial_FOV_oversampling': ParamSpec(
         label = 'Radial FOV oversampling factor',
+        type = param.Number,
         bounds = (1.0, 2.0),
         step = 0.01,
         default = 2.0,
@@ -341,18 +389,21 @@ PARAMS = {
 
     'show_FOV': ParamSpec(
         label = 'Show FOV',
+        type = param.Boolean,
         default = False,
         precedence = 1,
     ),
 
     'reference_tissue': ParamSpec(
         label = 'Reference tissue',
+        type = param.Selector,
         default = 'Gray matter',
         precedence = 2,
     ),
 
     'image_mode': ParamSpec(
         label = 'Image mode',
+        type = param.Selector,
         objects = constants.OPERATORS.keys(),
         default = 'Magnitude',
         precedence = 3,
@@ -360,12 +411,14 @@ PARAMS = {
 
     'show_processed_kspace': ParamSpec(
         label = 'Show processed k-space',
+        type = param.Boolean,
         default = False,
         precedence = 1,
     ),
 
     'kspace_exponent': ParamSpec(
         label = 'k-space exponent',
+        type = param.Number,
         bounds = (0.1, 1.0),
         step = 0.01,
         default = 0.2,
@@ -374,6 +427,7 @@ PARAMS = {
 
     'kspace_mode': ParamSpec(
         label = 'k-space mode',
+        type = param.Selector,
         objects = constants.OPERATORS.keys(),
         default = 'Magnitude',
         precedence = 3,
@@ -381,6 +435,7 @@ PARAMS = {
 
     'homodyne': ParamSpec(
         label = 'Homodyne',
+        type = param.Boolean,
         default = True,
         precedence = 1,
         group = 'Post-processing',
@@ -388,6 +443,7 @@ PARAMS = {
 
     'do_apodize': ParamSpec(
         label = 'Apodization',
+        type = param.Boolean,
         default = True,
         precedence = 2,
         group = 'Post-processing',
@@ -395,6 +451,7 @@ PARAMS = {
 
     'apodization_alpha': ParamSpec(
         label = 'Apodization alpha',
+        type = param.Number,
         bounds = (.01, 1.0),
         step = 0.01,
         default = 0.25,
@@ -404,6 +461,7 @@ PARAMS = {
 
     'do_zerofill': ParamSpec(
         label = 'Zerofill',
+        type = param.Boolean,
         default = True,
         precedence = 4,
         group = 'Post-processing',
@@ -411,6 +469,7 @@ PARAMS = {
 
     'shot': ParamSpec(
         label = 'Displayed shot',
+        type = param.Selector,
         objects = {f'{i + 1}': i for i in range(1000)},
         default = 0,
         precedence = 1,
@@ -419,6 +478,7 @@ PARAMS = {
 
     'signal_exponent': ParamSpec(
         label = 'Signal exponent',
+        type = param.Number,
         bounds = (0.1, 1.0),
         step = 0.01,
         default = 0.5,

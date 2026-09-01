@@ -30,6 +30,8 @@ class GUI(param.Parameterized):
     scantime = param.String(label='Scan time')
     FW_shift = param.String(label='Fat/water shift')
     pixel_bandwidth = param.String(label='Bandwidth')
+
+    show_help = param.Boolean(default=False)
     
     def __init__(self, settings_file, start_time, version, lazy_sliders, dark_mode, **params):
         
@@ -64,6 +66,7 @@ class GUI(param.Parameterized):
         image_panel = self.make_image_panel()
         kspace_panel = self.make_kspace_panel()
         sequence_plot_panel = self.make_sequence_plot_panel()
+        help_button = self.make_help_button()
         sequence_button = self.make_sequence_button(sequence_plot_panel)
         kspace_button = self.make_kspace_button(kspace_panel)
         load_button = self.make_load_button()
@@ -80,7 +83,8 @@ class GUI(param.Parameterized):
         dashboard.sidebar.append(self.make_sidebar(
             load_button, 
             save_button, 
-            settings_params_panel
+            settings_params_panel,
+            help_button
             )
         )
         dashboard.main.append(self.make_main_page(
@@ -99,10 +103,11 @@ class GUI(param.Parameterized):
         )
         return dashboard
 
-    def make_sidebar(self, load_button, save_button, settings_params_panel):
+    def make_sidebar(self, load_button, save_button, settings_params_panel, help_button):
         return pn.Column(
             pn.Row(load_button, save_button), 
-            settings_params_panel
+            settings_params_panel,
+            help_button
         )
     
     def make_main_page(self, sequence_button, kspace_button, sequence_params_panel, contrast_params_panel, geometry_params_panel, image_panel, info_panel, kspace_panel, post_processing_params_panel, sequence_plot_panel, footer_panel):
@@ -136,8 +141,8 @@ class GUI(param.Parameterized):
         return pn.Column(
             hv.DynamicMap(self.display_image), 
             pn.Row(
-                self.controller.input.param.image_mode, 
-                pn.Param(self.controller.input.param, parameters=['show_FOV'], show_name=False, margin=(30, 0, 0, 0))
+                self.make_param_widget('image_mode'),
+                self.make_param_widget('show_FOV', width=150, margin=(30, 0, 0, 0)),
             )
         )
     
@@ -145,10 +150,10 @@ class GUI(param.Parameterized):
         return pn.Column(
             hv.DynamicMap(self.display_kspace) * self.controller.from_graph('hover_manager').k_line, 
             pn.Row(
-                self.controller.input.param.kspace_mode, 
-                pn.Param(self.controller.input.param, parameters=['kspace_exponent'], show_name=False, width=150)
+                self.make_param_widget('kspace_mode'),
+                self.make_param_widget('kspace_exponent', width=150),
                 ),
-            self.controller.input.param.show_processed_kspace,
+            self.make_param_widget('show_processed_kspace'),
             visible=False
         )
     
@@ -159,10 +164,10 @@ class GUI(param.Parameterized):
         return pn.Column(
             hv.DynamicMap(self.display_sequence_plot), 
             pn.Row(
-                self.make_param_panel('shot'),
+                self.make_param_widget('shot'),
                 self.indicators['spoke_angle'], 
                 self.indicators['num_shots'], 
-                self.make_param_panel('signal_exponent')
+                self.make_param_widget('signal_exponent')
             ),
             visible=False
         )
@@ -170,7 +175,7 @@ class GUI(param.Parameterized):
     def make_info_panel(self, reset_SNR_button):
         return pn.Column(
             pn.Row(
-                self.controller.input.param.reference_tissue, 
+                self.make_param_widget('reference_tissue'),
                 pn.Column(pn.Spacer(height=20), reset_SNR_button),
             ),
             pn.Row(*(self.indicators[par] for par in ['relative_SNR', 'scantime', 'FW_shift', 'pixel_bandwidth']))
@@ -193,13 +198,29 @@ class GUI(param.Parameterized):
             pn.pane.Markdown(author, styles={'color': INFO_TEXT_COLOR}),
             pn.pane.Markdown(f'*(server started {start_time}{self.version})*', styles={'color': INFO_TEXT_COLOR}), height=10)
 
-    def make_param_panel(self, param):
-        return pn.panel(self.controller.input.param[param], widgets={param: PARAMS[param].widget})
+    def make_param_widget(self, name, width=300, margin=(5, 10, 5, 10)):
+        par = self.controller.input.param[name]
+        widget = PARAMS[name].widget.from_param(par, width=width, margin=margin)
+        tooltip = pn.widgets.TooltipIcon(value=par.doc or '', visible=self.param['show_help'])
+        row = pn.Row(tooltip, widget, margin=0, visible=(par.precedence > 0))
+        self.controller.input.param.watch(lambda event: setattr(row, 'visible', event.new>0), name, what='precedence')
+        return row
     
     def make_param_group_panel(self, group):
         params = [par for par in PARAMS if PARAMS[par].group == group]
-        return pn.panel(self.controller.input.param, parameters=params, widgets={par: PARAMS[par].widget for par in params}, name=group)
+        rows = [pn.widgets.StaticText(value=f'<b>{group}</b>')]
+        for par in params:
+            rows.append(self.make_param_widget(par))
+        return pn.Column(*rows, margin=(5, 10), name=group)
     
+    def make_help_button(self):
+        return pn.widgets.ToggleIcon.from_param(
+            self.param.show_help,
+            icon='help-circle',
+            active_icon='help-circle-filled',
+            size='2.0em',
+        )
+
     def make_sequence_button(self, sequence_plot_panel):
         sequence_button = pn.widgets.Button(name='Show sequence')
         sequence_button.on_click(partial(hide_show_button_callback, sequence_plot_panel))
