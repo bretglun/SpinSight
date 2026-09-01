@@ -199,11 +199,11 @@ class GUI(param.Parameterized):
             pn.pane.Markdown(f'*(server started {start_time}{self.version})*', styles={'color': INFO_TEXT_COLOR}), height=10)
 
     def make_param_widget(self, name, width=300, margin=(5, 10, 5, 10)):
-        par = self.controller.input.param[name]
+        par = self.controller.param[name]
         widget = PARAMS[name].widget.from_param(par, width=width, margin=margin)
         tooltip = pn.widgets.TooltipIcon(value=par.doc or '', visible=self.param['show_help'])
         row = pn.Row(tooltip, widget, margin=0, visible=(par.precedence > 0))
-        self.controller.input.param.watch(lambda event: setattr(row, 'visible', event.new>0), name, what='precedence')
+        self.controller.param.watch(lambda event: setattr(row, 'visible', event.new>0), name, what='precedence')
         return row
     
     def make_param_group_panel(self, group):

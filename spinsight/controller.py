@@ -1,13 +1,15 @@
 import param
-from spinsight.param_utils import snap, filter_objects, value_in_objects, insert_value_in_list_sorted, insert_value_in_dict_sorted, get_object_values
+from spinsight.param_utils import snap, filter_objects, insert_value_in_list_sorted, insert_value_in_dict_sorted, get_object_values
 from spinsight.params import PARAMS
-from spinsight.input_params import InputParams
 from spinsight import simulator, convert, formatting
-import warnings
-import numpy as np
 
 
 class Controller(param.Parameterized):
+    # Create input params
+    for name, spec in PARAMS.items():
+        locals()[name] = spec.type(**spec.param_kwargs)
+    del name, spec
+
     shot_label = param.String() # shot/spoke/blade label
     rec_acq_ratio_P = param.Number() # reconstructed / acquired matrix_P ratio
     rec_acq_ratio_F = param.Number() # reconstructed / acquired matrix_F ratio
@@ -17,7 +19,6 @@ class Controller(param.Parameterized):
     def __init__(self, gui, **params):
         super().__init__(**params)
         self.gui = gui
-        self.input = InputParams()
         self.graph = simulator.make_graph()
         self.propagate_changes = True
         self.add_input_watchers()
@@ -31,18 +32,18 @@ class Controller(param.Parameterized):
         return self.graph.nodes[par_name].value()
         
     def input_nodes(self):
-        return {par for par in self.input.param if any(par + post in self.graph.nodes and not self.graph.nodes[par + post].parents for post in ('', '_prescribed'))}
+        return {par for par in PARAMS if any(par + post in self.graph.nodes and not self.graph.nodes[par + post].parents for post in ('', '_prescribed'))}
     
     def get_input_params(self):
-        return {par: getattr(self.input, par) for par in self.input_nodes() if self.input.param[par].precedence >= 0}
+        return {par: getattr(self, par) for par in self.input_nodes() if self.param[par].precedence >= 0}
 
     def set_input_params(self, settings):
         self.graph.update_inputs(settings)
         self.sync_with_graph()
     
     def add_input_watchers(self):
-        for par in self.input.param:
-            self.input.param.watch(self.on_param_change, par)
+        for par in PARAMS:
+            self.param.watch(self.on_param_change, par)
 
     def on_param_change(self, event):
         if not self.propagate_changes:
@@ -56,8 +57,8 @@ class Controller(param.Parameterized):
     def inputs_to_update(self, triggered, value):
         inputs = {triggered: value}
         if 'parameter_style' in inputs:
-            inputs['constant_voxel_bounds'] = 'VOXEL SIZE' in self.input.parameter_style.upper()
-            inputs['constant_FOV_BW_bounds'] = 'FOV BW' in self.input.parameter_style.upper()
+            inputs['constant_voxel_bounds'] = 'VOXEL SIZE' in self.parameter_style.upper()
+            inputs['constant_FOV_BW_bounds'] = 'FOV BW' in self.parameter_style.upper()
             del inputs['parameter_style']
         if 'FOV_bandwidth' in inputs:
             inputs['pixel_bandwidth'] = convert.FOV_BW_to_pixel_BW(inputs['FOV_bandwidth'], self.from_graph('matrix_F'))
@@ -72,15 +73,15 @@ class Controller(param.Parameterized):
                     inputs[f'{prefix}matrix_{dir}'] = round(self.from_graph(f'FOV_{dir}') / inputs[f'{prefix}voxel_{dir}'])
                     del inputs[f'{prefix}voxel_{dir}']
         if self.isotropic_voxel_size() and 'matrix_F' in inputs:
-            voxel_size = self.input.FOV_F / inputs['matrix_F']
-            inputs['matrix_P'] = round(self.input.FOV_P / voxel_size)
+            voxel_size = self.FOV_F / inputs['matrix_F']
+            inputs['matrix_P'] = round(self.FOV_P / voxel_size)
         if self.FOV_BW_is_input() and 'matrix_F' in inputs and 'pixel_bandwidth' not in inputs:
             # maintain contant FOV bandwidth
-            inputs['pixel_bandwidth'] = convert.FOV_BW_to_pixel_BW(self.input.FOV_bandwidth, inputs['matrix_F'])
+            inputs['pixel_bandwidth'] = convert.FOV_BW_to_pixel_BW(self.FOV_bandwidth, inputs['matrix_F'])
         for dir in ['F', 'P']:
             # maintain contant voxel size
             if self.voxel_size_is_input() and f'FOV_{dir}' in inputs and f'matrix_{dir}' not in inputs:
-                inputs[f'matrix_{dir}'] = round(inputs[f'FOV_{dir}'] / getattr(self.input, f'voxel_{dir}'))
+                inputs[f'matrix_{dir}'] = round(inputs[f'FOV_{dir}'] / getattr(self, f'voxel_{dir}'))
             # maintain constant rec/acq ratio when acq matrix is changed
             if f'matrix_{dir}' in inputs:
                 inputs[f'recon_matrix_{dir}'] = round(inputs[f'matrix_{dir}'] * getattr(self, f'rec_acq_ratio_{dir}'))
@@ -89,14 +90,14 @@ class Controller(param.Parameterized):
         return inputs
 
     def set_visibility(self, par_name, visible):
-        par = self.input.param[par_name]
+        par = self.param[par_name]
         precedence = abs(par.precedence)
         if not visible:
             precedence *= -1
         par.precedence = precedence
     
     def set_param(self, par_name, value, mode='nearest'):
-        par = self.input.param[par_name]
+        par = self.param[par_name]
         objects = getattr(par, 'objects', None) # par.objects could be dict or param.ListProxy
         values = get_object_values(objects)
         new = snap(value, values, mode) if values else value
@@ -115,14 +116,14 @@ class Controller(param.Parameterized):
             else:
                 insert_value_in_list_sorted(new, objects)
         
-        if new != getattr(self.input, par_name):
+        if new != getattr(self, par_name):
             if insert_value:
                 par.objects = objects
-            setattr(self.input, par_name, new)
+            setattr(self, par_name, new)
     
     def set_param_bounds(self, par_name, minval=None, maxval=None):
-        par = self.input.param[par_name]
-        curval = getattr(self.input, par_name)
+        par = self.param[par_name]
+        curval = getattr(self, par_name)
         if PARAMS[par.name].objects is not None:
             return self.set_param_discrete_bounds(par, curval, minval, maxval)
         
@@ -133,7 +134,7 @@ class Controller(param.Parameterized):
             maxval = default_max if maxval is None else min(maxval, default_max)
         par.bounds = (minval, maxval)
         if minval == maxval:
-            setattr(self.input, par_name, minval)
+            setattr(self, par_name, minval)
         par.constant = minval == maxval
     
     def set_param_discrete_bounds(self, par, curval, minval=None, maxval=None):
@@ -144,22 +145,22 @@ class Controller(param.Parameterized):
         par.objects = filter_objects(PARAMS[par.name].objects, minval, maxval)
 
     def pixel_BW_is_input(self):
-        return 'PIXEL BW' in self.input.parameter_style.upper()
+        return 'PIXEL BW' in self.parameter_style.upper()
 
     def FOV_BW_is_input(self):
-        return 'FOV BW' in self.input.parameter_style.upper()
+        return 'FOV BW' in self.parameter_style.upper()
 
     def FW_shift_is_input(self):
-        return 'FAT/WATER SHIFT' in self.input.parameter_style.upper()
+        return 'FAT/WATER SHIFT' in self.parameter_style.upper()
 
     def matrix_is_input(self):
-        return 'MATRIX' in self.input.parameter_style.upper()
+        return 'MATRIX' in self.parameter_style.upper()
 
     def voxel_size_is_input(self):
-        return 'VOXEL SIZE' in self.input.parameter_style.upper()
+        return 'VOXEL SIZE' in self.parameter_style.upper()
 
     def isotropic_voxel_size(self):
-        return self.input.trajectory.upper() == 'RADIAL'
+        return self.trajectory.upper() == 'RADIAL'
 
     def sync_with_graph(self):
         self.propagate_changes = False
@@ -211,8 +212,8 @@ class Controller(param.Parameterized):
                     self.set_param_bounds(f'{prefix}voxel_{dir}', minval=lo, maxval=hi)
     
         self.update_EPI_factor_bounds()
-        self.input.param.echo_order.objects = self.from_graph('echo_order_options')
-        self.input.param.reference_tissue.objects = self.from_graph('tissues')
+        self.param.echo_order.objects = self.from_graph('echo_order_options')
+        self.param.reference_tissue.objects = self.from_graph('tissues')
         self.update_x_y_labels()
         self.update_shot_label()
 
@@ -220,12 +221,12 @@ class Controller(param.Parameterized):
         self.set_param_bounds('EPI_factor', maxval=self.from_graph('max_EPI_factor'))
         # EPI_factor must be odd for turbo spin echo (GRASE)
         if self.from_graph('turbo_factor') > 1:
-            self.input.param.EPI_factor.objects = [v for v in self.input.param.EPI_factor.objects if v%2]
+            self.param.EPI_factor.objects = [v for v in self.param.EPI_factor.objects if v%2]
 
     def update_x_y_labels(self):
         frequency_direction = self.from_graph('frequency_direction')
         for p in ['FOV_F', 'FOV_P', 'matrix_F', 'matrix_P', 'recon_matrix_F', 'recon_matrix_P']:
-            par = self.input.param[p]
+            par = self.param[p]
             if (' y' in par.label) and (('_F' in par.name and frequency_direction=='left-right') or
                                         ('_P' in par.name and frequency_direction=='anterior-posterior')):
                 par.label = par.label.replace(' y', ' x')
@@ -235,7 +236,7 @@ class Controller(param.Parameterized):
 
     def update_shot_label(self):
         self.shot_label = 'shot' if not self.from_graph('is_radial') else 'spoke' if (self.from_graph('num_segm') == 1) else 'blade'
-        self.input.param.shot.label = f'Displayed {self.shot_label}'
+        self.param.shot.label = f'Displayed {self.shot_label}'
 
     def update_params(self):
         for par in self.input_nodes():
@@ -250,10 +251,10 @@ class Controller(param.Parameterized):
     def update_trajectory_lables(self):
         # Label radial trajectory 'Radial' or 'PROPELLER' depending on nLines per shot
         invalid, updated = ('PROPELLER', 'Radial') if (self.from_graph('num_segm') == 1) else ('Radial', 'PROPELLER')
-        self.input.param.trajectory.objects = {(updated if key == invalid else key): value for key, value in PARAMS['trajectory'].objects.items()}
+        self.param.trajectory.objects = {(updated if key == invalid else key): value for key, value in PARAMS['trajectory'].objects.items()}
 
     def update_info_params(self):
-        self.gui.FW_shift = formatting.FW_shift(self.input.FW_shift)
+        self.gui.FW_shift = formatting.FW_shift(self.FW_shift)
         self.gui.relative_SNR = formatting.relative_SNR(self.from_graph('SNR') / self.reference_SNR)
         for par in ['spoke_angle', 'num_shots', 'scantime', 'pixel_bandwidth']:
             setattr(self.gui, par, getattr(formatting, par)(self.from_graph(par)))
