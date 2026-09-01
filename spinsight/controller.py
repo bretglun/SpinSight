@@ -19,6 +19,7 @@ class Controller(param.Parameterized):
         self.gui = gui
         self.input = InputParams()
         self.graph = simulator.make_graph()
+        self.graph.update_inputs({'progress_bar': gui.progress_bar})
         self.propagate_changes = True
         self.add_input_watchers()
         self.set_reference_SNR()

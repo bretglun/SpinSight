@@ -184,9 +184,9 @@ def get_k_axes(matrix, support):
     return k_axes, kgrid
 
 
-def get_kspace(kgrid, shapes, path, matrix, center):
+def get_kspace(kgrid, shapes, path, matrix, center, progress_bar=(tqdm, tqdm)):
     kspace = {}
-    for tissue in tqdm(shapes.keys(), desc='Tissues'):
+    for tissue in progress_bar[0](shapes.keys(), desc='Tissues'):
         file = Path(path / tissue.replace(' ', '_')).with_suffix('.npy')
         if file.is_file():
             ksp = np.load(file)
@@ -194,14 +194,14 @@ def get_kspace(kgrid, shapes, path, matrix, center):
                 kspace[tissue] = ksp
         if tissue not in kspace:
             kspace[tissue] = np.zeros((matrix), dtype=complex)
-            for shape in tqdm(shapes[tissue], desc=f'"{tissue}" shapes', leave=False):
+            for shape in progress_bar[1](shapes[tissue], desc=f'"{tissue}" shapes', leave=False):
                 kspace[tissue] += kspace_for_shape(shape, kgrid)
             kspace[tissue] *= np.exp(2j*np.pi * np.dot(kgrid, center)) # offset FOV
             np.save(file, kspace[tissue])
     return kspace
 
 
-def load(name, min_voxel_size):
+def load(name, min_voxel_size, progress_bar):
     path = Path(__file__).parent.resolve() / 'phantoms' / name
     phantom_object = {'name': name, 'path': path}
     for suffix in ['.toml', '.svg']:
@@ -216,7 +216,7 @@ def load(name, min_voxel_size):
 
     print(f'Preparing k-space for "{name}" phantom (might take a few minutes on first use)')
     phantom_object['k_axes'], kgrid = get_k_axes(phantom_object['matrix'], phantom_object['support'])
-    phantom_object['kspace'] = get_kspace(kgrid, phantom_object['shapes'], path, phantom_object['matrix'], phantom_object['center'])
+    phantom_object['kspace'] = get_kspace(kgrid, phantom_object['shapes'], path, phantom_object['matrix'], phantom_object['center'], progress_bar)
     return phantom_object
 
 

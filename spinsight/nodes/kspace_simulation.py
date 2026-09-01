@@ -224,5 +224,5 @@ def tissues(phantom_object):
 
 
 @Graph.node()
-def phantom_object(object, min_voxel_size):
-    return phantom.load(object, min_voxel_size)
+def phantom_object(object, min_voxel_size, progress_bar):
+    return phantom.load(object, min_voxel_size, progress_bar)

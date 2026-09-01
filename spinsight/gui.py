@@ -40,6 +40,8 @@ class GUI(param.Parameterized):
         self.start_time = start_time
 
         self.make_indicators()
+        
+        self.progress_bar = self.make_progress_bar()
         self.controller = Controller(self)
 
         pn.config.throttled = lazy_sliders
@@ -58,6 +60,9 @@ class GUI(param.Parameterized):
     def display_sequence_plot(self):
         return self.sequence_plot
         
+    def make_progress_bar(self):
+        return tuple(pn.widgets.Tqdm(margin=(0, 0, 0, indent), text_pane=pn.pane.Str(styles={'color': 'gray'})) for indent in (0, 20))
+    
     def make_layout(self, title, dark_mode):
         dashboard = styles.panel_template(title, dark_mode)
         
@@ -120,7 +125,8 @@ class GUI(param.Parameterized):
                 ), 
                 pn.Column(
                     image_panel,
-                    info_panel
+                    info_panel,
+                    *self.progress_bar
                 ), 
                 pn.Column(
                     kspace_panel,
