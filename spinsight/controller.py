@@ -50,6 +50,7 @@ class Controller(param.Parameterized):
             return
         self.graph.update_inputs(self.inputs_to_update(event.name, event.new))
         if event.name == 'object':
+            self.gui.show_progress_bar(event.new)
             # adapt FOV to phantom
             self.graph.update_inputs({f'FOV_{D}': max(self.from_graph('phantom_object')['support'][self.from_graph(f'{dir}_dir')], self.from_graph(f'FOV_{D}')) for (D, dir) in [('F', 'freq'), ('P', 'phase')]})
         self.sync_with_graph()
@@ -163,6 +164,7 @@ class Controller(param.Parameterized):
         return self.input.trajectory.upper() == 'RADIAL'
 
     def sync_with_graph(self):
+        self.gui.hide_progress_bar()
         self.propagate_changes = False
         self.update_visibility()
         self.update_bounds()

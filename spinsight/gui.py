@@ -61,8 +61,14 @@ class GUI(param.Parameterized):
         return self.sequence_plot
         
     def make_progress_bar(self):
-        return tuple(pn.widgets.Tqdm(margin=(0, 0, 0, indent), text_pane=pn.pane.Str(styles={'color': 'gray'})) for indent in (0, 20))
+        return tuple(pn.widgets.Tqdm(width=1000, height=70, margin=(0, 0, 0, indent), text_pane=pn.pane.Str(styles={'color': INFO_TEXT_COLOR})) for indent in (10, 90))
+
+    def make_progress_bar_modal(self):
+        return pn.Column('', *self.progress_bar)
     
+    def set_progress_bar_title(self, phantom_name=''):
+        self.dashboard.modal[0][0] = f'# Preparing *k*-space for "{phantom_name}" phantom...\n*(first-time loading may take several minutes)*'
+
     def make_layout(self, title, dark_mode):
         dashboard = styles.panel_template(title, dark_mode)
         
@@ -102,6 +108,9 @@ class GUI(param.Parameterized):
             footer_panel
             )
         )
+
+        dashboard.modal[0] = self.make_progress_bar_modal()
+
         return dashboard
 
     def make_sidebar(self, load_button, save_button, settings_params_panel):
@@ -125,8 +134,7 @@ class GUI(param.Parameterized):
                 ), 
                 pn.Column(
                     image_panel,
-                    info_panel,
-                    *self.progress_bar
+                    info_panel
                 ), 
                 pn.Column(
                     kspace_panel,
@@ -181,6 +189,17 @@ class GUI(param.Parameterized):
             ),
             pn.Row(*(self.indicators[par] for par in ['relative_SNR', 'scantime', 'FW_shift', 'pixel_bandwidth']))
         )
+
+    def show_progress_bar(self, phantom_name=''):
+        if not hasattr(self, 'dashboard'):
+            return
+        self.set_progress_bar_title(phantom_name)
+        self.dashboard.open_modal()
+        
+    def hide_progress_bar(self):
+        if not hasattr(self, 'dashboard'):
+            return
+        self.dashboard.close_modal()
     
     def indicator(self, par_name):
         par = self.param[par_name]
