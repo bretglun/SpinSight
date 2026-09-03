@@ -58,15 +58,24 @@ def zerofill(kspace, recon_matrix):
     return crop_or_pad(kspace, recon_matrix)
 
 
+def sinc_kernels(target_axes, source_axes, spatial_support):
+    kernels = []
+    for target_axis, source_axis, support in zip(target_axes, source_axes, spatial_support):
+        kernels.append(np.sinc((target_axis[None, :] - source_axis[:, None]) * support))
+    return kernels
+
+
+def sinc_interpolate(kspace, kernels):
+    for dim in range(len(kernels)):
+        kspace = np.moveaxis(np.moveaxis(kspace, dim, -1) @ kernels[dim], -1, dim)
+    return kspace
+
+
 def resample_kspace_Cartesian(phantom_object, k_axes, shape=None):
-    kspace = phantom_object['kspace'].copy()
-    for dim in range(len(k_axes)):
-        sinc = np.sinc((np.tile(k_axes[dim], (len(phantom_object['k_axes'][dim]), 1)) - np.tile(phantom_object['k_axes'][dim][:, np.newaxis], (1, len(k_axes[dim])))) * phantom_object['support'][dim])
-        for tissue in kspace:
-            kspace[tissue] = np.moveaxis(np.tensordot(kspace[tissue], sinc, axes=(dim, 0)), -1, dim)
+    kernels = sinc_kernels(k_axes, phantom_object['k_axes'], phantom_object['support'])
+    kspace = {tissue: sinc_interpolate(ksp, kernels) for tissue, ksp in phantom_object['kspace'].items()}
     if shape is not None:
-        for tissue in kspace:
-            kspace[tissue] = kspace[tissue].reshape(shape)
+        return {tissue: ksp.reshape(shape) for tissue, ksp in kspace.items()}
     return kspace
 
 
