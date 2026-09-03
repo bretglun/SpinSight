@@ -213,8 +213,7 @@ def load(name, min_voxel_size, progress_bar):
     phantom_object['shapes'] = load_shapes(phantom_object['file'])
     phantom_object['support'], phantom_object['center'] = get_support(phantom_object['shapes'])
     phantom_object['matrix'] = tuple(int(fov/min_voxel_size/2)*2+1 for fov in phantom_object['support']) # assert odd to sample k-space center
-
-    print(f'Preparing k-space for "{name}" phantom (might take a few minutes on first use)')
+    
     phantom_object['k_axes'], kgrid = get_k_axes(phantom_object['matrix'], phantom_object['support'])
     phantom_object['kspace'] = get_kspace(kgrid, phantom_object['shapes'], path, phantom_object['matrix'], phantom_object['center'], progress_bar)
     return phantom_object

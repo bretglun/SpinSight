@@ -22,7 +22,6 @@ class Controller(param.Parameterized):
         self.graph.update_inputs({'progress_bar': gui.progress_bar})
         self.propagate_changes = True
         self.add_input_watchers()
-        self.sync_with_graph()
 
     def from_graph(self, par_name):
         return self.graph.nodes[par_name].value()

@@ -6,7 +6,8 @@ import toml
 from spinsight import styles
 from spinsight.controller import Controller
 from spinsight.params import PARAMS
-from spinsight.styles import INFO_FONT_SIZE, INFO_TITLE_SIZE, INFO_TEXT_COLOR
+from spinsight.styles import INFO_FONT_SIZE, INFO_TITLE_SIZE, INFO_TEXT_COLOR, IMAGE_HEIGHT, IMAGE_WIDTH
+import asyncio
 
 
 def hide_show_button_callback(pane, event):
@@ -47,6 +48,15 @@ class GUI(param.Parameterized):
         pn.config.throttled = lazy_sliders
 
         self.dashboard = self.make_layout('SpinSight MRI simulator', dark_mode)
+
+        pn.state.onload(self.initialize)
+
+    async def initialize(self):
+        self.show_progress_bar(self.controller.input.object)
+        await asyncio.sleep(0)  # let Panel flush the modal-open update
+        await asyncio.to_thread(self.controller.sync_with_graph)
+        self.hide_progress_bar()
+        self.initialize_plots()
     
     @param.depends('image')
     def display_image(self):
@@ -145,10 +155,10 @@ class GUI(param.Parameterized):
             footer_panel,
             sizing_mode='stretch_both'
         )
-    
+
     def make_image_panel(self):
         return pn.Column(
-            hv.DynamicMap(self.display_image), 
+            self.make_image_container(), 
             pn.Row(
                 self.controller.input.param.image_mode, 
                 pn.Param(self.controller.input.param, parameters=['show_FOV'], show_name=False, margin=(30, 0, 0, 0))
@@ -157,7 +167,7 @@ class GUI(param.Parameterized):
     
     def make_kspace_panel(self):
         return pn.Column(
-            hv.DynamicMap(self.display_kspace) * self.controller.from_graph('hover_manager').k_line, 
+            self.make_kspace_container(), 
             pn.Row(
                 self.controller.input.param.kspace_mode, 
                 pn.Param(self.controller.input.param, parameters=['kspace_exponent'], show_name=False, width=150)
@@ -171,7 +181,7 @@ class GUI(param.Parameterized):
             self.indicators['num_shots'].name = f'# {event.new}s'
         self.controller.param.watch(update_num_shots_label, 'shot_label')
         return pn.Column(
-            hv.DynamicMap(self.display_sequence_plot), 
+            self.make_sequence_plot_container(), 
             pn.Row(
                 self.make_param_panel('shot'),
                 self.indicators['spoke_angle'], 
@@ -180,7 +190,27 @@ class GUI(param.Parameterized):
             ),
             visible=False
         )
-    
+
+    def make_image_container(self):
+        spinner = pn.indicators.LoadingSpinner(label='Preparing image', value=True, size=50, align='center')
+        self.image_container = pn.Column(pn.Spacer(height=IMAGE_HEIGHT//2), spinner, height=IMAGE_HEIGHT, width=IMAGE_WIDTH)
+        return self.image_container
+
+    def make_kspace_container(self):
+        spinner = pn.indicators.LoadingSpinner(label='Preparing k-space', value=True, size=50, align='center')
+        self.kspace_container = pn.Column(pn.Spacer(height=IMAGE_HEIGHT//2), spinner, height=IMAGE_HEIGHT, width=IMAGE_WIDTH)
+        return self.kspace_container
+
+    def make_sequence_plot_container(self):
+        spinner = pn.indicators.LoadingSpinner(label='Preparing sequence plot', value=True, size=50, align='center')
+        self.sequence_plot_container = pn.Column(spinner)
+        return self.sequence_plot_container
+
+    def initialize_plots(self):
+        self.image_container[:] = [hv.DynamicMap(self.display_image)]
+        self.kspace_container[:] = [hv.DynamicMap(self.display_kspace) * self.controller.from_graph('hover_manager').k_line]
+        self.sequence_plot_container[:] = [hv.DynamicMap(self.display_sequence_plot)]
+
     def make_info_panel(self, reset_SNR_button):
         return pn.Column(
             pn.Row(
