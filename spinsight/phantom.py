@@ -76,14 +76,9 @@ def kspace_for_polygon(poly, k):
     return ksp
 
 
-def rotation_matrix(theta):
-    cos, sin = np.cos(theta), np.sin(theta)
-    return np.array([[cos, -sin], [sin, cos]])
-
-
 def kspace_for_ellipse(ellipse, k):
     # scaled and rotated radius vector:
-    r = np.linalg.norm(k @ rotation_matrix(np.radians(ellipse['angle'])) @ np.diag(ellipse['radius']), axis=-1)
+    r = np.linalg.norm(k @ recon.rotation_matrix(np.radians(ellipse['angle'])) @ np.diag(ellipse['radius']), axis=-1)
     ksp = np.empty(k.shape[:-1], dtype=complex)
     ksp[r!=0] = scipy.special.j1(2 * np.pi * r[r!=0]) / r[r!=0] # Bessel function of first kind, first order
     ksp[r==0] = np.pi
@@ -94,8 +89,28 @@ def kspace_for_ellipse(ellipse, k):
     return ksp
 
 
-def kspace_for_shape(shape, k):
-    return {'polygon': kspace_for_polygon, 'ellipse': kspace_for_ellipse}[shape['type']](shape, k)
+def offset_FOV(kspace, k_grid, offset):
+    return kspace * np.exp(2j * np.pi * np.dot(k_grid, offset))
+
+
+KSPACE_SHAPE_FUNC = {
+    "polygon": kspace_for_polygon,
+    "ellipse": kspace_for_ellipse,
+}
+
+
+def kspace_for_shape(shape, k_axes, k_grid, axes_support, axes_center):
+    shape_support, shape_center = get_support_and_center([shape])
+    matrix = np.array([len(axis) for axis in k_axes])
+    sparse_matrix = np.ceil(matrix * shape_support / axes_support).astype(int)
+    sparse_support = axes_support * sparse_matrix / matrix
+    sparse_k_axes = get_k_axes(sparse_matrix, sparse_support)
+    sparse_k_grid = get_k_grid(sparse_k_axes)
+    kspace = KSPACE_SHAPE_FUNC[shape['type']](shape, sparse_k_grid)
+    kspace = offset_FOV(kspace, sparse_k_grid, shape_center)
+    kernels = recon.sinc_kernels(k_axes, sparse_k_axes, sparse_support)
+    kspace = recon.sinc_interpolate(kspace, kernels)
+    return offset_FOV(kspace, k_grid, axes_center - shape_center)
 
 
 def colormap_shapes(shapes, colormap_file):
@@ -125,7 +140,7 @@ def load_shapes_svg(file):
         hexcolor = get_hexcolor(attrib, styles)
         if hexcolor not in shapes:
             shapes[hexcolor] = []
-        transform = svgpathtools.parser.parse_transform(attrib['transform'] if 'transform' in attrib else '')
+        transform = svgpathtools.parser.parse_transform(attrib.get('transform', ''))
         subpaths = path.continuous_subpaths()
         polys = []
         for subpath in subpaths:
@@ -144,10 +159,9 @@ def load_shapes_toml(file):
     with open(file, 'r') as f:
         shapes = toml.load(f)
     shapes = {k.replace('_', ' '): v for k, v in shapes.items()}
-    for ellipse in (shape for lst in shapes.values() for shape in lst):
-        if ellipse['type']=='ellipse':
-            for attr in ['pos', 'radius']:
-                ellipse[attr] = ellipse[attr][::-1]
+    for ellipse in (shape for lst in shapes.values() for shape in lst if shape['type']=='ellipse'):
+        for key in ['pos', 'radius']:
+            ellipse[key].reverse()
     return shapes
 
 
@@ -159,32 +173,37 @@ def load_shapes(file):
             return load_shapes_toml(file)
 
 
-def get_support(shapes):
-    minimum, maximum = [np.inf, np.inf], [-np.inf, -np.inf]
-    for shape in (shape for shapelist in shapes.values() for shape in shapelist):
-        for dim in range(2):
-            if shape['type']=='polygon':
-                shape_min = shape['vertices'][dim].min()
-                shape_max = shape['vertices'][dim].max()
-            else:
-                half_extent = np.sqrt((shape['radius'][dim] * np.cos(shape['angle']))**2 + 
-                                      (shape['radius'][-1-dim] * np.sin(shape['angle']))**2)
-                shape_min = shape['pos'][dim] - half_extent
-                shape_max = shape['pos'][dim] + half_extent
-            minimum[dim] = min(minimum[dim], shape_min)
-            maximum[dim] = max(maximum[dim], shape_max)
-    support = tuple(maximum[dim] - minimum[dim] for dim in range(2))
-    center = tuple(minimum[dim] + support[dim]/2 for dim in range(2))
+def get_bounds(shape):
+    match shape['type']:
+        case 'polygon':
+            return np.min(shape['vertices'], axis=1), np.max(shape['vertices'], axis=1)
+        case 'ellipse':
+            pos = np.array(shape['pos'])
+            rotmat = recon.rotation_matrix(np.radians(shape['angle']))
+            half_extent = np.abs(rotmat) @ np.array(shape['radius'])
+            return pos - half_extent, pos + half_extent
+        case _:
+            raise ValueError(f'Unknown shape {shape["type"]}')
+
+
+def get_support_and_center(shapes):
+    minima, maxima = zip(*(get_bounds(shape) for shape in shapes))
+    minimum = np.min(minima, axis=0)
+    maximum = np.max(maxima, axis=0)
+    support = maximum - minimum
+    center = (maximum + minimum) / 2
     return support, center
 
 
 def get_k_axes(matrix, support):
-    k_axes = [recon.get_k_axis(matrix[dim], support[dim]/matrix[dim]) for dim in range(len(matrix))]
-    kgrid = np.array(np.meshgrid(k_axes[0], k_axes[1])).T
-    return k_axes, kgrid
+    return [recon.get_k_axis(matrix[dim], support[dim]/matrix[dim]) for dim in range(len(matrix))]
 
 
-def get_kspace(kgrid, shapes, path, matrix, center, progress_bar=(tqdm, tqdm)):
+def get_k_grid(k_axes):
+    return np.array(np.meshgrid(k_axes[0], k_axes[1])).T
+
+
+def get_kspace(k_axes, shapes, path, matrix, support, center, progress_bar=(tqdm, tqdm)):
     kspace = {}
     for tissue in progress_bar[0](shapes.keys(), desc='Tissues'):
         file = Path(path / tissue.replace(' ', '_')).with_suffix('.npy')
@@ -195,8 +214,7 @@ def get_kspace(kgrid, shapes, path, matrix, center, progress_bar=(tqdm, tqdm)):
         if tissue not in kspace:
             kspace[tissue] = np.zeros((matrix), dtype=complex)
             for shape in progress_bar[1](shapes[tissue], desc=f'"{tissue}" shapes', leave=False):
-                kspace[tissue] += kspace_for_shape(shape, kgrid)
-            kspace[tissue] *= np.exp(2j*np.pi * np.dot(kgrid, center)) # offset FOV
+                kspace[tissue] += kspace_for_shape(shape, k_axes, get_k_grid(k_axes), support, center)
             np.save(file, kspace[tissue])
     return kspace
 
@@ -211,11 +229,11 @@ def load(name, min_voxel_size, progress_bar):
     if 'file' not in phantom_object:
         raise ValueError(f'Phantom {name}.svg/toml not found at {path}')
     phantom_object['shapes'] = load_shapes(phantom_object['file'])
-    phantom_object['support'], phantom_object['center'] = get_support(phantom_object['shapes'])
-    phantom_object['matrix'] = tuple(int(fov/min_voxel_size/2)*2+1 for fov in phantom_object['support']) # assert odd to sample k-space center
-    
-    phantom_object['k_axes'], kgrid = get_k_axes(phantom_object['matrix'], phantom_object['support'])
-    phantom_object['kspace'] = get_kspace(kgrid, phantom_object['shapes'], path, phantom_object['matrix'], phantom_object['center'], progress_bar)
+    all_shapes = [shape for shapelist in phantom_object['shapes'].values() for shape in shapelist]
+    phantom_object['support'], phantom_object['center'] = get_support_and_center(all_shapes)
+    phantom_object['matrix'] = tuple(np.ceil(phantom_object['support'] / min_voxel_size).astype(int))
+    phantom_object['k_axes'] = get_k_axes(phantom_object['matrix'], phantom_object['support'])
+    phantom_object['kspace'] = get_kspace(phantom_object['k_axes'], phantom_object['shapes'], path, phantom_object['matrix'], phantom_object['support'], phantom_object['center'], progress_bar)
     return phantom_object
 
 

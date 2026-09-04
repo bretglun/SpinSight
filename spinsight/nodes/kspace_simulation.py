@@ -177,8 +177,7 @@ def k_grid_axes(is_radial, k_axes, FOV, matrix, phantom_object):
 def k_samples(k_axes, k_angles):
     k_samples = np.array(np.meshgrid(k_axes[0], k_axes[1])).T
     # rotate samples for each angle:
-    rotmat = np.array([[np.cos(k_angles), -np.sin(k_angles)], 
-                        [np.sin(k_angles),  np.cos(k_angles)]])
+    rotmat = recon.rotation_matrix(k_angles)
     return np.einsum('ijk,klm->ijml', k_samples, rotmat) # shape=(Nx, Ny, Nangles, 2)
 
 

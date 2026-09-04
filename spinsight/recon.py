@@ -3,6 +3,11 @@ import mrinufft
 import numpy as np
 
 
+def rotation_matrix(theta):
+    cos, sin = np.cos(theta), np.sin(theta)
+    return np.array([[cos, -sin], [sin, cos]])
+
+
 def get_k_axis(matrix, pixel_size, symmetric=True, fftshift=True):
     kax = np.fft.fftfreq(matrix)
     if symmetric and not (matrix%2): # half-pixel to make even matrix symmetric
