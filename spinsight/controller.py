@@ -20,13 +20,9 @@ class Controller(param.Parameterized):
         super().__init__(**params)
         self.gui = gui
         self.graph = simulator.make_graph()
+        self.graph.update_inputs({'progress_bar': gui.progress_bar})
         self.propagate_changes = True
         self.add_input_watchers()
-        self.set_reference_SNR()
-        self.sync_with_graph()
-    
-    def set_reference_SNR(self, event=None):
-        self.reference_SNR = self.from_graph('SNR')
 
     def from_graph(self, par_name):
         return self.graph.nodes[par_name].value()
@@ -50,6 +46,7 @@ class Controller(param.Parameterized):
             return
         self.graph.update_inputs(self.inputs_to_update(event.name, event.new))
         if event.name == 'object':
+            self.gui.show_progress_bar(event.new)
             # adapt FOV to phantom
             self.graph.update_inputs({f'FOV_{D}': max(self.from_graph('phantom_object')['support'][self.from_graph(f'{dir}_dir')], self.from_graph(f'FOV_{D}')) for (D, dir) in [('F', 'freq'), ('P', 'phase')]})
         self.sync_with_graph()
@@ -163,6 +160,7 @@ class Controller(param.Parameterized):
         return self.trajectory.upper() == 'RADIAL'
 
     def sync_with_graph(self):
+        self.gui.hide_progress_bar()
         self.propagate_changes = False
         self.update_visibility()
         self.update_bounds()
@@ -255,9 +253,18 @@ class Controller(param.Parameterized):
 
     def update_info_params(self):
         self.gui.FW_shift = formatting.FW_shift(self.FW_shift)
-        self.gui.relative_SNR = formatting.relative_SNR(self.from_graph('SNR') / self.reference_SNR)
+        if self.reference_SNR == 0:
+            self.set_reference_SNR()
+        self.update_relative_SNR()
         for par in ['spoke_angle', 'num_shots', 'scantime', 'pixel_bandwidth']:
             setattr(self.gui, par, getattr(formatting, par)(self.from_graph(par)))
+    
+    def set_reference_SNR(self, event=None):
+        self.reference_SNR = self.from_graph('SNR')
+        self.update_relative_SNR()
+
+    def update_relative_SNR(self):
+        self.gui.relative_SNR = formatting.relative_SNR(self.from_graph('SNR') / self.reference_SNR)
 
     def update_plots(self):
         self.gui.image = self.from_graph('annotated_image')

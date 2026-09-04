@@ -6,7 +6,8 @@ import toml
 from spinsight import styles
 from spinsight.controller import Controller
 from spinsight.params import PARAMS
-from spinsight.styles import INFO_FONT_SIZE, INFO_TITLE_SIZE, INFO_TEXT_COLOR
+from spinsight.styles import INFO_FONT_SIZE, INFO_TITLE_SIZE, INFO_TEXT_COLOR, IMAGE_HEIGHT, IMAGE_WIDTH
+import asyncio
 
 
 def hide_show_button_callback(pane, event):
@@ -42,11 +43,22 @@ class GUI(param.Parameterized):
         self.start_time = start_time
 
         self.make_indicators()
+        
+        self.progress_bar = self.make_progress_bar()
         self.controller = Controller(self)
 
         pn.config.throttled = lazy_sliders
 
         self.dashboard = self.make_layout('SpinSight MRI simulator', dark_mode)
+
+        pn.state.onload(self.initialize)
+
+    async def initialize(self):
+        self.show_progress_bar(self.controller.object)
+        await asyncio.sleep(0)  # let Panel flush the modal-open update
+        await asyncio.to_thread(self.controller.sync_with_graph)
+        self.hide_progress_bar()
+        self.initialize_plots()
     
     @param.depends('image')
     def display_image(self):
@@ -60,6 +72,15 @@ class GUI(param.Parameterized):
     def display_sequence_plot(self):
         return self.sequence_plot
         
+    def make_progress_bar(self):
+        return tuple(pn.widgets.Tqdm(width=1000, height=70, margin=(0, 0, 0, indent), text_pane=pn.pane.Str(styles={'color': INFO_TEXT_COLOR})) for indent in (10, 90))
+
+    def make_progress_bar_modal(self):
+        return pn.Column('', *self.progress_bar)
+    
+    def set_progress_bar_title(self, phantom_name=''):
+        self.dashboard.modal[0][0] = f'# Preparing *k*-space for "{phantom_name}" phantom...\n*(first-time loading may take several minutes)*'
+
     def make_layout(self, title, dark_mode):
         dashboard = styles.panel_template(title, dark_mode)
         
@@ -101,6 +122,9 @@ class GUI(param.Parameterized):
             footer_panel
             )
         )
+
+        dashboard.modal[0] = self.make_progress_bar_modal()
+
         return dashboard
 
     def make_sidebar(self, load_button, save_button, settings_params_panel, help_button):
@@ -136,10 +160,10 @@ class GUI(param.Parameterized):
             footer_panel,
             sizing_mode='stretch_both'
         )
-    
+
     def make_image_panel(self):
         return pn.Column(
-            hv.DynamicMap(self.display_image), 
+            self.make_image_container(), 
             pn.Row(
                 self.make_param_widget('image_mode'),
                 self.make_param_widget('show_FOV', width=150, margin=(30, 0, 0, 0)),
@@ -148,7 +172,7 @@ class GUI(param.Parameterized):
     
     def make_kspace_panel(self):
         return pn.Column(
-            hv.DynamicMap(self.display_kspace) * self.controller.from_graph('hover_manager').k_line, 
+            self.make_kspace_container(), 
             pn.Row(
                 self.make_param_widget('kspace_mode'),
                 self.make_param_widget('kspace_exponent', width=150),
@@ -162,7 +186,7 @@ class GUI(param.Parameterized):
             self.indicators['num_shots'].name = f'# {event.new}s'
         self.controller.param.watch(update_num_shots_label, 'shot_label')
         return pn.Column(
-            hv.DynamicMap(self.display_sequence_plot), 
+            self.make_sequence_plot_container(), 
             pn.Row(
                 self.make_param_widget('shot'),
                 self.indicators['spoke_angle'], 
@@ -171,7 +195,27 @@ class GUI(param.Parameterized):
             ),
             visible=False
         )
-    
+
+    def make_image_container(self):
+        spinner = pn.indicators.LoadingSpinner(label='Preparing image', value=True, size=50, align='center')
+        self.image_container = pn.Column(pn.Spacer(height=IMAGE_HEIGHT//2), spinner, height=IMAGE_HEIGHT, width=IMAGE_WIDTH)
+        return self.image_container
+
+    def make_kspace_container(self):
+        spinner = pn.indicators.LoadingSpinner(label='Preparing k-space', value=True, size=50, align='center')
+        self.kspace_container = pn.Column(pn.Spacer(height=IMAGE_HEIGHT//2), spinner, height=IMAGE_HEIGHT, width=IMAGE_WIDTH)
+        return self.kspace_container
+
+    def make_sequence_plot_container(self):
+        spinner = pn.indicators.LoadingSpinner(label='Preparing sequence plot', value=True, size=50, align='center')
+        self.sequence_plot_container = pn.Column(spinner)
+        return self.sequence_plot_container
+
+    def initialize_plots(self):
+        self.image_container[:] = [hv.DynamicMap(self.display_image)]
+        self.kspace_container[:] = [hv.DynamicMap(self.display_kspace) * self.controller.from_graph('hover_manager').k_line]
+        self.sequence_plot_container[:] = [hv.DynamicMap(self.display_sequence_plot)]
+
     def make_info_panel(self, reset_SNR_button):
         return pn.Column(
             pn.Row(
@@ -180,6 +224,17 @@ class GUI(param.Parameterized):
             ),
             pn.Row(*(self.indicators[par] for par in ['relative_SNR', 'scantime', 'FW_shift', 'pixel_bandwidth']))
         )
+
+    def show_progress_bar(self, phantom_name=''):
+        if not hasattr(self, 'dashboard'):
+            return
+        self.set_progress_bar_title(phantom_name)
+        self.dashboard.open_modal()
+        
+    def hide_progress_bar(self):
+        if not hasattr(self, 'dashboard'):
+            return
+        self.dashboard.close_modal()
     
     def indicator(self, par_name):
         par = self.param[par_name]

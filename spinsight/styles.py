@@ -16,6 +16,8 @@ BOARD_COLORS = {
 
 G_RANGE = MAX_AMP * 1.05
 
+IMAGE_HEIGHT = 500
+IMAGE_WIDTH = 500
 BOARD_PLOT_WIDTH = 1700
 BOARD_PLOT_HEIGHT = 180
 BOARD_PLOT_HEIGHT_LAST = 120
@@ -32,7 +34,7 @@ def disable_logo(plot, element):
 
 
 hv.opts.defaults(
-    hv.opts.Image(width=500, height=500, invert_yaxis=False, toolbar='below', cmap='gray', aspect='equal', hooks=[disable_logo]), 
+    hv.opts.Image(width=IMAGE_WIDTH, height=IMAGE_HEIGHT, invert_yaxis=False, toolbar='below', cmap='gray', aspect='equal', hooks=[disable_logo]), 
     hv.opts.HLine(line_width=1.5, line_color='gray'), 
     hv.opts.VSpan(color='orange', fill_alpha=.1, hover_fill_alpha=.8, default_tools=[]), 
     hv.opts.Rectangles(color=BOARD_COLORS['ADC'], line_color=BOARD_COLORS['ADC'], fill_alpha=.1, line_alpha=.3, hover_fill_alpha=.8, default_tools=[]), 

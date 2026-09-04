@@ -1,5 +1,6 @@
 from spinsight.DAG import Graph
 from spinsight.params import PARAMS
+from tqdm import tqdm
 
 
 @Graph.node()
@@ -215,3 +216,8 @@ def constant_voxel_bounds():
 @Graph.node()
 def constant_FOV_BW_bounds():
     return False
+
+
+@Graph.node()
+def progress_bar():
+    return (tqdm, tqdm)
