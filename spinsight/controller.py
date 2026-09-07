@@ -1,13 +1,14 @@
 import param
 from spinsight.param_utils import snap, filter_objects, insert_value_in_list_sorted, insert_value_in_dict_sorted, get_object_values
 from spinsight.params import PARAMS
+from spinsight.param_tooltips import TOOLTIPS
 from spinsight import simulator, convert, formatting
 
 
 class Controller(param.Parameterized):
     # Create input params
     for name, spec in PARAMS.items():
-        locals()[name] = spec.type(**spec.param_kwargs)
+        locals()[name] = spec.type(**spec.param_kwargs, doc=TOOLTIPS.get(name, ''))
     del name, spec
 
     shot_label = param.String() # shot/spoke/blade label

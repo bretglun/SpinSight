@@ -19,7 +19,6 @@ DEFAULT_WIDGETS = {
 class ParamSpec:
     label: str
     type: type[param.Parameter]
-    doc: str = ''
     bounds: tuple | None = None
     objects: list | dict | None = None
     step: float | None = None
@@ -39,7 +38,7 @@ class ParamSpec:
 
     @property
     def param_kwargs(self):
-        param_kw = {'label', 'doc', 'bounds', 'objects', 'step', 'default', 'precedence'}
+        param_kw = {'label', 'bounds', 'objects', 'step', 'default', 'precedence'}
         return {kw: getattr(self, kw) for kw in param_kw if getattr(self, kw) is not None}
 
 
