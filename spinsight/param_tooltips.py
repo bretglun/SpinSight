@@ -69,7 +69,8 @@ TOOLTIPS = {
 
     'TE':
     '# Echo time (TE)\n'
-    'The time between the excitation pulse and the acquired echo. During this time, T₂ relaxation (decay of transverse magnetization) occurs. Therefore, TE determines the degree of T₂-weighting (T₂*-weighting for spoiled gradient echo sequences)',
+    'The time between the excitation pulse and the acquired echo. During this time, T₂ relaxation (decay of transverse magnetization) occurs. Therefore, TE determines the degree of T₂-weighting (T₂*-weighting for spoiled gradient echo sequences).\n\n'
+    'If multiple echoes are sampled, the *effective TE* corresponds to TE for the echo closest to the *k*-space center.',
 
     'TI':
     '# Inversion time (TI)\n'

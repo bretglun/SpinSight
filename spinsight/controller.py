@@ -221,6 +221,7 @@ class Controller(param.Parameterized):
         self.param.reference_tissue.objects = self.from_graph('tissues')
         self.update_x_y_labels()
         self.update_shot_label()
+        self.update_TE_label()
 
     def update_EPI_factor_bounds(self):
         self.set_param_bounds('EPI_factor', maxval=self.from_graph('max_EPI_factor'))
@@ -242,6 +243,9 @@ class Controller(param.Parameterized):
     def update_shot_label(self):
         self.shot_label = 'shot' if not self.from_graph('is_radial') else 'spoke' if (self.from_graph('num_segm') == 1) else 'blade'
         self.param.shot.label = f'Displayed {self.shot_label}'
+
+    def update_TE_label(self):
+        self.param.TE.label = 'TE' if (self.from_graph('num_segm') == 1) else 'TE (effective)'
 
     def update_params(self):
         for par in self.input_nodes():
