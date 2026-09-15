@@ -99,7 +99,7 @@ class GUI(param.Parameterized):
         sequence_params_panel = self.make_param_group_panel('Sequence')
         contrast_params_panel = self.make_param_group_panel('Contrast')
         geometry_params_panel = self.make_param_group_panel('Geometry')
-        post_processing_params_panel = self.make_param_group_panel('Post-processing')
+        kspace_processing_params_panel = self.make_param_group_panel('k-space processing')
         footer_panel = self.make_footer_panel()
 
         dashboard.sidebar.append(self.make_sidebar(
@@ -118,7 +118,7 @@ class GUI(param.Parameterized):
             image_panel, 
             info_panel, 
             kspace_panel, 
-            post_processing_params_panel, 
+            kspace_processing_params_panel, 
             sequence_plot_panel, 
             footer_panel
             )
@@ -135,7 +135,7 @@ class GUI(param.Parameterized):
             help_button
         )
     
-    def make_main_page(self, sequence_button, kspace_button, sequence_params_panel, contrast_params_panel, geometry_params_panel, image_panel, info_panel, kspace_panel, post_processing_params_panel, sequence_plot_panel, footer_panel):
+    def make_main_page(self, sequence_button, kspace_button, sequence_params_panel, contrast_params_panel, geometry_params_panel, image_panel, info_panel, kspace_panel, kspace_processing_params_panel, sequence_plot_panel, footer_panel):
         return pn.Column(
             pn.Row(
                 pn.Column(
@@ -154,7 +154,7 @@ class GUI(param.Parameterized):
                 ), 
                 pn.Column(
                     kspace_panel,
-                    post_processing_params_panel
+                    kspace_processing_params_panel
                 )
             ), 
             sequence_plot_panel, 

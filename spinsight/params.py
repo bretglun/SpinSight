@@ -437,7 +437,7 @@ PARAMS = {
         type = param.Boolean,
         default = True,
         precedence = 1,
-        group = 'Post-processing',
+        group = 'k-space processing',
     ),
 
     'do_apodize': ParamSpec(
@@ -445,7 +445,7 @@ PARAMS = {
         type = param.Boolean,
         default = True,
         precedence = 2,
-        group = 'Post-processing',
+        group = 'k-space processing',
     ),
 
     'apodization_alpha': ParamSpec(
@@ -455,7 +455,7 @@ PARAMS = {
         step = 0.01,
         default = 0.25,
         precedence = 3,
-        group = 'Post-processing',
+        group = 'k-space processing',
     ),
 
     'do_zerofill': ParamSpec(
@@ -463,7 +463,7 @@ PARAMS = {
         type = param.Boolean,
         default = True,
         precedence = 4,
-        group = 'Post-processing',
+        group = 'k-space processing',
     ),
 
     'shot': ParamSpec(
