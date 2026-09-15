@@ -174,10 +174,11 @@ class Controller(param.Parameterized):
         self.set_visibility('pixel_bandwidth', self.pixel_BW_is_input())
         self.set_visibility('FOV_bandwidth', self.FOV_BW_is_input())
         self.set_visibility('FW_shift', self.FW_shift_is_input())
-        for voxel_size_param in ['voxel_F', 'voxel_P', 'recon_voxel_F', 'recon_voxel_P']:
-            self.set_visibility(voxel_size_param, self.voxel_size_is_input())
-        for matrix_param in ['matrix_F', 'matrix_P', 'recon_matrix_F', 'recon_matrix_P']:
-            self.set_visibility(matrix_param, self.matrix_is_input())
+        for suffix in ['_F', '_P']:
+            self.set_visibility('voxel' + suffix, self.voxel_size_is_input())
+            self.set_visibility('recon_voxel' + suffix, self.voxel_size_is_input() and self.do_zerofill)
+            self.set_visibility('matrix' + suffix, self.matrix_is_input())
+            self.set_visibility('recon_matrix' + suffix, self.matrix_is_input() and self.do_zerofill)
         for cartesian_param in ['partial_Fourier_factor', 'frequency_direction', 'phase_oversampling']:
             self.set_visibility(cartesian_param, not self.from_graph('is_radial'))
         self.set_visibility('radial_sampling_factor', self.from_graph('is_radial'))
@@ -188,7 +189,13 @@ class Controller(param.Parameterized):
         self.set_visibility('homodyne', (self.from_graph('num_blank_lines') > 0 and not self.from_graph('is_radial')))
         self.set_visibility('apodization_alpha', self.from_graph('do_apodize'))
         self.set_visibility('kspace_exponent', self.from_graph('kspace_mode') != 'Phase')
+        self.set_visibility('do_zerofill', self.zerofill_possible())
         self.gui.set_indicator_visibility('spoke_angle', self.from_graph('is_radial'))
+
+    def zerofill_possible(self):
+        if self.voxel_size_is_input():
+            return self.recon_voxel_F < self.voxel_F or self.recon_voxel_P < self.voxel_P
+        return self.recon_matrix_F > self.matrix_F or self.recon_matrix_P > self.matrix_P
 
     def update_bounds(self):
         for par in self.input_nodes():
