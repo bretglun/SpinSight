@@ -78,7 +78,7 @@ PARAMS = {
     ),
 
     'parameter_style': ParamSpec(
-        label = 'Parameter Style',
+        label = 'Parameter style',
         type = param.Selector,
         objects = ['Matrix and Pixel BW', 'Voxel size and Fat/water shift', 'Matrix and FOV BW'],
         default = 'Matrix and Pixel BW',
