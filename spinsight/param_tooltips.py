@@ -102,9 +102,9 @@ TOOLTIPS = {
     '# Phase oversampling\n'
     'Adds additional sampling in the phase-encoding direction beyond the prescribed field of view (FOV), so that the actually acquired FOV becomes larger than the prescribed / reconstructed FOV. This reduces wrap-around (aliasing) from anatomy outside the FOV, and increases the signal-to-noise ratio (SNR) at the cost of longer acquisition time.',
 
-    'radial_oversampling':
-    '# Radial oversampling\n'
-    'Number of acquired radial spokes or blades relative to full *k*-space coverage (Nyquist sampling limit). Increasing the radial oversampling reduces streaking artifacts and increases signal-to-noise ratio (SNR) at the cost of longer acquisition times.',
+    'radial_sampling_factor':
+    '# Radial sampling factor\n'
+    'Number of acquired radial spokes or blades relative to full *k*-space coverage (Nyquist sampling limit). Increasing the radial sampling factor reduces streaking artifacts and increases signal-to-noise ratio (SNR) at the cost of longer acquisition times.',
 
     'matrix_P':
     '# Acquisition matrix\n## (phase-encoding direction)\n'

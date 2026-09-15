@@ -273,17 +273,17 @@ PARAMS = {
     'phase_oversampling': ParamSpec(
         label = 'Phase oversampling',
         type = param.Selector,
-        objects = {formatting.oversampling(factor): float(factor) for factor in np.linspace(1, 2, 101)},
+        objects = {formatting.percentage(factor): float(factor) for factor in np.linspace(1, 2, 101)},
         default = 1.0,
         precedence = 3,
         widget = pn.widgets.DiscreteSlider,
         group = 'Geometry',
     ),
 
-    'radial_oversampling': ParamSpec(
-        label = 'Radial oversampling',
+    'radial_sampling_factor': ParamSpec(
+        label = 'Radial sampling factor',
         type = param.Selector,
-        objects = {formatting.oversampling(factor): float(factor) for factor in np.linspace(0.1, 4, 391)},
+        objects = {formatting.percentage(factor): float(factor) for factor in np.linspace(0.1, 4, 391)},
         default = 1.0,
         precedence = 3,
         widget = pn.widgets.DiscreteSlider,

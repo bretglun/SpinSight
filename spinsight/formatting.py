@@ -63,7 +63,7 @@ def relative_SNR(snr):
     return f'{snr * 100:.0f}%'
 
 
-def oversampling(factor):
+def percentage(factor):
     return f'{factor * 100:.0f}%'
 
 

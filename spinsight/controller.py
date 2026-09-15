@@ -180,7 +180,7 @@ class Controller(param.Parameterized):
             self.set_visibility(matrix_param, self.matrix_is_input())
         for cartesian_param in ['partial_Fourier', 'frequency_direction', 'phase_oversampling']:
             self.set_visibility(cartesian_param, not self.from_graph('is_radial'))
-        self.set_visibility('radial_oversampling', self.from_graph('is_radial'))
+        self.set_visibility('radial_sampling_factor', self.from_graph('is_radial'))
         self.set_visibility('TI', self.from_graph('sequence_type') == 'Inversion Recovery')
         self.set_visibility('FA', self.from_graph('sequence_type') == 'Spoiled Gradient Echo')
         self.set_visibility('turbo_factor', not self.from_graph('is_gradient_echo'))

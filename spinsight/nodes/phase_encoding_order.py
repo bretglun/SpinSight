@@ -63,8 +63,8 @@ def num_blades(num_shots, is_radial):
 
 
 @Graph.node()
-def num_shots(matrix_P, phase_oversampling, partial_Fourier, num_segm, is_radial, matrix, radial_oversampling):
-    oversampling = radial_oversampling if is_radial else phase_oversampling
+def num_shots(matrix_P, phase_oversampling, partial_Fourier, num_segm, is_radial, matrix, radial_sampling_factor):
+    oversampling = radial_sampling_factor if is_radial else phase_oversampling
     undersampling = 1 if is_radial else partial_Fourier
     num_lines_Nyquist = max(matrix) * np.pi / 2 if is_radial else matrix_P # conservative for radial due to uniform angles
     return int(np.ceil(num_lines_Nyquist * oversampling * undersampling / num_segm))

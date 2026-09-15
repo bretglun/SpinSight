@@ -114,8 +114,8 @@ def phase_oversampling():
 
 
 @Graph.node()
-def radial_oversampling():
-    return PARAMS['radial_oversampling'].default
+def radial_sampling_factor():
+    return PARAMS['radial_sampling_factor'].default
 
 
 @Graph.node()
