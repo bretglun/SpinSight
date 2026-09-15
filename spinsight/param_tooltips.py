@@ -39,7 +39,7 @@ TOOLTIPS = {
     '# Number of signal averages (NSA)\n'
     'Increasing the NSA improves the signal-to-noise ratio (SNR) by averaging repeated measurements, but increases scan time.',
 
-    'partial_Fourier':
+    'partial_Fourier_factor':
     '# Partial Fourier factor\n'
     'Partiel Fourier imaging implies only a fraction of the *k*-space is acquired, such that one half is sampled fully, but the other only partially. The unmeasured *k*-space lines are synthesized from the measured based on the assumption that the *k*-space data is *conjugate symmetric*. Reducing the Partial Fourier factor enables shortening the scan time and the effective echo time if an EPI- or turbo spin echo train is used.',
 

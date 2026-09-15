@@ -19,19 +19,19 @@ def shot_bounds(num_shots):
 
 
 @Graph.node()
-def turbo_factor_bounds(matrix, phase_dir, partial_Fourier, EPI_factor, is_radial):
+def turbo_factor_bounds(matrix, phase_dir, partial_Fourier_factor, EPI_factor, is_radial):
     if EPI_factor % 2:
-        undersampling = partial_Fourier if not is_radial else 1
-        max_turbo_factor = int(np.floor(matrix[phase_dir] * undersampling / EPI_factor * MAX_PHASE_OVERSAMPLING_FACTOR))
+        undersampling = partial_Fourier_factor if not is_radial else 1
+        max_turbo_factor = int(np.floor(matrix[phase_dir] * undersampling / EPI_factor * (1 + MAX_PHASE_OVERSAMPLING_FACTOR)))
     else: # EPI_factor must be odd for turbo spin echo (GRASE)
         max_turbo_factor = 1
     return MinMax(1, max_turbo_factor)
 
 
 @Graph.node()
-def max_EPI_factor(matrix, phase_dir, partial_Fourier, turbo_factor, is_radial):
-    undersampling = partial_Fourier if not is_radial else 1
-    return int(np.floor(matrix[phase_dir] * undersampling / turbo_factor * MAX_PHASE_OVERSAMPLING_FACTOR))
+def max_EPI_factor(matrix, phase_dir, partial_Fourier_factor, turbo_factor, is_radial):
+    undersampling = partial_Fourier_factor if not is_radial else 1
+    return int(np.floor(matrix[phase_dir] * undersampling / turbo_factor * (1 + MAX_PHASE_OVERSAMPLING_FACTOR)))
 
 
 @Graph.node()

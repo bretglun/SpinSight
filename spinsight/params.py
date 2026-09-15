@@ -146,7 +146,7 @@ PARAMS = {
         group = 'Sequence',
     ),
 
-    'partial_Fourier': ParamSpec(
+    'partial_Fourier_factor': ParamSpec(
         label = 'Partial Fourier factor',
         type = param.Number,
         bounds = (.6, 1),
@@ -273,8 +273,8 @@ PARAMS = {
     'phase_oversampling': ParamSpec(
         label = 'Phase oversampling',
         type = param.Selector,
-        objects = {formatting.percentage(factor): float(factor) for factor in np.linspace(1, 2, 101)},
-        default = 1.0,
+        objects = {formatting.percentage(factor): float(factor) for factor in np.linspace(0, 1, 101)},
+        default = 0.0,
         precedence = 3,
         widget = pn.widgets.DiscreteSlider,
         group = 'Geometry',

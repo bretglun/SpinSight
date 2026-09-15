@@ -44,8 +44,8 @@ def NSA():
 
 
 @Graph.node()
-def partial_Fourier():
-    return PARAMS['partial_Fourier'].default
+def partial_Fourier_factor():
+    return PARAMS['partial_Fourier_factor'].default
 
 
 @Graph.node()

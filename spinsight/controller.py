@@ -178,7 +178,7 @@ class Controller(param.Parameterized):
             self.set_visibility(voxel_size_param, self.voxel_size_is_input())
         for matrix_param in ['matrix_F', 'matrix_P', 'recon_matrix_F', 'recon_matrix_P']:
             self.set_visibility(matrix_param, self.matrix_is_input())
-        for cartesian_param in ['partial_Fourier', 'frequency_direction', 'phase_oversampling']:
+        for cartesian_param in ['partial_Fourier_factor', 'frequency_direction', 'phase_oversampling']:
             self.set_visibility(cartesian_param, not self.from_graph('is_radial'))
         self.set_visibility('radial_sampling_factor', self.from_graph('is_radial'))
         self.set_visibility('TI', self.from_graph('sequence_type') == 'Inversion Recovery')
