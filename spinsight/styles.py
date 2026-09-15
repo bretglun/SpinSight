@@ -5,13 +5,19 @@ from spinsight.constants import MAX_AMP
 hv.extension('bokeh')
 
 
-BOARD_COLORS = {
-    'frequency': 'cadetblue',
-    'phase': 'cadetblue',
-    'slice': 'cadetblue',
-    'RF': 'red',
-    'signal': 'orange',
-    'ADC': 'peru',
+COLORS = {
+    'boards': {
+        'frequency': 'cadetblue',
+        'phase': 'cadetblue',
+        'slice': 'cadetblue',
+        'RF': 'red',
+        'signal': 'orange',
+        'ADC': 'peru',
+    },
+    'FOV': {
+        'acquired': 'lightblue',
+        'reconstructed': 'yellow',
+    },
 }
 
 G_RANGE = MAX_AMP * 1.05
@@ -36,14 +42,14 @@ def disable_logo(plot, element):
 hv.opts.defaults(
     hv.opts.Image(width=IMAGE_WIDTH, height=IMAGE_HEIGHT, invert_yaxis=False, toolbar='below', cmap='gray', aspect='equal', hooks=[disable_logo]), 
     hv.opts.HLine(line_width=1.5, line_color='gray'), 
-    hv.opts.VSpan(color='orange', fill_alpha=.1, hover_fill_alpha=.8, default_tools=[]), 
-    hv.opts.Rectangles(color=BOARD_COLORS['ADC'], line_color=BOARD_COLORS['ADC'], fill_alpha=.1, line_alpha=.3, hover_fill_alpha=.8, default_tools=[]), 
+    hv.opts.VSpan(color='gray', fill_alpha=.3, default_tools=[]), 
+    hv.opts.Rectangles(color=COLORS['boards']['ADC'], line_color=COLORS['boards']['ADC'], fill_alpha=.1, line_alpha=.3, hover_fill_alpha=.8, default_tools=[]), 
     hv.opts.Box(line_width=3), 
     hv.opts.Ellipse(line_width=3), 
     hv.opts.Area(fill_alpha=.5, line_width=1.5, line_color='gray', default_tools=[]), 
     hv.opts.Polygons(line_width=1.5, fill_alpha=0, line_alpha=0, line_color='gray', selection_line_color='black', hover_fill_alpha=.8, hover_line_alpha=1, selection_fill_alpha=.8, selection_line_alpha=1, nonselection_line_alpha=0, default_tools=[]), 
-    hv.opts.Curve(line_width=5, line_color=BOARD_COLORS['ADC']), 
-    hv.opts.Points(line_color=None, color=BOARD_COLORS['ADC'], size=15)
+    hv.opts.Curve(line_width=5, line_color=COLORS['boards']['ADC']), 
+    hv.opts.Points(line_color=None, color=COLORS['boards']['ADC'], size=15)
 )
 
 

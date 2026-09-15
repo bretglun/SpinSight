@@ -1,5 +1,6 @@
 from spinsight.DAG import Graph
 from spinsight.constants import OPERATORS
+from spinsight.styles import COLORS
 import holoviews as hv
 import numpy as np
 import xarray as xr
@@ -27,12 +28,12 @@ def image(image_mode, recon_matrix, FOV, image_array):
 def FOV_box(show_FOV, is_radial, FOV, matrix, freq_dir, phase_dir, k_read_axis, k_phase_axis):
     if not show_FOV:
         return hv.Overlay([])
-    rec_FOV_shape = hv.Box(0, 0, tuple(FOV[::-1])).opts(color='yellow')
+    rec_FOV_shape = hv.Box(0, 0, tuple(FOV[::-1])).opts(color=COLORS['FOV']['reconstructed'])
     if is_radial:
         radial_FOV = FOV[freq_dir] * len(k_read_axis) / matrix[freq_dir]
-        acq_FOV_shape = hv.Ellipse(0, 0, radial_FOV).opts(line_color='lightblue')
+        acq_FOV_shape = hv.Ellipse(0, 0, radial_FOV).opts(line_color=COLORS['FOV']['acquired'])
     else:
         acq_FOV = copy.deepcopy(FOV)
         acq_FOV[phase_dir] *= len(k_phase_axis) / matrix[phase_dir]
-        acq_FOV_shape = hv.Box(0, 0, tuple(acq_FOV[::-1])).opts(color='lightblue')
+        acq_FOV_shape = hv.Box(0, 0, tuple(acq_FOV[::-1])).opts(color=COLORS['FOV']['acquired'])
     return acq_FOV_shape * rec_FOV_shape

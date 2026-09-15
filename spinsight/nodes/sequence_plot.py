@@ -1,5 +1,5 @@
 from spinsight import sequence
-from spinsight.styles import BOARD_COLORS, BOARD_PLOT_WIDTH, BOARD_PLOT_HEIGHT, BOARD_PLOT_HEIGHT_LAST, TIME_BOUNDS, G_READ_RANGE, G_PHASE_RANGE, G_SLICE_RANGE, RF_RANGE, SIGNAL_RANGE
+from spinsight.styles import COLORS, BOARD_PLOT_WIDTH, BOARD_PLOT_HEIGHT, BOARD_PLOT_HEIGHT_LAST, TIME_BOUNDS, G_READ_RANGE, G_PHASE_RANGE, G_SLICE_RANGE, RF_RANGE, SIGNAL_RANGE
 from spinsight.DAG import Graph
 from spinsight.hover_manager import HoverManager
 import holoviews as hv
@@ -21,8 +21,8 @@ def sequence_plot(frequency_board, phase_board, slice_board, RF_board, signal_bo
 def frequency_board(time_dim, frequency_dim, frequency_objects, TR_span, hover_tools):
     vdims = [tip[0] for tip in hover_tools['frequency'].tooltips]
     specs = {'zero_line': hline(time_dim, frequency_dim),
-                'net_gradient': hv.Area(sequence.accumulate_waveforms(frequency_objects, 'frequency'), time_dim, frequency_dim).opts(color=BOARD_COLORS['frequency']),
-                'waveforms': hv.Polygons(frequency_objects, kdims=[time_dim, frequency_dim], vdims=vdims).opts(tools=[hover_tools['frequency']], cmap=[BOARD_COLORS['frequency']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=TIME_BOUNDS)]),
+                'net_gradient': hv.Area(sequence.accumulate_waveforms(frequency_objects, 'frequency'), time_dim, frequency_dim).opts(color=COLORS['boards']['frequency']),
+                'waveforms': hv.Polygons(frequency_objects, kdims=[time_dim, frequency_dim], vdims=vdims).opts(tools=[hover_tools['frequency']], cmap=[COLORS['boards']['frequency']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=TIME_BOUNDS)]),
                 'TR_span': TR_span['frequency']}
     return specs
 
@@ -31,8 +31,8 @@ def frequency_board(time_dim, frequency_dim, frequency_objects, TR_span, hover_t
 def phase_board(time_dim, phase_dim, phase_objects, TR_span, hover_tools):
     vdims = [tip[0] for tip in hover_tools['phase'].tooltips]
     specs = {'zero_lines': hline(time_dim, phase_dim),
-                'net_gradient': hv.Area(sequence.accumulate_waveforms(phase_objects, 'phase'), time_dim, phase_dim).opts(color=BOARD_COLORS['phase']),
-                'waveforms': hv.Polygons(phase_objects, kdims=[time_dim, phase_dim], vdims=vdims).opts(tools=[hover_tools['phase']], cmap=[BOARD_COLORS['phase']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=TIME_BOUNDS)]),
+                'net_gradient': hv.Area(sequence.accumulate_waveforms(phase_objects, 'phase'), time_dim, phase_dim).opts(color=COLORS['boards']['phase']),
+                'waveforms': hv.Polygons(phase_objects, kdims=[time_dim, phase_dim], vdims=vdims).opts(tools=[hover_tools['phase']], cmap=[COLORS['boards']['phase']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=TIME_BOUNDS)]),
                 'TR_span': TR_span['phase']}
     return specs
 
@@ -41,8 +41,8 @@ def phase_board(time_dim, phase_dim, phase_objects, TR_span, hover_tools):
 def slice_board(time_dim, slice_dim, slice_objects, TR_span, hover_tools):
     vdims = [tip[0] for tip in hover_tools['slice'].tooltips]
     specs = {'zero_lines': hline(time_dim, slice_dim),
-                'net_gradient': hv.Area(sequence.accumulate_waveforms(slice_objects, 'slice'), time_dim, slice_dim).opts(color=BOARD_COLORS['slice']),
-                'waveforms': hv.Polygons(slice_objects, kdims=[time_dim, slice_dim], vdims=vdims).opts(tools=[hover_tools['slice']], cmap=[BOARD_COLORS['slice']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=TIME_BOUNDS)]),
+                'net_gradient': hv.Area(sequence.accumulate_waveforms(slice_objects, 'slice'), time_dim, slice_dim).opts(color=COLORS['boards']['slice']),
+                'waveforms': hv.Polygons(slice_objects, kdims=[time_dim, slice_dim], vdims=vdims).opts(tools=[hover_tools['slice']], cmap=[COLORS['boards']['slice']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=TIME_BOUNDS)]),
                 'TR_span': TR_span['slice']}
     return specs
 
@@ -51,8 +51,8 @@ def slice_board(time_dim, slice_dim, slice_objects, TR_span, hover_tools):
 def RF_board(time_dim, RF_dim, RF_objects, TR_span, hover_tools):
     vdims = [tip[0] for tip in hover_tools['RF'].tooltips]
     specs = {'zero_lines': hline(time_dim, RF_dim),
-                'net_RF': hv.Area(sequence.accumulate_waveforms(RF_objects, 'RF'), time_dim, RF_dim).opts(color=BOARD_COLORS['RF']),
-                'waveforms': hv.Polygons(RF_objects, kdims=[time_dim, RF_dim], vdims=vdims).opts(tools=[hover_tools['RF']], cmap=[BOARD_COLORS['RF']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=TIME_BOUNDS)]),
+                'net_RF': hv.Area(sequence.accumulate_waveforms(RF_objects, 'RF'), time_dim, RF_dim).opts(color=COLORS['boards']['RF']),
+                'waveforms': hv.Polygons(RF_objects, kdims=[time_dim, RF_dim], vdims=vdims).opts(tools=[hover_tools['RF']], cmap=[COLORS['boards']['RF']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=TIME_BOUNDS)]),
                 'TR_span': TR_span['RF']}
     return specs
 
@@ -61,8 +61,8 @@ def RF_board(time_dim, RF_dim, RF_objects, TR_span, hover_tools):
 def signal_board(time_dim, signal_dim, signal_objects, ADC_objects, TR_span, hover_tools):
     vdims = [tip[0] for tip in hover_tools['signal'].tooltips]
     specs = {'zero_lines': hline(time_dim, signal_dim, yticks=list(zip([0], ' '))),
-                'net_signal': hv.Area(sequence.accumulate_waveforms(signal_objects, 'signal'), time_dim, signal_dim).opts(color=BOARD_COLORS['signal']),
-                'waveforms': hv.Polygons(signal_objects, kdims=[time_dim, signal_dim], vdims='signal').opts(tools=[], cmap=[BOARD_COLORS['signal']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=TIME_BOUNDS)]),
+                'net_signal': hv.Area(sequence.accumulate_waveforms(signal_objects, 'signal'), time_dim, signal_dim).opts(color=COLORS['boards']['signal']),
+                'waveforms': hv.Polygons(signal_objects, kdims=[time_dim, signal_dim], vdims='signal').opts(tools=[], cmap=[COLORS['boards']['signal']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=TIME_BOUNDS)]),
                 'sampling_windows': hv.Rectangles(ADC_objects, kdims=['c1', 'c2', 'c3', 'c4'], vdims=vdims).opts(tools=[hover_tools['signal']]),
                 'TR_span': TR_span['signal']}
     return specs
@@ -113,8 +113,8 @@ def hline(time_dim, amp_dim, yticks=None):
 def TR_span(sequence_start, TR, time_dim, frequency_dim, phase_dim, slice_dim, RF_dim, signal_dim):
     TR_span = {}
     for board_dim in [frequency_dim, phase_dim, slice_dim, RF_dim, signal_dim]:
-        TR_span[board_dim.name] = hv.VSpan(-20000, sequence_start, kdims=[time_dim, board_dim]).opts(color='gray', fill_alpha=.3)
-        TR_span[board_dim.name] *= hv.VSpan(sequence_start + TR, 20000, kdims=[time_dim, board_dim]).opts(color='gray', fill_alpha=.3)
+        TR_span[board_dim.name] = hv.VSpan(-20000, sequence_start, kdims=[time_dim, board_dim])
+        TR_span[board_dim.name] *= hv.VSpan(sequence_start + TR, 20000, kdims=[time_dim, board_dim])
     return TR_span
 
 
