@@ -28,6 +28,7 @@ BOARD_PLOT_WIDTH = 1700
 BOARD_PLOT_HEIGHT = 180
 BOARD_PLOT_HEIGHT_LAST = 120
 TIME_BOUNDS = (-19000, 19000)
+TIME_INITIAL_RANGE = (-2, 40)
 G_READ_RANGE = (-G_RANGE, G_RANGE)
 G_PHASE_RANGE = (-G_RANGE, G_RANGE)
 G_SLICE_RANGE = (-G_RANGE, G_RANGE)
@@ -49,7 +50,9 @@ hv.opts.defaults(
     hv.opts.Area(fill_alpha=.5, line_width=1.5, line_color='gray', default_tools=[]), 
     hv.opts.Polygons(line_width=1.5, fill_alpha=0, line_alpha=0, line_color='gray', selection_line_color='black', hover_fill_alpha=.8, hover_line_alpha=1, selection_fill_alpha=.8, selection_line_alpha=1, nonselection_line_alpha=0, default_tools=[]), 
     hv.opts.Curve(line_width=5, line_color=COLORS['boards']['ADC']), 
-    hv.opts.Points(line_color=None, color=COLORS['boards']['ADC'], size=15)
+    hv.opts.Points(line_color=None, color=COLORS['boards']['ADC'], size=15),
+    hv.opts.Arrow(arrow_line_width=3, arrow_color=COLORS['boards']['ADC']),
+    hv.opts.Labels(text_color=COLORS['boards']['ADC'], text_font_size='24px')
 )
 
 

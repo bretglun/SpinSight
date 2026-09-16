@@ -1,5 +1,5 @@
 from spinsight import sequence
-from spinsight.styles import COLORS, BOARD_PLOT_WIDTH, BOARD_PLOT_HEIGHT, BOARD_PLOT_HEIGHT_LAST, TIME_BOUNDS, G_READ_RANGE, G_PHASE_RANGE, G_SLICE_RANGE, RF_RANGE, SIGNAL_RANGE
+from spinsight.styles import COLORS, BOARD_PLOT_WIDTH, BOARD_PLOT_HEIGHT, BOARD_PLOT_HEIGHT_LAST, TIME_BOUNDS, TIME_INITIAL_RANGE, G_READ_RANGE, G_PHASE_RANGE, G_SLICE_RANGE, RF_RANGE, SIGNAL_RANGE
 from spinsight.DAG import Graph
 from spinsight.hover_manager import HoverManager
 import holoviews as hv
@@ -13,8 +13,8 @@ def sequence_plot(frequency_board, phase_board, slice_board, RF_board, signal_bo
     board_plots = []
     for board in boards:
         last = board is boards[-1]
-        board_plots.append(hv.Overlay(board.values()).opts(width=BOARD_PLOT_WIDTH, height=BOARD_PLOT_HEIGHT if last else BOARD_PLOT_HEIGHT_LAST, border=0, xaxis='bottom' if last else None))
-    return hv.Layout(list(board_plots)).cols(1).options(toolbar='below')
+        board_plots.append(hv.Overlay(board.values()).opts(width=BOARD_PLOT_WIDTH, height=BOARD_PLOT_HEIGHT if last else BOARD_PLOT_HEIGHT_LAST, border=0, xaxis=('bottom' if last else None), xlim=TIME_INITIAL_RANGE))
+    return hv.Layout(list(board_plots)).cols(1).opts(toolbar='below')
 
 
 @Graph.node()
@@ -38,21 +38,24 @@ def phase_board(time_dim, phase_dim, phase_objects, TR_span, hover_tools):
 
 
 @Graph.node()
-def slice_board(time_dim, slice_dim, slice_objects, TR_span, hover_tools):
+def slice_board(time_dim, slice_dim, slice_objects, TR_span, hover_tools, TR_interval):
     vdims = [tip[0] for tip in hover_tools['slice'].tooltips]
     specs = {'zero_lines': hline(time_dim, slice_dim),
                 'net_gradient': hv.Area(sequence.accumulate_waveforms(slice_objects, 'slice'), time_dim, slice_dim).opts(color=COLORS['boards']['slice']),
                 'waveforms': hv.Polygons(slice_objects, kdims=[time_dim, slice_dim], vdims=vdims).opts(tools=[hover_tools['slice']], cmap=[COLORS['boards']['slice']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=TIME_BOUNDS)]),
+                'TR_interval': TR_interval,
                 'TR_span': TR_span['slice']}
     return specs
 
 
 @Graph.node()
-def RF_board(time_dim, RF_dim, RF_objects, TR_span, hover_tools):
+def RF_board(time_dim, RF_dim, RF_objects, TR_span, hover_tools, TE_interval, TI_interval):
     vdims = [tip[0] for tip in hover_tools['RF'].tooltips]
     specs = {'zero_lines': hline(time_dim, RF_dim),
                 'net_RF': hv.Area(sequence.accumulate_waveforms(RF_objects, 'RF'), time_dim, RF_dim).opts(color=COLORS['boards']['RF']),
                 'waveforms': hv.Polygons(RF_objects, kdims=[time_dim, RF_dim], vdims=vdims).opts(tools=[hover_tools['RF']], cmap=[COLORS['boards']['RF']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=TIME_BOUNDS)]),
+                'TE_interval': TE_interval,
+                'TI_interval': TI_interval,
                 'TR_span': TR_span['RF']}
     return specs
 
@@ -116,6 +119,35 @@ def TR_span(sequence_start, TR, time_dim, frequency_dim, phase_dim, slice_dim, R
         TR_span[board_dim.name] = hv.VSpan(-20000, sequence_start, kdims=[time_dim, board_dim])
         TR_span[board_dim.name] *= hv.VSpan(sequence_start + TR, 20000, kdims=[time_dim, board_dim])
     return TR_span
+
+
+def interval_arrow(x0, x1, y):
+    return hv.Arrow(x0, y, direction='<') * hv.Curve([(x0, y), (x1, y)]) * hv.Arrow(x1, y, direction='>')
+
+
+@Graph.node()
+def TE_interval(TE, num_segm):
+    ypos = 12
+    text = 'TE' if num_segm==1 else 'Effective TE'
+    label = hv.Labels([(TE / 4, ypos, text)]).opts(yoffset=4)
+    arrow = interval_arrow(0, TE, ypos)
+    return arrow * label
+
+
+@Graph.node()
+def TR_interval(sequence_start, TR):
+    ypos = -20
+    label = hv.Labels([(0, ypos, 'TR')]).opts(yoffset=8)
+    arrow = interval_arrow(sequence_start, sequence_start + TR, ypos)
+    return arrow * label
+
+
+@Graph.node()
+def TI_interval(TI):
+    ypos = 12
+    label = hv.Labels([(-TI / 8, ypos, 'TI')]).opts(yoffset=4)
+    arrow = interval_arrow(-TI, 0, ypos)
+    return arrow * label
 
 
 @Graph.node()
