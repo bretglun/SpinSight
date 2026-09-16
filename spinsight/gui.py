@@ -9,6 +9,7 @@ from spinsight.params import PARAMS
 from spinsight.param_tooltips import TOOLTIPS
 from spinsight.styles import INFO_FONT_SIZE, INFO_TITLE_SIZE, INFO_TEXT_COLOR, IMAGE_HEIGHT, IMAGE_WIDTH
 import asyncio
+from spinsight.hover_tooltip import HoverTooltip
 
 
 def hide_show_button_callback(pane, event):
@@ -50,6 +51,7 @@ class GUI(param.Parameterized):
 
         pn.config.throttled = lazy_sliders
 
+        self.tooltips = {}
         self.dashboard = self.make_layout('SpinSight MRI simulator', dark_mode)
 
         pn.state.onload(self.initialize)
@@ -254,12 +256,11 @@ class GUI(param.Parameterized):
             pn.pane.Markdown(author, styles={'color': INFO_TEXT_COLOR}),
             pn.pane.Markdown(f'*(server started {start_time}{self.version})*', styles={'color': INFO_TEXT_COLOR}), height=10)
 
-    def make_param_widget(self, name, width=300, margin=(5, 10, 5, 10), tooltip_padding=(0, 15)):
+    def make_param_widget(self, name, width=300, margin=(5, 10, 5, 10)):
         par = self.controller.param[name]
         widget = PARAMS[name].widget.from_param(par, width=width, margin=margin)
-        tooltip = pn.widgets.TooltipIcon(value=TOOLTIPS[name] or '', visible=self.param['show_help'])
-        pn.state.onload(lambda: self.pad_tooltip(tooltip, tooltip_padding))
-        row = pn.Row(tooltip, widget, margin=0, visible=(par.precedence > 0))
+        self.tooltips[name] = HoverTooltip(value=TOOLTIPS[name] or '', visible=self.param['show_help'])
+        row = pn.Row(*self.tooltips[name].widgets(), widget, margin=0, visible=(par.precedence > 0))
         self.controller.param.watch(lambda event: setattr(row, 'visible', event.new>0), name, what='precedence')
         return row
     
@@ -317,7 +318,3 @@ class GUI(param.Parameterized):
     
     def view(self):
         return self.dashboard
-    
-    def pad_tooltip(self, tooltip, padding):
-        for model, _ in tooltip._models.values():
-            model.description.styles = {'padding': f'{padding[0]}px {padding[1]}px'}
