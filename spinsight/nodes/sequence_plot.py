@@ -18,56 +18,73 @@ def sequence_plot(frequency_board, phase_board, slice_board, RF_board, signal_bo
 
 
 @Graph.node()
-def frequency_board(time_dim, frequency_dim, frequency_objects, TR_span, hover_tools):
+def frequency_board(time_dim, frequency_dim, frequency_objects, outside_TR, hover_tools, TE_span, TR_span, TI_span):
     vdims = [tip[0] for tip in hover_tools['frequency'].tooltips]
     specs = {'zero_line': hline(time_dim, frequency_dim),
                 'net_gradient': hv.Area(sequence.accumulate_waveforms(frequency_objects, 'frequency'), time_dim, frequency_dim).opts(color=COLORS['boards']['frequency']),
                 'waveforms': hv.Polygons(frequency_objects, kdims=[time_dim, frequency_dim], vdims=vdims).opts(tools=[hover_tools['frequency']], cmap=[COLORS['boards']['frequency']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=TIME_BOUNDS)]),
-                'TR_span': TR_span['frequency']}
+                'outside_TR': outside_TR['frequency'],
+                'TE_span': TE_span['frequency'],
+                'TR_span': TR_span['frequency'],
+                'TI_span': TI_span['frequency']
+            }
     return specs
 
 
 @Graph.node()
-def phase_board(time_dim, phase_dim, phase_objects, TR_span, hover_tools):
+def phase_board(time_dim, phase_dim, phase_objects, outside_TR, hover_tools, TE_span, TR_span, TI_span):
     vdims = [tip[0] for tip in hover_tools['phase'].tooltips]
     specs = {'zero_lines': hline(time_dim, phase_dim),
                 'net_gradient': hv.Area(sequence.accumulate_waveforms(phase_objects, 'phase'), time_dim, phase_dim).opts(color=COLORS['boards']['phase']),
                 'waveforms': hv.Polygons(phase_objects, kdims=[time_dim, phase_dim], vdims=vdims).opts(tools=[hover_tools['phase']], cmap=[COLORS['boards']['phase']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=TIME_BOUNDS)]),
-                'TR_span': TR_span['phase']}
+                'outside_TR': outside_TR['phase'],
+                'TE_span': TE_span['phase'],
+                'TR_span': TR_span['phase'],
+                'TI_span': TI_span['phase']
+            }
     return specs
 
 
 @Graph.node()
-def slice_board(time_dim, slice_dim, slice_objects, TR_span, hover_tools, TR_interval):
+def slice_board(time_dim, slice_dim, slice_objects, outside_TR, hover_tools, TE_span, TR_span, TI_span):
     vdims = [tip[0] for tip in hover_tools['slice'].tooltips]
     specs = {'zero_lines': hline(time_dim, slice_dim),
                 'net_gradient': hv.Area(sequence.accumulate_waveforms(slice_objects, 'slice'), time_dim, slice_dim).opts(color=COLORS['boards']['slice']),
                 'waveforms': hv.Polygons(slice_objects, kdims=[time_dim, slice_dim], vdims=vdims).opts(tools=[hover_tools['slice']], cmap=[COLORS['boards']['slice']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=TIME_BOUNDS)]),
-                'TR_interval': TR_interval,
-                'TR_span': TR_span['slice']}
+                'outside_TR': outside_TR['slice'],
+                'TE_span': TE_span['slice'],
+                'TR_span': TR_span['slice'],
+                'TI_span': TI_span['slice']
+            }
     return specs
 
 
 @Graph.node()
-def RF_board(time_dim, RF_dim, RF_objects, TR_span, hover_tools, TE_interval, TI_interval):
+def RF_board(time_dim, RF_dim, RF_objects, outside_TR, hover_tools, TE_span, TR_span, TI_span):
     vdims = [tip[0] for tip in hover_tools['RF'].tooltips]
     specs = {'zero_lines': hline(time_dim, RF_dim),
                 'net_RF': hv.Area(sequence.accumulate_waveforms(RF_objects, 'RF'), time_dim, RF_dim).opts(color=COLORS['boards']['RF']),
                 'waveforms': hv.Polygons(RF_objects, kdims=[time_dim, RF_dim], vdims=vdims).opts(tools=[hover_tools['RF']], cmap=[COLORS['boards']['RF']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=TIME_BOUNDS)]),
-                'TE_interval': TE_interval,
-                'TI_interval': TI_interval,
-                'TR_span': TR_span['RF']}
+                'outside_TR': outside_TR['RF'],
+                'TE_span': TE_span['RF'],
+                'TR_span': TR_span['RF'],
+                'TI_span': TI_span['RF']
+            }
     return specs
 
 
 @Graph.node()
-def signal_board(time_dim, signal_dim, signal_objects, ADC_objects, TR_span, hover_tools):
+def signal_board(time_dim, signal_dim, signal_objects, ADC_objects, outside_TR, hover_tools, TE_span, TR_span, TI_span):
     vdims = [tip[0] for tip in hover_tools['signal'].tooltips]
     specs = {'zero_lines': hline(time_dim, signal_dim, yticks=list(zip([0], ' '))),
                 'net_signal': hv.Area(sequence.accumulate_waveforms(signal_objects, 'signal'), time_dim, signal_dim).opts(color=COLORS['boards']['signal']),
                 'waveforms': hv.Polygons(signal_objects, kdims=[time_dim, signal_dim], vdims='signal').opts(tools=[], cmap=[COLORS['boards']['signal']], hooks=[hideframe_hook, partial(bounds_hook, xbounds=TIME_BOUNDS)]),
                 'sampling_windows': hv.Rectangles(ADC_objects, kdims=['c1', 'c2', 'c3', 'c4'], vdims=vdims).opts(tools=[hover_tools['signal']]),
-                'TR_span': TR_span['signal']}
+                'outside_TR': outside_TR['signal'],
+                'TE_span': TE_span['signal'],
+                'TR_span': TR_span['signal'],
+                'TI_span': TI_span['signal']
+            }
     return specs
 
 
@@ -113,41 +130,57 @@ def hline(time_dim, amp_dim, yticks=None):
 
 
 @Graph.node()
-def TR_span(sequence_start, TR, time_dim, frequency_dim, phase_dim, slice_dim, RF_dim, signal_dim):
-    TR_span = {}
+def outside_TR(sequence_start, TR, time_dim, frequency_dim, phase_dim, slice_dim, RF_dim, signal_dim):
+    outside_TR = {}
     for board_dim in [frequency_dim, phase_dim, slice_dim, RF_dim, signal_dim]:
-        TR_span[board_dim.name] = hv.VSpan(-20000, sequence_start, kdims=[time_dim, board_dim])
-        TR_span[board_dim.name] *= hv.VSpan(sequence_start + TR, 20000, kdims=[time_dim, board_dim])
-    return TR_span
+        outside_TR[board_dim.name] = hv.VSpan(-20000, sequence_start, kdims=[time_dim, board_dim])
+        outside_TR[board_dim.name] *= hv.VSpan(sequence_start + TR, 20000, kdims=[time_dim, board_dim])
+    return outside_TR
 
 
-def interval_arrow(x0, x1, y):
-    return hv.Arrow(x0, y, direction='<') * hv.Curve([(x0, y), (x1, y)]) * hv.Arrow(x1, y, direction='>')
+def interval(t0, t1, kdims, visible):
+    interval = hv.VSpan(t0, t1, kdims=kdims).opts(color=COLORS['annotation'], fill_alpha=.1, visible=visible)
+    interval *= hv.VLine(t0).opts(color=COLORS['annotation'], visible=visible)
+    interval *= hv.VLine(t1).opts(color=COLORS['annotation'], visible=visible)
+    return interval
 
 
-@Graph.node()
-def TE_interval(TE, num_segm):
-    ypos = 12
-    text = 'TE' if num_segm==1 else 'Effective TE'
-    label = hv.Labels([(TE / 4, ypos, text)]).opts(yoffset=4)
-    arrow = interval_arrow(0, TE, ypos)
-    return arrow * label
-
-
-@Graph.node()
-def TR_interval(sequence_start, TR):
-    ypos = -20
-    label = hv.Labels([(0, ypos, 'TR')]).opts(yoffset=8)
-    arrow = interval_arrow(sequence_start, sequence_start + TR, ypos)
-    return arrow * label
+def labelled_line(t0, t1, t_label, ypos, label, visible, text_align, yoffset=4):
+    line = hv.Curve([(t0, ypos), (t1, ypos)]).opts(line_color=COLORS['annotation'], line_width=3, visible=visible)
+    label = hv.Labels([(t_label, ypos, label)]).opts(yoffset=yoffset, text_align=text_align, visible=visible)
+    return line * label
 
 
 @Graph.node()
-def TI_interval(TI):
-    ypos = 12
-    label = hv.Labels([(-TI / 8, ypos, 'TI')]).opts(yoffset=4)
-    arrow = interval_arrow(-TI, 0, ypos)
-    return arrow * label
+def TE_span(time_dim, frequency_dim, phase_dim, slice_dim, RF_dim, signal_dim, TE, num_segm, show_TE_span):
+    span = {}
+    for board_dim in [frequency_dim, phase_dim, slice_dim, RF_dim, signal_dim]:
+        span[board_dim.name] = interval(0, TE, [time_dim, board_dim], show_TE_span)
+        if board_dim.name == 'RF':
+            label = 'TE' if num_segm==1 else 'Effective TE'
+            span['RF'] *= labelled_line(0, TE, TE / 4, 12, label, show_TE_span, 'left')
+    return span
+
+
+@Graph.node()
+def TR_span(time_dim, frequency_dim, phase_dim, slice_dim, RF_dim, signal_dim, sequence_start, TR, readouts, show_TR_span):
+    span = {}
+    for board_dim in [frequency_dim, phase_dim, slice_dim, RF_dim, signal_dim]:
+        span[board_dim.name] = interval(sequence_start, sequence_start + TR, [time_dim, board_dim], show_TR_span)
+        if board_dim.name == 'slice':
+            label_pos = readouts[-1][-1]['center_f']
+            span['slice'] *= labelled_line(sequence_start, sequence_start + TR, label_pos, -20, 'TR', show_TR_span, 'right', 8)
+    return span
+
+
+@Graph.node()
+def TI_span(time_dim, frequency_dim, phase_dim, slice_dim, RF_dim, signal_dim, TI, show_TI_span):
+    span = {}
+    for board_dim in [frequency_dim, phase_dim, slice_dim, RF_dim, signal_dim]:
+        span[board_dim.name] = interval(-TI, 0, [time_dim, board_dim], show_TI_span)
+        if board_dim.name == 'RF':
+            span['RF'] *= labelled_line(-TI, 0, -TI / 8, 12, 'TI', show_TI_span, 'right')
+    return span
 
 
 @Graph.node()

@@ -154,6 +154,21 @@ def show_FOV():
 
 
 @Graph.node()
+def show_TE_span():
+    return PARAMS['show_TE_span'].default
+
+
+@Graph.node()
+def show_TR_span():
+    return PARAMS['show_TR_span'].default
+
+
+@Graph.node()
+def show_TI_span():
+    return PARAMS['show_TI_span'].default
+
+
+@Graph.node()
 def reference_tissue_prescribed():
     return PARAMS['reference_tissue'].default
 

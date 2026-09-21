@@ -393,6 +393,24 @@ PARAMS = {
         precedence = 1,
     ),
 
+    'show_TE_span': ParamSpec(
+        label = 'Show TE interval',
+        type = param.Boolean,
+        default = False,
+    ),
+    
+    'show_TR_span': ParamSpec(
+        label = 'Show TR interval',
+        type = param.Boolean,
+        default = False,
+    ),
+    
+    'show_TI_span': ParamSpec(
+        label = 'Show TI interval',
+        type = param.Boolean,
+        default = False,
+    ),
+
     'reference_tissue': ParamSpec(
         label = 'Reference tissue',
         type = param.Selector,
