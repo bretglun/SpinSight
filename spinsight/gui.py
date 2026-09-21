@@ -51,7 +51,6 @@ class GUI(param.Parameterized):
 
         pn.config.throttled = lazy_sliders
 
-        self.tooltips = {}
         self.dashboard = self.make_layout('SpinSight MRI simulator', dark_mode)
 
         pn.state.onload(self.initialize)
@@ -86,6 +85,7 @@ class GUI(param.Parameterized):
 
     def make_layout(self, title, dark_mode):
         dashboard = styles.panel_template(title, dark_mode)
+        self.tooltips = {}
         
         image_panel = self.make_image_panel()
         kspace_panel = self.make_kspace_panel()
@@ -125,6 +125,10 @@ class GUI(param.Parameterized):
             footer_panel
             )
         )
+
+        self.tooltips['TE'].param.watch(self.on_TE_hover, 'hovered')
+        self.tooltips['TR'].param.watch(self.on_TR_hover, 'hovered')
+        self.tooltips['TI'].param.watch(self.on_TI_hover, 'hovered')
 
         dashboard.modal[0] = self.make_progress_bar_modal()
 
@@ -315,6 +319,15 @@ class GUI(param.Parameterized):
         reset_SNR_button = pn.widgets.Button(name='Set reference SNR')
         reset_SNR_button.on_click(self.controller.set_reference_SNR)
         return reset_SNR_button
+    
+    def on_TE_hover(self, event):
+        self.controller.show_TE_span = event.new
+        
+    def on_TR_hover(self, event):
+        self.controller.show_TR_span = event.new
+        
+    def on_TI_hover(self, event):
+        self.controller.show_TI_span = event.new
     
     def view(self):
         return self.dashboard
