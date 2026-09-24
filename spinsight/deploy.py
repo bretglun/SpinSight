@@ -54,7 +54,7 @@ def CLI():
     try:
         startTime = datetime.now()
         def get_app(): return app.get_app(dark_mode, options.settingsFile, startTime, not options.liveSliders) # closure function
-        pn.serve(get_app, show=False, title='SpinSight', port=options.port, websocket_origin=[f'{host}:{options.port}' for host in hosts], num_procs=options.instances, autoreload=True)
+        pn.serve(get_app, show=False, title='SpinSight', port=options.port, websocket_origin=[f'{host}:{options.port}' for host in hosts], num_procs=options.instances)
     except OSError as e:
         print(e)
         print(f'Could not serve SpinSight on port {options.port}. Perhaps try another port (specify using the -p flag)')
