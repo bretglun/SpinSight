@@ -20,6 +20,8 @@ def CLI():
                     help="Deploy on local network")
     p.add_option('--url', '-u', default='',  type="string",
                     help="URL identifying server")
+    p.add_option('--instances', '-i', default=1,  type="int",
+                    help="Number of instances to serve to handle more users (default: 1)")
     p.add_option('--mode', '-m', default='',  type="string",
                     help="GUI mode (\"dark\"/\"light\")")
     p.add_option('--settingsFile', '-s', default='',  type="string",
@@ -52,7 +54,7 @@ def CLI():
     try:
         startTime = datetime.now()
         def get_app(): return app.get_app(dark_mode, options.settingsFile, startTime, not options.liveSliders) # closure function
-        pn.serve(get_app, show=False, title='SpinSight', port=options.port, websocket_origin=[f'{host}:{options.port}' for host in hosts])
+        pn.serve(get_app, show=False, title='SpinSight', port=options.port, websocket_origin=[f'{host}:{options.port}' for host in hosts], num_procs=options.instances, autoreload=True)
     except OSError as e:
         print(e)
         print(f'Could not serve SpinSight on port {options.port}. Perhaps try another port (specify using the -p flag)')
