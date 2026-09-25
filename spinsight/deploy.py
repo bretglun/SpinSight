@@ -14,6 +14,8 @@ from datetime import datetime
 def CLI():
     # parse command line
     p = optparse.OptionParser()
+    p.add_option('--noBrowser', '-b',  action='store_true',
+                    help="Do not open a new browser window when the application launches")
     p.add_option('--port', '-p', default=80,  type="int",
                     help="Port to deploy SpinSight")
     p.add_option('--network', '-n', action='store_true',
@@ -56,7 +58,7 @@ def CLI():
     try:
         startTime = datetime.now()
         def get_app(): return app.get_app(dark_mode, options.settingsFile, startTime, not options.liveSliders, options.slidersWithText) # closure function
-        pn.serve(get_app, show=False, title='SpinSight', port=options.port, websocket_origin=[f'{host}:{options.port}' for host in hosts], num_procs=options.instances)
+        pn.serve(get_app, show=not options.noBrowser, title='SpinSight', port=options.port, websocket_origin=[f'{host}:{options.port}' for host in hosts], num_procs=options.instances)
     except OSError as e:
         print(e)
         print(f'Could not serve SpinSight on port {options.port}. Perhaps try another port (specify using the -p flag)')
