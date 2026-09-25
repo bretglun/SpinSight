@@ -1,5 +1,6 @@
 import panel as pn
 
+from spinsight import formatting
 from spinsight.param_utils import snap
 
 
@@ -15,6 +16,7 @@ class DiscreteSliderWithText(pn.Row):
         total_width = params.get('width', 300)
         text_width = 63
         self.slider = pn.widgets.DiscreteSlider.from_param(parameter, margin=0, width=(total_width - text_width))
+        self.is_percentage = '%' in next(iter(self.slider.options))
         self.text = pn.widgets.TextInput(value=self.slider_value_to_text(self.slider.value), width=text_width, stylesheets=['.bk-input { text-align: center; }'])
 
         super().__init__(self.slider, self.text, **params)
@@ -26,11 +28,16 @@ class DiscreteSliderWithText(pn.Row):
         self.text.value = self.slider_value_to_text(event.new)
 
     def slider_value_to_text(self, slider_value):
+        if self.is_percentage:
+            return formatting.percentage(slider_value)
         return str(slider_value)
 
     def _text_changed(self, event):
         try:
-            slider_value = float(event.obj.value)
+            if self.is_percentage:
+                slider_value = float(event.obj.value.strip('%')) / 100
+            else:
+                slider_value = float(event.obj.value)
         except ValueError:
             return
         slider_value = snap(slider_value, self.slider.options.values())
