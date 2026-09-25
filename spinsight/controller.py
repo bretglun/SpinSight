@@ -162,9 +162,9 @@ class Controller(param.Parameterized):
     def sync_with_graph(self):
         self.gui.hide_progress_bar()
         self.propagate_changes = False
-        self.update_visibility()
         self.update_bounds()
         self.update_params()
+        self.update_visibility()
         self.update_info_params()
         self.update_plots()
         self.update_rec_acq_ratio()
