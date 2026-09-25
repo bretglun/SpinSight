@@ -28,7 +28,9 @@ def CLI():
                     help="settings filename (stem only)")
     p.add_option('--liveSliders', '-l',  action='store_true',
                     help="sliders update the image continuously while dragging (instead of only once released)")
-    options, arguments = p.parse_args()
+    p.add_option('--slidersWithText', '-t',  action='store_true',
+                    help="add textbox next to sliders for increased control over input")
+    options, _ = p.parse_args()
 
     hosts = []
     if options.network: # get IP number
@@ -53,7 +55,7 @@ def CLI():
     # serve application
     try:
         startTime = datetime.now()
-        def get_app(): return app.get_app(dark_mode, options.settingsFile, startTime, not options.liveSliders) # closure function
+        def get_app(): return app.get_app(dark_mode, options.settingsFile, startTime, not options.liveSliders, options.slidersWithText) # closure function
         pn.serve(get_app, show=False, title='SpinSight', port=options.port, websocket_origin=[f'{host}:{options.port}' for host in hosts], num_procs=options.instances)
     except OSError as e:
         print(e)
