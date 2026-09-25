@@ -139,29 +139,31 @@ PARAMS = {
 
     'NSA': ParamSpec(
         label = 'NSA',
-        type = param.Integer,
-        bounds = (1, 16),
+        type = param.Selector,
+        objects = list(range(1, 16 + 1)),
         default = 1,
         precedence = 3,
+        widget = pn.widgets.DiscreteSlider,
         group = 'Sequence',
     ),
 
     'partial_Fourier_factor': ParamSpec(
         label = 'Partial Fourier factor',
-        type = param.Number,
-        bounds = (.6, 1),
-        step = 0.01,
+        type = param.Selector,
+        objects = {formatting.percentage(factor): float(factor) for factor in np.linspace(.6, 1, 41)},
         default = 1.00,
         precedence = 5,
+        widget = pn.widgets.DiscreteSlider,
         group = 'Sequence',
     ),
 
     'turbo_factor': ParamSpec(
         label = 'Turbo factor',
-        type = param.Integer,
-        bounds = (1, 64),
+        type = param.Selector,
+        objects = list(range(1, 64 + 1)),
         default = 1,
         precedence = 6,
+        widget = pn.widgets.DiscreteSlider,
         group = 'Sequence',
     ),
 
