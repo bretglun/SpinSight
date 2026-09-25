@@ -15,9 +15,7 @@ def snap(value, values, mode='nearest'):
 def val_in_bounds(val, minval, maxval):
     if minval is not None and val < minval:
         return False
-    if maxval is not None and val > maxval:
-        return False
-    return True
+    return not (maxval is not None and val > maxval)
 
 
 def filter_objects(objects, minval=None, maxval=None):

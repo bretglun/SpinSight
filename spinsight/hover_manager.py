@@ -1,9 +1,10 @@
-import holoviews as hv
-from holoviews import streams
-import numpy as np
 import math
 from pathlib import Path
-from bokeh.models import HoverTool, CustomJS, ColumnDataSource
+
+import holoviews as hv
+import numpy as np
+from bokeh.models import ColumnDataSource, CustomJS, HoverTool
+from holoviews import streams
 
 
 def get_k_on_interval(interval, k_trajectory):

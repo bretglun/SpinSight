@@ -1,12 +1,13 @@
-from spinsight.constants import GYRO, MAX_AMP, MAX_SLEW, INVERSION_THK_FACTOR
-from spinsight.DAG import Graph
-from spinsight.params import PARAMS
-from spinsight.nodes.sequence_timing import readtrain_shift, min_readtrain_spacing
-from spinsight.nodes.setup_sequence_objects import get_crusher_area
-from spinsight import sequence
-import numpy as np
 from collections import namedtuple
 
+import numpy as np
+
+from spinsight import sequence
+from spinsight.constants import GYRO, INVERSION_THK_FACTOR, MAX_AMP, MAX_SLEW
+from spinsight.dag import Graph
+from spinsight.nodes.sequence_timing import min_readtrain_spacing, readtrain_shift
+from spinsight.nodes.setup_sequence_objects import get_crusher_area
+from spinsight.params import PARAMS
 
 MAX_PHASE_OVERSAMPLING_FACTOR = list(PARAMS['phase_oversampling'].objects.values())[-1]
 

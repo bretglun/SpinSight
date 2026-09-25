@@ -9,7 +9,7 @@ def format_float(value, sigfigs=2):
     if num_decimals <= 0:
         return integer
     decimal += '0' * (num_decimals - len(decimal))
-    return '.'.join((integer, decimal))
+    return f'{integer}.{decimal}'
 
 
 def scantime(milliseconds):

@@ -1,7 +1,7 @@
 import numpy as np
+from scipy import interpolate, signal
+
 from spinsight import constants, formatting
-import scipy.signal as signal
-import scipy.interpolate as interpolate
 
 
 def accumulate_slopes(slopes):

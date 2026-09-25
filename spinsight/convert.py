@@ -1,5 +1,6 @@
-from spinsight import constants
 import numpy as np
+
+from spinsight import constants
 
 
 def pixel_BW_to_shift(pixel_BW, B0=1.5):

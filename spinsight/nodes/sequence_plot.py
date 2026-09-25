@@ -1,10 +1,24 @@
-from spinsight import sequence
-from spinsight.styles import COLORS, BOARD_PLOT_WIDTH, BOARD_PLOT_HEIGHT, BOARD_PLOT_HEIGHT_LAST, TIME_BOUNDS, TIME_INITIAL_RANGE, G_READ_RANGE, G_PHASE_RANGE, G_SLICE_RANGE, RF_RANGE, SIGNAL_RANGE
-from spinsight.DAG import Graph
-from spinsight.hover_manager import HoverManager
-import holoviews as hv
 from functools import partial
+
+import holoviews as hv
 import numpy as np
+
+from spinsight import sequence
+from spinsight.dag import Graph
+from spinsight.hover_manager import HoverManager
+from spinsight.styles import (
+    BOARD_PLOT_HEIGHT,
+    BOARD_PLOT_HEIGHT_LAST,
+    BOARD_PLOT_WIDTH,
+    COLORS,
+    G_PHASE_RANGE,
+    G_READ_RANGE,
+    G_SLICE_RANGE,
+    RF_RANGE,
+    SIGNAL_RANGE,
+    TIME_BOUNDS,
+    TIME_INITIAL_RANGE,
+)
 
 
 @Graph.node()

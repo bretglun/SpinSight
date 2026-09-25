@@ -1,8 +1,6 @@
-
-from spinsight import convert, params
-from spinsight.DAG import Graph
+from spinsight import params
+from spinsight.dag import Graph
 from spinsight.params import PARAMS
-import numpy as np
 
 
 @Graph.node()

@@ -1,4 +1,4 @@
-from spinsight.DAG import Graph
+from spinsight.dag import Graph
 from spinsight.params import PARAMS
 
 

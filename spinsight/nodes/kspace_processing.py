@@ -1,7 +1,9 @@
-from spinsight import recon
-from spinsight.DAG import Graph
-import numpy as np
 import copy
+
+import numpy as np
+
+from spinsight import recon
+from spinsight.dag import Graph
 
 
 @Graph.node()

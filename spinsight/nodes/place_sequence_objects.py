@@ -1,6 +1,7 @@
-from spinsight import sequence
-from spinsight.DAG import Graph
 import copy
+
+from spinsight import sequence
+from spinsight.dag import Graph
 
 
 def place_waveform(waveform_floating, time):

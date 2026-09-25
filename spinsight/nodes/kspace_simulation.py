@@ -1,8 +1,10 @@
-from spinsight import phantom, recon
-from spinsight.DAG import Graph
-from spinsight.constants import GYRO, TISSUES, FAT_RESONANCES, T2_PRIM
-import numpy as np
 import copy
+
+import numpy as np
+
+from spinsight import phantom, recon
+from spinsight.constants import FAT_RESONANCES, GYRO, T2_PRIM, TISSUES
+from spinsight.dag import Graph
 
 
 @Graph.node()
@@ -105,19 +107,19 @@ def time_relative_inphase(time_after_excitation, is_gradient_echo, spin_echoes, 
 def spin_echoes(turbo_factor, num_sampled_phase_encodes, TE, pe_table, readtrain_spacing):
     if turbo_factor == 1:
         return np.full(num_sampled_phase_encodes, TE)
-    spin_echoes = np.zeros((num_sampled_phase_encodes))
+    spin_echoes = np.zeros(num_sampled_phase_encodes)
     for ky in range(num_sampled_phase_encodes):
-        shot, rf_echo, gr_echo = np.argwhere(pe_table==ky)[0]
+        _, rf_echo, _ = np.argwhere(pe_table==ky)[0]
         spin_echoes[ky] = (rf_echo + 1) * readtrain_spacing
     return spin_echoes
 
 
 @Graph.node()
 def time_after_excitation(num_sampled_phase_encodes, pe_table, readouts, sampling_time, freq_dir, phase_dir):
-    TEs = np.zeros((num_sampled_phase_encodes))
+    TEs = np.zeros(num_sampled_phase_encodes)
     reverse = np.zeros((num_sampled_phase_encodes), dtype=bool)
     for ky in range(num_sampled_phase_encodes):
-        shot, rf_echo, gr_echo = np.argwhere(pe_table==ky)[0]
+        _, rf_echo, gr_echo = np.argwhere(pe_table==ky)[0]
         TEs[ky] = readouts[rf_echo][gr_echo]['center_f']
         reverse[ky] = readouts[rf_echo][gr_echo]['area_f'] < 0
     sampling_offset = np.expand_dims(sampling_time, axis=[dim for dim in range(3) if dim != freq_dir])

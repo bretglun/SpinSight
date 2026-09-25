@@ -1,8 +1,10 @@
-from spinsight.DAG import Graph
-from spinsight.nodes.sequence_timing import get_readtrain_spacing, min_readtrain_spacing
-import numpy as np
 import warnings
 from itertools import chain
+
+import numpy as np
+
+from spinsight.dag import Graph
+from spinsight.nodes.sequence_timing import get_readtrain_spacing, min_readtrain_spacing
 
 
 @Graph.node()

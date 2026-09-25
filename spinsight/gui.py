@@ -1,16 +1,24 @@
-import param
-import panel as pn
-import holoviews as hv
+import asyncio
 from functools import partial
+
+import holoviews as hv
+import panel as pn
+import param
 import toml
+
 from spinsight import styles
 from spinsight.controller import Controller
-from spinsight.params import PARAMS
-from spinsight.param_tooltips import TOOLTIPS
-from spinsight.styles import INFO_FONT_SIZE, INFO_TITLE_SIZE, INFO_TEXT_COLOR, IMAGE_HEIGHT, IMAGE_WIDTH
-import asyncio
 from spinsight.hover_tooltip import HoverTooltip
+from spinsight.param_tooltips import TOOLTIPS
+from spinsight.params import PARAMS
 from spinsight.slider import DiscreteSliderWithText
+from spinsight.styles import (
+    IMAGE_HEIGHT,
+    IMAGE_WIDTH,
+    INFO_FONT_SIZE,
+    INFO_TEXT_COLOR,
+    INFO_TITLE_SIZE,
+)
 
 
 def hide_show_button_callback(pane, event):

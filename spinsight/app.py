@@ -1,7 +1,9 @@
-from spinsight.gui import GUI
 from datetime import datetime
-import toml
 from pathlib import Path
+
+import toml
+
+from spinsight.gui import GUI
 
 
 def get_version():

@@ -1,6 +1,6 @@
 from spinsight import sequence
-from spinsight.DAG import Graph
 from spinsight.constants import MAX_AMP, MAX_SLEW
+from spinsight.dag import Graph
 
 
 def get_readtrain_spacing(TE, num_gr_echoes, gr_echo_spacing, k0_gr_echo_index, k0_rf_echo_index):

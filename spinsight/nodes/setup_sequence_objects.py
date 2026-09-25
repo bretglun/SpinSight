@@ -1,12 +1,20 @@
-from spinsight import sequence
-from spinsight.DAG import Graph
-from spinsight.constants import GYRO, MAX_AMP, MAX_SLEW, INVERSION_THK_FACTOR, SPOILER_AREA, CRUSHER_DEPHASING
 import numpy as np
+
+from spinsight import sequence
+from spinsight.constants import (
+    CRUSHER_DEPHASING,
+    GYRO,
+    INVERSION_THK_FACTOR,
+    MAX_AMP,
+    MAX_SLEW,
+    SPOILER_AREA,
+)
+from spinsight.dag import Graph
 
 
 @Graph.node()
 def RF_inversion_floating(sequence_type):
-    if not sequence_type == 'Inversion Recovery':
+    if sequence_type != 'Inversion Recovery':
         return None
     return sequence.get_RF(flip_angle=180., dur=3., shape='hamming_sinc',  name='inversion')
 

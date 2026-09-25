@@ -1,14 +1,17 @@
 # Deploy app on network
 
-import socket
-import panel as pn
-import darkdetect
 import optparse
-from pathlib import Path
+import socket
 import sys
+from pathlib import Path
+
+import darkdetect
+import panel as pn
+
 sys.path.append(str(Path(__file__).parent.parent))
-from spinsight import app
 from datetime import datetime
+
+from spinsight import app
 
 
 def CLI():
@@ -51,7 +54,7 @@ def CLI():
     dark_mode = darkdetect.isDark()
     if options.mode:
         if options.mode not in ['dark', 'light']:
-            raise IOError('GUI mode must be either "dark" or "light"')
+            raise OSError('GUI mode must be either "dark" or "light"')
         dark_mode = options.mode == 'dark'
 
     # serve application

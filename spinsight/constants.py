@@ -1,6 +1,4 @@
 import numpy as np
-from types import SimpleNamespace
-
 
 GYRO = 42.577 # 1H gyromagnetic ratio [MHz/T]
 

@@ -1,6 +1,7 @@
-from graphlib import TopologicalSorter
-import numpy as np
 import inspect
+from graphlib import TopologicalSorter
+
+import numpy as np
 
 
 class Graph:

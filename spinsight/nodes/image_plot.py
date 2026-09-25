@@ -1,10 +1,12 @@
-from spinsight.DAG import Graph
-from spinsight.constants import OPERATORS
-from spinsight.styles import COLORS
+import copy
+
 import holoviews as hv
 import numpy as np
 import xarray as xr
-import copy
+
+from spinsight.constants import OPERATORS
+from spinsight.dag import Graph
+from spinsight.styles import COLORS
 
 
 @Graph.node()

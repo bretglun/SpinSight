@@ -1,5 +1,5 @@
 from spinsight import recon
-from spinsight.DAG import Graph
+from spinsight.dag import Graph
 
 
 @Graph.node()

@@ -1,21 +1,22 @@
-from spinsight.DAG import Graph
+from spinsight.dag import Graph
+
 # Initialize graph node decorators:
 from spinsight.nodes import (
+    SNR_and_scantime,
+    helpers,
+    image_plot,
+    image_reconstruction,
     input,
     internal_input_params,
-    helpers,
+    kspace_plot,
+    kspace_processing,
+    kspace_simulation,
     param_bounds,
-    setup_sequence_objects,
-    sequence_timing,
     phase_encoding_order,
     place_sequence_objects,
-    kspace_simulation,
-    kspace_processing,
-    image_reconstruction,
     sequence_plot,
-    kspace_plot,
-    image_plot,
-    SNR_and_scantime,
+    sequence_timing,
+    setup_sequence_objects,
 )
 
 

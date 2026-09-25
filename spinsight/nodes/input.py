@@ -1,6 +1,7 @@
-from spinsight.DAG import Graph
-from spinsight.params import PARAMS
 from tqdm import tqdm
+
+from spinsight.dag import Graph
+from spinsight.params import PARAMS
 
 
 @Graph.node()

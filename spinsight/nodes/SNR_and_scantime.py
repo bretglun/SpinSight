@@ -1,5 +1,6 @@
-from spinsight.DAG import Graph
 import numpy as np
+
+from spinsight.dag import Graph
 
 
 @Graph.node()

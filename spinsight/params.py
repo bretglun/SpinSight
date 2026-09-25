@@ -1,11 +1,12 @@
 from dataclasses import dataclass
-from spinsight import constants, convert, formatting, phantom
-from spinsight.param_utils import snap
+
 import numpy as np
 import panel as pn
-from panel.widgets.base import Widget
 import param
+from panel.widgets.base import Widget
 
+from spinsight import constants, convert, formatting, phantom
+from spinsight.param_utils import snap
 
 DEFAULT_WIDGETS = {
     param.Selector: pn.widgets.Select,

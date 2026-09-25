@@ -1,7 +1,14 @@
 import param
-from spinsight.param_utils import snap, filter_objects, insert_value_in_list_sorted, insert_value_in_dict_sorted, get_object_values
+
+from spinsight import convert, formatting, simulator
+from spinsight.param_utils import (
+    filter_objects,
+    get_object_values,
+    insert_value_in_dict_sorted,
+    insert_value_in_list_sorted,
+    snap,
+)
 from spinsight.params import PARAMS
-from spinsight import simulator, convert, formatting
 
 
 class Controller(param.Parameterized):

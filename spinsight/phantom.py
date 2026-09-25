@@ -1,13 +1,15 @@
-from spinsight import constants, recon
-import numpy as np
-import scipy
-import xml.etree.ElementTree as ET
-import svgpathtools
 import re
 import warnings
-import toml
+import xml.etree.ElementTree as ET
 from pathlib import Path
+
+import numpy as np
+import scipy
+import svgpathtools
+import toml
 from tqdm import tqdm
+
+from spinsight import constants, recon
 
 
 def polygon_area(coords):
