@@ -16,6 +16,8 @@ spinsight
 ```
 This serves SpinSight on the local host, so that the simulator can be run by navigating to [localhost](http://localhost) in the web browser. The same command line tool can be used to deploy the simulator on a local network, or on a web server (run `spinsight -h` for help). Be aware that several minutes are required upon loading a phantom for the first time.  
 
+Help mode can be enabled in the sidebar menu, to provide explanations of each parameter.
+
 ## Phantom construction
 To create a new phantom, add a directory with the phantom name under [spinsight/phantoms](./spinsight/phantoms). This directory shall contain files with the same name as the directory. Two formats are supported:
 

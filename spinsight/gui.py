@@ -115,10 +115,10 @@ class GUI(param.Parameterized):
         footer_panel = self.make_footer_panel()
 
         dashboard.sidebar.append(self.make_sidebar(
+            help_button,
             load_button, 
             save_button, 
-            settings_params_panel,
-            help_button
+            settings_params_panel
             )
         )
         dashboard.main.append(self.make_main_page(
@@ -144,11 +144,11 @@ class GUI(param.Parameterized):
 
         return dashboard
 
-    def make_sidebar(self, load_button, save_button, settings_params_panel, help_button):
+    def make_sidebar(self, help_button, load_button, save_button, settings_params_panel):
         return pn.Column(
+            help_button,
             pn.Row(load_button, save_button), 
             settings_params_panel,
-            help_button
         )
     
     def make_main_page(self, sequence_button, kspace_button, sequence_params_panel, contrast_params_panel, geometry_params_panel, image_panel, info_panel, kspace_panel, kspace_processing_params_panel, sequence_plot_panel, footer_panel):
