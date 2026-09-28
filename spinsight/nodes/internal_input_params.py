@@ -5,15 +5,14 @@ from spinsight.params import PARAMS
 
 @Graph.node()
 def TR(TR_prescribed, min_TR):
-    #min_TR = params.snap(min_TR, PARAMS['TR'].objects.values(), mode='ceil')
-    return max(TR_prescribed, min_TR)
+    return params.snap(max(TR_prescribed, min_TR), PARAMS['TR'].objects.values(), mode='ceil')
 
 
 @Graph.node()
 def TE(TE_prescribed, min_TE):
+    min_TE = params.snap(min_TE, PARAMS['TE'].objects.values(), mode='ceil')
     if TE_prescribed == 'min':
         return min_TE
-    min_TE = params.snap(min_TE, PARAMS['TE'].objects.values(), mode='ceil')
     return max(TE_prescribed, min_TE)
 
 
