@@ -1,6 +1,7 @@
 import param
+import toml
 
-from spinsight import convert, formatting, simulator
+from spinsight import convert, formatting, presets, simulator
 from spinsight.param_utils import (
     filter_objects,
     get_object_values,
@@ -43,6 +44,18 @@ class Controller(param.Parameterized):
     def set_input_params(self, settings):
         self.graph.update_inputs(settings)
         self.sync_with_graph()
+
+    def load_params(self, file):
+        print('Loading settings from file', file)
+        with open(file, 'r') as f:
+            settings = toml.load(f)
+        self.set_input_params(settings)
+    
+    def save_params(self, file):
+        print('Saving settings to file', file)
+        settings = self.get_input_params()
+        with open(file, 'w') as f:
+            toml.dump(dict(sorted(settings.items())), f)
     
     def add_input_watchers(self):
         for par in PARAMS:
@@ -51,6 +64,10 @@ class Controller(param.Parameterized):
     def on_param_change(self, event):
         if not self.propagate_changes:
             return
+        if event.name == 'load_presets':
+            if event.new == presets.CUSTOM_PRESET:
+                return
+            return self.load_params(presets.get_file(event.new))
         self.graph.update_inputs(self.inputs_to_update(event.name, event.new))
         if event.name == 'object':
             self.gui.show_progress_bar(event.new)

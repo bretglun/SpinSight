@@ -5,7 +5,7 @@ import panel as pn
 import param
 from panel.widgets.base import Widget
 
-from spinsight import constants, convert, formatting, phantom
+from spinsight import constants, convert, formatting, phantom, presets
 from spinsight.param_utils import snap
 
 DEFAULT_WIDGETS = {
@@ -60,12 +60,21 @@ recon_voxel_vals = [240 / matrix for matrix in reversed(recon_matrix_vals)]
 
 PARAMS = {
 
+    'load_presets': ParamSpec(
+        label = 'Load preset parameters',
+        type = param.Selector,
+        objects = presets.get_presets(),
+        default = '(custom)',
+        precedence = 1,
+        group = 'Settings',
+    ),
+
     'object': ParamSpec(
         label = 'Phantom object',
         type = param.Selector,
         objects = phantom.get_phantom_names(),
         default = 'brain',
-        precedence = 1,
+        precedence = 2,
         group = 'Settings',
     ),
 
@@ -74,7 +83,7 @@ PARAMS = {
         type = param.Selector,
         objects = [1.5, 3.0],
         default = 1.5,
-        precedence = 2,
+        precedence = 3,
         group = 'Settings',
     ),
 
@@ -83,7 +92,7 @@ PARAMS = {
         type = param.Selector,
         objects = ['Matrix and Pixel BW', 'Voxel size and Fat/water shift', 'Matrix and FOV BW'],
         default = 'Matrix and Pixel BW',
-        precedence = 3,
+        precedence = 4,
         group = 'Settings',
     ),
 

@@ -1,4 +1,8 @@
 TOOLTIPS = {
+    'load_presetss':
+    '# Load preset parameters\n'
+    'Loads preset parameters typical for clinical settings.',
+
     'object':
     '# Phantom object\n'
     'Selects the numerical phantom to be imaged. The phantom object determines the spatial distribution and MR properties of the simulated tissues.',

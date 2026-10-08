@@ -4,7 +4,6 @@ from functools import partial
 import holoviews as hv
 import panel as pn
 import param
-import toml
 
 from spinsight import styles
 from spinsight.controller import Controller
@@ -276,7 +275,7 @@ class GUI(param.Parameterized):
         if self.sliders_with_text and PARAMS[name].widget == pn.widgets.DiscreteSlider:
             widget_type = DiscreteSliderWithText
         widget = widget_type.from_param(par, width=width, margin=margin)
-        self.tooltips[name] = HoverTooltip(value=TOOLTIPS[name] or '', visible=self.param['show_help'])
+        self.tooltips[name] = HoverTooltip(value=TOOLTIPS.get(name, ''), visible=self.param['show_help'])
         row = pn.Row(*self.tooltips[name].widgets(), widget, margin=0, visible=(par.precedence > 0))
         self.controller.param.watch(lambda event: setattr(row, 'visible', event.new>0), name, what='precedence')
         return row
@@ -317,16 +316,10 @@ class GUI(param.Parameterized):
         return save_button
     
     def load_button_callback(self, event):
-        print('Loading settings from file', self.settings_file)
-        with open(self.settings_file, 'r') as f:
-            settings = toml.load(f)
-        self.controller.set_input_params(settings)
+        self.controller.load_params(self.settings_file)
     
     def save_button_callback(self, event):
-        print('Saving settings to file', self.settings_file)
-        settings = self.controller.get_input_params()
-        with open(self.settings_file, 'w') as f:
-            toml.dump(dict(sorted(settings.items())), f)
+        self.controller.save_params(self.settings_file)
     
     def make_reset_SNR_button(self):
         reset_SNR_button = pn.widgets.Button(name='Set reference SNR')
