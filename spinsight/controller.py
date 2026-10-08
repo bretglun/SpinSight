@@ -31,6 +31,7 @@ class Controller(param.Parameterized):
         self.graph.update_inputs({'progress_bar': gui.progress_bar})
         self.propagate_changes = True
         self.add_input_watchers()
+        self.loaded_preset = {}
 
     def from_graph(self, par_name):
         return self.graph.nodes[par_name].value()
@@ -46,10 +47,24 @@ class Controller(param.Parameterized):
         self.sync_with_graph()
 
     def load_params(self, file):
+        if file is None:
+            self.loaded_preset = {}
+            return
         print('Loading settings from file', file)
         with open(file, 'r') as f:
-            settings = toml.load(f)
-        self.set_input_params(settings)
+            self.loaded_preset = toml.load(f)
+        self.set_input_params(self.loaded_preset)
+
+    def forget_preset(self):
+        self.load_presets = presets.CUSTOM_PRESET
+
+    def update_preset_label(self):
+        self.propagate_changes = False
+        if all(getattr(self, par)==value for par, value in self.loaded_preset.items()):
+            self.load_presets = self.loaded_preset_name
+        else: # differs from preset
+            self.load_presets = presets.CUSTOM_PRESET
+        self.propagate_changes = True
     
     def save_params(self, file):
         print('Saving settings to file', file)
@@ -65,9 +80,10 @@ class Controller(param.Parameterized):
         if not self.propagate_changes:
             return
         if event.name == 'load_presets':
-            if event.new == presets.CUSTOM_PRESET:
-                return
+            self.loaded_preset_name = event.new
             return self.load_params(presets.get_file(event.new))
+        if event.name in self.loaded_preset:
+            self.update_preset_label()
         self.graph.update_inputs(self.inputs_to_update(event.name, event.new))
         if event.name == 'object':
             self.gui.show_progress_bar(event.new)

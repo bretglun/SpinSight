@@ -316,6 +316,7 @@ class GUI(param.Parameterized):
         return save_button
     
     def load_button_callback(self, event):
+        self.controller.forget_preset()
         self.controller.load_params(self.settings_file)
     
     def save_button_callback(self, event):

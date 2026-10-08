@@ -64,7 +64,7 @@ PARAMS = {
         label = 'Load preset parameters',
         type = param.Selector,
         objects = presets.get_presets(),
-        default = '(custom)',
+        default = presets.CUSTOM_PRESET,
         precedence = 1,
         group = 'Settings',
     ),

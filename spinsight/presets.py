@@ -12,4 +12,6 @@ def get_presets():
 
 
 def get_file(stem):
+    if stem == CUSTOM_PRESET:
+        return None
     return PRESETS_PATH / f'{stem}.toml'
