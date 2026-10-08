@@ -383,7 +383,7 @@ PARAMS = {
     'slice_thickness': ParamSpec(
         label = 'Slice thickness',
         type = param.Selector,
-        objects = {formatting.slice_thickness(thk): thk for thk in np.linspace(0.5, 10, 96)},
+        objects = {formatting.slice_thickness(thk): float(thk) for thk in np.linspace(0.5, 10, 96)},
         default = 3.0,
         precedence = 6,
         widget = pn.widgets.DiscreteSlider,
