@@ -1,0 +1,16 @@
+EPI_factor = 1
+FatSat = true
+NSA = 1
+TE = 9.7
+TR = 600.0
+echo_order = "Centric"
+frequency_direction = "anterior-posterior"
+matrix_F = 288
+matrix_P = 224
+partial_Fourier_factor = 1.0
+phase_oversampling = 0
+pixel_bandwidth = 210.0
+sequence_type = "Spin Echo"
+slice_thickness = 4.0
+trajectory = "Cartesian"
+turbo_factor = 3

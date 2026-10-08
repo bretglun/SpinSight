@@ -1,0 +1,17 @@
+EPI_factor = 1
+FatSat = true
+NSA = 3
+TE = 120.0
+TI = 2100.0
+TR = 6000.0
+echo_order = "Linear"
+frequency_direction = "anterior-posterior"
+matrix_F = 400
+matrix_P = 320
+partial_Fourier_factor = 1.0
+phase_oversampling = 0
+pixel_bandwidth = 120.0
+sequence_type = "Inversion Recovery"
+slice_thickness = 4.0
+trajectory = "Cartesian"
+turbo_factor = 16

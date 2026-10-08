@@ -1,7 +1,7 @@
 TOOLTIPS = {
-    'load_presetss':
+    'load_presets':
     '# Load preset parameters\n'
-    'Loads preset parameters typical for clinical settings.',
+    'Loads preset parameters typical for clinical sequences.',
 
     'object':
     '# Phantom object\n'

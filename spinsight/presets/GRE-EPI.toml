@@ -1,0 +1,15 @@
+EPI_factor = 24
+FA = 25
+FatSat = true
+NSA = 4
+TE = 20.0
+TR = 3000.0
+frequency_direction = "left-right"
+matrix_F = 192
+matrix_P = 192
+partial_Fourier_factor = 1.0
+phase_oversampling = 0
+pixel_bandwidth = 960.0
+sequence_type = "Spoiled Gradient Echo"
+slice_thickness = 5.0
+trajectory = "Cartesian"
