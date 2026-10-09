@@ -62,7 +62,7 @@ def panel_template(title, dark_mode):
     return pn.template.FastListTemplate(
         title=title,
         theme='dark' if dark_mode else 'default',
-        theme_toggle=False,
+        theme_toggle=True,
         header_background='#262626',
         modal=[pn.Column()],
         collapsed_sidebar=True
