@@ -2,6 +2,14 @@ import numpy as np
 
 GYRO = 42.577 # 1H gyromagnetic ratio [MHz/T]
 
+# Tissue relaxation times from:
+# Stanisz GJ, Odrobina EE, Pun J, Escaravage M, Graham SJ, Bronskill MJ, et al. "T1, T2 relaxation and magnetization transfer in tissue at 3T." Magn Reson Med. 2005 Sep;54(3):507–12.
+# Steinhoff S, Zaitsev M, Zilles K, Shah N j. "Fast T1 mapping with volume coverage." Magn Reson Med. 2001;46(1):131–40.
+# Wansapura JP, Holland SK, Dunn RS, Ball WS. "NMR relaxation times in the human brain at 3.0 tesla." J Magn Reson Imaging. 1999 Apr;9(4):531–8.
+# Steen RG, Gronemeyer SA, Kingsley PB, Reddick WE, Langston JS, Taylor JS. "Precise and accurate measurement of proton T1 in human brain in vivo: Validation and preliminary clinical application." J Magn Reson Imaging. 1994;4(5):681–91.
+# Gold GE, Han E, Stainsby J, Wright G, Brittain J, Beaulieu C. "Musculoskeletal MRI at 3.0 T: Relaxation Times and Image Contrast." American Journal of Roentgenology. 2004 Aug;183(2):343–51.
+# de Bazelaire CMJ, Duhamel GD, Rofsky NM, Alsop DC. "MR imaging relaxation times of abdominal and pelvic tissues measured in vivo at 3.0 T: preliminary results." Radiology. 2004 Mar;230(3):652–9.
+# Lin C, Bernstein M, Huston J, Fain S. "Measurements of T1 Relaxation times at 3.0T: Implications for clinical MRA." In: Proceedings of the 9th Annual Meeting of ISMRM. Glasgow, Scotland, United Kingdom; 2001. p. 1391.
 TISSUES = {
     'Gray matter':                 {'PD': 1.0  , 'FF': .00, 'T1': {1.5: 1100, 3.0: 1330}, 'T2': {1.5:   95, 3.0:   99}},
     'White matter':                {'PD': 0.9  , 'FF': .00, 'T1': {1.5:  560, 3.0:  830}, 'T2': {1.5:   72, 3.0:   69}},
@@ -30,12 +38,12 @@ TISSUES = {
 
 # Fat spectral model defined in:
 # Cui C, Wu X, Newell JD, Jacob M. "Fat water decomposition using globally optimal surface estimation (GOOSE) algorithm." Magn Reson Med. 2015 Mar;73(3):1289–99.
-FAT_RESONANCES = {'Fat1': {'shift': 0.9 - 4.7, 'ratio': .087, 'ratio_with_FatSat': .010, 'PD': 1.0, 'T1': {1.5:  290, 3.0:  370}, 'T2': {1.5:  165, 3.0:  130}},
-                  'Fat2': {'shift': 1.3 - 4.7, 'ratio': .694, 'ratio_with_FatSat': .033, 'PD': 1.0, 'T1': {1.5:  290, 3.0:  370}, 'T2': {1.5:  165, 3.0:  130}},
-                  'Fat3': {'shift': 2.1 - 4.7, 'ratio': .129, 'ratio_with_FatSat': .038, 'PD': 1.0, 'T1': {1.5:  290, 3.0:  370}, 'T2': {1.5:  165, 3.0:  130}},
-                  'Fat4': {'shift': 2.8 - 4.7, 'ratio': .004, 'ratio_with_FatSat': .003, 'PD': 1.0, 'T1': {1.5:  290, 3.0:  370}, 'T2': {1.5:  165, 3.0:  130}},
-                  'Fat5': {'shift': 4.3 - 4.7, 'ratio': .039, 'ratio_with_FatSat': .037, 'PD': 1.0, 'T1': {1.5:  290, 3.0:  370}, 'T2': {1.5:  165, 3.0:  130}}, 
-                  'Fat6': {'shift': 5.3 - 4.7, 'ratio': .047, 'ratio_with_FatSat': .045, 'PD': 1.0, 'T1': {1.5:  290, 3.0:  370}, 'T2': {1.5:  165, 3.0:  130}} }
+FAT_RESONANCES = {'Fat1': {'shift': 0.9 - 4.7, 'ratio': .087, 'ratio_with_FatSat': .010, 'PD': 1.0, 'T1': TISSUES['Adipose tissue']['T1'], 'T2': TISSUES['Adipose tissue']['T2']},
+                  'Fat2': {'shift': 1.3 - 4.7, 'ratio': .694, 'ratio_with_FatSat': .033, 'PD': 1.0, 'T1': TISSUES['Adipose tissue']['T1'], 'T2': TISSUES['Adipose tissue']['T2']},
+                  'Fat3': {'shift': 2.1 - 4.7, 'ratio': .129, 'ratio_with_FatSat': .038, 'PD': 1.0, 'T1': TISSUES['Adipose tissue']['T1'], 'T2': TISSUES['Adipose tissue']['T2']},
+                  'Fat4': {'shift': 2.8 - 4.7, 'ratio': .004, 'ratio_with_FatSat': .003, 'PD': 1.0, 'T1': TISSUES['Adipose tissue']['T1'], 'T2': TISSUES['Adipose tissue']['T2']},
+                  'Fat5': {'shift': 4.3 - 4.7, 'ratio': .039, 'ratio_with_FatSat': .037, 'PD': 1.0, 'T1': TISSUES['Adipose tissue']['T1'], 'T2': TISSUES['Adipose tissue']['T2']}, 
+                  'Fat6': {'shift': 5.3 - 4.7, 'ratio': .047, 'ratio_with_FatSat': .045, 'PD': 1.0, 'T1': TISSUES['Adipose tissue']['T1'], 'T2': TISSUES['Adipose tissue']['T2']} }
 
 T2_PRIM = 35. # ad hoc value [msec]
 
