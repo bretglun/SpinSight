@@ -40,10 +40,13 @@ def get_PD_and_T1w(component, sequence_type, TR, TI, FA, B0):
 
     E1 = np.exp(-TR/T1)
     if sequence_type == 'Spin Echo':
+        # Bernstein eq. 14.57 (assuming (TE_1)/2 << TR)
         return PD * (1 - E1)
     elif sequence_type == 'Spoiled Gradient Echo':
+        # Bernstein eq. 14.8
         return PD * np.sin(np.radians(FA)) * (1 - E1) / (1 - np.cos(np.radians(FA)) * E1)
     elif sequence_type == 'Inversion Recovery':
+        # Bernstein eq. 14.32
         return PD * (1 - 2 * np.exp(-TI/T1) + E1)
     else:
         raise ValueError(f'Unknown sequence type: {sequence_type}')
